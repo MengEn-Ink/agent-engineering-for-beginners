@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
-import { basename, join, relative, resolve } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { basename, extname, join, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { parse } from 'yaml'
 
 const forbiddenRules = [
@@ -28,6 +28,54 @@ export function validateMarkdownFiles(files) {
   }
 
   return errors
+}
+
+const textExtensions = new Set([
+  '.css',
+  '.html',
+  '.js',
+  '.json',
+  '.md',
+  '.mjs',
+  '.mts',
+  '.svg',
+  '.ts',
+  '.vue',
+  '.yaml',
+  '.yml',
+])
+
+export function collectTextFiles(root, excludedNames = new Set(['.git', 'node_modules', 'dist'])) {
+  if (!existsSync(root)) return []
+  const files = []
+
+  for (const entry of readdirSync(root).sort()) {
+    if (excludedNames.has(entry)) continue
+    const path = join(root, entry)
+    if (statSync(path).isDirectory()) files.push(...collectTextFiles(path, excludedNames))
+    else if (textExtensions.has(extname(path))) files.push(path)
+  }
+
+  return files
+}
+
+export function validatePublishedFiles(root) {
+  const docsRoot = join(root, 'docs')
+  const publishedFiles = collectTextFiles(docsRoot, new Set(['superpowers', 'dist']))
+  const extraScopes = [
+    join(root, '.github'),
+    join(root, 'sources'),
+    join(root, 'package.json'),
+    join(root, 'README.md'),
+  ]
+
+  for (const scope of extraScopes) {
+    if (!existsSync(scope)) continue
+    if (statSync(scope).isDirectory()) publishedFiles.push(...collectTextFiles(scope))
+    else publishedFiles.push(scope)
+  }
+
+  return validateMarkdownFiles([...new Set(publishedFiles)].sort())
 }
 
 export function validateSourceRegistry(sourcePath) {
@@ -60,24 +108,9 @@ export function validateSourceRegistry(sourcePath) {
   return errors
 }
 
-function listMarkdownFiles(root) {
-  if (!existsSync(root)) return []
-  const files = []
-
-  for (const entry of readdirSync(root)) {
-    if (entry === '.vitepress' || entry === 'superpowers') continue
-    const path = join(root, entry)
-    if (statSync(path).isDirectory()) files.push(...listMarkdownFiles(path))
-    else if (path.endsWith('.md')) files.push(path)
-  }
-
-  return files
-}
-
 export function validateBook(root = process.cwd()) {
   const sourcePath = join(root, 'sources/source-index.yml')
-  const markdownFiles = listMarkdownFiles(join(root, 'docs'))
-  return [...validateSourceRegistry(sourcePath), ...validateMarkdownFiles(markdownFiles)]
+  return [...validateSourceRegistry(sourcePath), ...validatePublishedFiles(root)]
 }
 
 const invokedPath = process.argv[1] ? resolve(process.argv[1]) : ''

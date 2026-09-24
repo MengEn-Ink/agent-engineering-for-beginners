@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">Agent 工程入门标志</title>
+  <desc id="desc">由六个工程层和一条荧光绿验证线组成的书本标志</desc>
+  <rect width="64" height="64" rx="7" fill="#101e3a"/>
+  <path d="M12 14h31l9 8v30H12z" fill="#f3eedf" stroke="#f3eedf" stroke-width="2"/>
+  <path d="M43 14v9h9" fill="none" stroke="#101e3a" stroke-width="2"/>
+  <path d="M19 29h26M19 36h26M19 43h17" stroke="#101e3a" stroke-width="3"/>
+  <path d="m40 46 4 4 8-12" fill="none" stroke="#b7f800" stroke-linecap="square" stroke-width="4"/>
+</svg>
