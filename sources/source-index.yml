@@ -1,0 +1,145 @@
+sources:
+  - id: anthropic-effective-agents
+    title: Building effective agents
+    publisher: Anthropic
+    url: https://www.anthropic.com/research/building-effective-agents
+    grade: A
+    accessed: '2026-09-25'
+    chapters: ['01', '02', '03', '06', '07', '10']
+    note: 区分预定义 workflow 与模型动态决策的 agent，并强调简单优先、环境反馈和停止条件。
+  - id: anthropic-agent-sdk
+    title: Building agents with the Claude Agent SDK
+    publisher: Anthropic Engineering
+    url: https://www.anthropic.com/engineering/building-agents-with-the-claude-agent-sdk
+    grade: A
+    accessed: '2026-09-25'
+    chapters: ['03', '04', '08', '10']
+    note: 用“收集上下文、行动、验证、重复”描述可执行 agent 循环。
+  - id: mcp-spec
+    title: Model Context Protocol Specification
+    publisher: Model Context Protocol
+    url: https://modelcontextprotocol.io/specification/2025-03-26
+    grade: A
+    accessed: '2026-09-25'
+    chapters: ['04', '09']
+    note: 核对 Host、Client、Server 以及 Tools、Resources、Prompts 的协议边界。
+  - id: openai-agents-sdk
+    title: OpenAI Agents SDK for Python
+    publisher: OpenAI
+    url: https://openai.github.io/openai-agents-python/
+    grade: A
+    accessed: '2026-09-25'
+    chapters: ['04', '07', '08', '09']
+    note: 核对 agent、handoff、guardrail、session 与 tracing 等最小原语。
+  - id: google-adk-evaluation
+    title: Why Evaluate Agents
+    publisher: Google Agent Development Kit
+    url: https://google.github.io/adk-docs/evaluate/
+    grade: A
+    accessed: '2026-09-25'
+    chapters: ['08', '10']
+    note: 核对工具轨迹、响应质量、安全与多轮评测的系统化方法。
+  - id: microsoft-autogen-architecture
+    title: AutoGen v0.4 architecture
+    publisher: Microsoft Research
+    url: https://www.microsoft.com/en-us/research/blog/autogen-v0-4-reimagining-the-foundation-of-agentic-ai-for-scale-extensibility-and-robustness/
+    grade: A
+    accessed: '2026-09-25'
+    chapters: ['06', '07']
+    note: 用 Core、AgentChat、Extensions 的分层理解多 agent 框架的抽象边界。
+  - id: langgraph-repository
+    title: LangGraph
+    publisher: LangChain AI
+    url: https://github.com/langchain-ai/langgraph
+    grade: A
+    accessed: '2026-09-25'
+    chapters: ['05', '06', '09']
+    note: 学习状态图、持久化、恢复和人工介入，不据此断言所有任务都需要 graph。
+  - id: autogen-repository
+    title: AutoGen
+    publisher: Microsoft
+    url: https://github.com/microsoft/autogen
+    grade: A
+    accessed: '2026-09-25'
+    chapters: ['07']
+    note: 学习消息、事件驱动与多 agent 协作的工程组织方式。
+  - id: crewai-repository
+    title: CrewAI
+    publisher: CrewAI Inc.
+    url: https://github.com/crewAIInc/crewAI
+    grade: A
+    accessed: '2026-09-25'
+    chapters: ['07']
+    note: 观察角色、任务和协作编排，同时单独讨论协调成本。
+  - id: pydantic-ai-repository
+    title: Pydantic AI
+    publisher: Pydantic
+    url: https://github.com/pydantic/pydantic-ai
+    grade: A
+    accessed: '2026-09-25'
+    chapters: ['04', '09']
+    note: 学习类型约束、结构化结果和依赖注入，不把类型安全等同于事实正确。
+  - id: google-adk-repository
+    title: Agent Development Kit for Python
+    publisher: Google
+    url: https://github.com/google/adk-python
+    grade: A
+    accessed: '2026-09-25'
+    chapters: ['07', '08']
+    note: 学习代码优先的 agent 组合、评测与部署接口。
+  - id: semantic-kernel-repository
+    title: Semantic Kernel
+    publisher: Microsoft
+    url: https://github.com/microsoft/semantic-kernel
+    grade: A
+    accessed: '2026-09-25'
+    chapters: ['04', '06', '10']
+    note: 学习插件、流程与企业系统集成，不把抽象层数量当作成熟度。
+  - id: langfuse-repository
+    title: Langfuse
+    publisher: Langfuse
+    url: https://github.com/langfuse/langfuse
+    grade: A
+    accessed: '2026-09-25'
+    chapters: ['08']
+    note: 学习 agent 轨迹、评测和可观测性平台的能力边界。
+  - id: phoenix-repository
+    title: Arize Phoenix
+    publisher: Arize AI
+    url: https://github.com/Arize-ai/phoenix
+    grade: A
+    accessed: '2026-09-25'
+    chapters: ['08']
+    note: 交叉核对 tracing、evaluation 和 observability 的工程接口。
+  - id: chip-huyen-agents
+    title: Agents
+    publisher: Chip Huyen
+    url: https://huyenchip.com/2025/01/07/agents.html
+    grade: B
+    accessed: '2026-09-25'
+    chapters: ['02', '03', '07', '08']
+    note: 补充 agent 规划、工具、效率、步骤数、成本与延迟的实践视角。
+  - id: wechat-agent-engineering
+    title: Agent 工程实践
+    publisher: LZ AI Note
+    url: https://mp.weixin.qq.com/mp/appmsgalbum?__biz=MzY4OTMxODkyNQ==&action=getalbum&album_id=4633251924958658565
+    grade: B
+    accessed: '2026-09-25'
+    chapters: ['01', '02', '03', '04', '05', '06', '08', '09']
+    note: 作为选题和观点线索；不复制原图或大段原文，关键事实回到 A 级来源核验。
+  - id: vitepress-deploy
+    title: Deploy Your VitePress Site
+    publisher: VitePress
+    url: https://vitepress.dev/guide/deploy
+    grade: A
+    accessed: '2026-09-25'
+    chapters: ['10']
+    note: 核对 GitHub Pages 的 base path、构建目录与 Actions 部署方式。
+  - id: delivery-patterns
+    title: Agent engineering book design - delivery patterns
+    publisher: 本书项目
+    url: https://github.com/MengEn-Ink/agent-engineering-for-beginners/blob/main/docs/superpowers/specs/2026-09-24-agent-engineering-book-design.md
+    grade: B
+    accessed: '2026-09-25'
+    chapters: ['05', '06', '08', '09', '10']
+    note: 仅记录经过脱敏的交付型 agent 工程模式；不是对私有系统能力的公开证明。

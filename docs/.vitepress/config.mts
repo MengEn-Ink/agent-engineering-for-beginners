@@ -19,6 +19,7 @@ export default defineConfig({
   title: '别只会和 AI 聊天',
   description: '一本写给小白的 AI Native 与 Agent 工程入门书',
   base: '/agent-engineering-for-beginners/',
+  srcExclude: ['superpowers/**'],
   cleanUrls: true,
   lastUpdated: true,
   head: [
