@@ -317,3 +317,34 @@ describe('reader aids and landing page', () => {
     expect(readme).toContain('https://mengen-ink.github.io/agent-engineering-for-beginners/')
   })
 })
+
+describe('release configuration', () => {
+  it('uses a least-privilege GitHub Pages workflow with the full quality gate', () => {
+    const workflowPath = '.github/workflows/deploy.yml'
+    expect(existsSync(workflowPath)).toBe(true)
+    const workflow = readFileSync(workflowPath, 'utf8')
+
+    for (const fragment of [
+      'contents: read',
+      'pages: write',
+      'id-token: write',
+      'pnpm install --frozen-lockfile',
+      'pnpm test',
+      'pnpm build',
+      'actions/configure-pages@v5',
+      'actions/upload-pages-artifact@v3',
+      'actions/deploy-pages@v4',
+      'docs/.vitepress/dist',
+    ]) {
+      expect(workflow).toContain(fragment)
+    }
+    expect(workflow).toMatch(/push:\s*\n\s*branches: \[main\]/)
+  })
+
+  it('ships explicit licenses for code and prose', () => {
+    expect(existsSync('LICENSE')).toBe(true)
+    expect(existsSync('LICENSE-CONTENT')).toBe(true)
+    expect(readFileSync('LICENSE', 'utf8')).toContain('MIT License')
+    expect(readFileSync('LICENSE-CONTENT', 'utf8')).toContain('Creative Commons Attribution-ShareAlike 4.0')
+  })
+})
