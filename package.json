@@ -1,0 +1,20 @@
+{
+  "name": "agent-engineering-for-beginners",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vitepress dev docs",
+    "build": "pnpm validate && vitepress build docs",
+    "preview": "vitepress preview docs",
+    "test": "vitest run",
+    "validate": "node scripts/validate-content.mjs"
+  },
+  "devDependencies": {
+    "vitepress": "^1.6.4",
+    "vitest": "^3.2.4",
+    "vue": "^3.5.22",
+    "yaml": "^2.8.1"
+  },
+  "packageManager": "pnpm@9.15.9"
+}
