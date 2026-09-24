@@ -1,5 +1,7 @@
 import { defineConfig } from 'vitepress'
 
+const base = '/agent-engineering-for-beginners/'
+
 const chapterSidebar = [
   { text: '序章 · 会聊天，不等于会做事', link: '/preface' },
   { text: '01 · AI Native 到底 Native 在哪', link: '/chapters/01-ai-native' },
@@ -18,11 +20,12 @@ export default defineConfig({
   lang: 'zh-CN',
   title: '别只会和 AI 聊天',
   description: '一本写给小白的 AI Native 与 Agent 工程入门书',
-  base: '/agent-engineering-for-beginners/',
+  base,
   srcExclude: ['superpowers/**'],
   cleanUrls: true,
   lastUpdated: true,
   head: [
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: `${base}mark.svg` }],
     ['meta', { name: 'theme-color', content: '#101e3a' }],
     ['meta', { property: 'og:title', content: '别只会和 AI 聊天' }],
     ['meta', { property: 'og:description', content: '从会写 Prompt，到能交付一个可靠的 Agent 系统。' }],

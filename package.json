@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vitepress dev docs",
     "build": "pnpm validate && vitepress build docs && node scripts/check-dist.mjs",
-    "preview": "vitepress preview docs",
+    "preview": "node scripts/serve-preview.mjs",
     "test": "vitest run",
     "validate": "node scripts/validate-content.mjs"
   },

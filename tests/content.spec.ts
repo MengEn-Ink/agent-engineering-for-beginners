@@ -319,6 +319,41 @@ describe('reader aids and landing page', () => {
 })
 
 describe('release configuration', () => {
+  it('maps base-prefixed preview URLs to the built files safely', async () => {
+    const previewScript = 'scripts/serve-preview.mjs'
+    expect(existsSync(previewScript)).toBe(true)
+    const { resolvePreviewPath } = await import(
+      pathToFileURL(join(process.cwd(), previewScript)).href
+    )
+    const fixtureDir = mkdtempSync(join(tmpdir(), 'agent-book-preview-'))
+    mkdirSync(join(fixtureDir, 'assets'), { recursive: true })
+    mkdirSync(join(fixtureDir, 'chapters'), { recursive: true })
+    writeFileSync(join(fixtureDir, 'index.html'), '<h1>book</h1>')
+    writeFileSync(join(fixtureDir, 'assets/app.js'), 'console.log("book")')
+    writeFileSync(join(fixtureDir, 'chapters/01.html'), '<h1>chapter</h1>')
+
+    try {
+      expect(resolvePreviewPath('/agent-engineering-for-beginners/', fixtureDir)).toBe(
+        join(fixtureDir, 'index.html'),
+      )
+      expect(resolvePreviewPath('/agent-engineering-for-beginners/assets/app.js', fixtureDir)).toBe(
+        join(fixtureDir, 'assets/app.js'),
+      )
+      expect(resolvePreviewPath('/agent-engineering-for-beginners/chapters/01', fixtureDir)).toBe(
+        join(fixtureDir, 'chapters/01.html'),
+      )
+      expect(resolvePreviewPath('/agent-engineering-for-beginners/../../LICENSE', fixtureDir)).toBeNull()
+    } finally {
+      rmSync(fixtureDir, { recursive: true, force: true })
+    }
+  })
+
+  it('serves the existing SVG mark as a base-aware favicon', () => {
+    const config = readFileSync('docs/.vitepress/config.mts', 'utf8')
+    expect(config).toContain("rel: 'icon'")
+    expect(config).toContain('href: `${base}mark.svg`')
+  })
+
   it('uses a least-privilege GitHub Pages workflow with the full quality gate', () => {
     const workflowPath = '.github/workflows/deploy.yml'
     expect(existsSync(workflowPath)).toBe(true)
