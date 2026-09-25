@@ -1,4 +1,4 @@
-import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { defineLoader } from 'vitepress'
 import { loadProjectCatalog } from '../../../../scripts/project-catalog.mjs'
 import type { ProjectCatalog } from './projectCatalogTypes'
@@ -9,6 +9,7 @@ export { data }
 export default defineLoader({
   watch: ['../../../../sources/project-index.yml'],
   load() {
-    return loadProjectCatalog(resolve(process.cwd(), 'sources/project-index.yml')) as ProjectCatalog
+    const catalogPath = fileURLToPath(new URL('../../../../sources/project-index.yml', import.meta.url))
+    return loadProjectCatalog(catalogPath) as ProjectCatalog
   },
 })

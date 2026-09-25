@@ -40,6 +40,29 @@ describe('project presentation primitives', () => {
     )
   })
 
+  it('URL-encodes each declared source path segment without encoding separators', () => {
+    const specialCatalog = structuredClone(projectCatalog)
+    const aider = specialCatalog.subjects.find((subject) => subject.id === 'aider')!
+    aider.entrypoints.push({
+      path: 'docs/path with space/#guide?100%.md',
+      symbols: ['render special path'],
+      responsibility: 'Exercise reserved URL characters in a declared source path.',
+    })
+    const specialLookup = createProjectCatalogLookup(specialCatalog)
+
+    expect(specialLookup.projectSourceUrl('aider', 'docs/path with space/#guide?100%.md')).toBe(
+      'https://github.com/Aider-AI/aider/blob/a4be6ccd87ebaa59b361f3f028d116ce1761b626/docs/path%20with%20space/%23guide%3F100%25.md',
+    )
+  })
+
+  it('loads the catalog relative to the loader module instead of the process working directory', () => {
+    const loader = readFileSync('docs/.vitepress/theme/data/projectCatalog.data.ts', 'utf8')
+    expect(loader).not.toContain('process.cwd()')
+    expect(loader).not.toContain('watchedFiles[0]')
+    expect(loader).toContain('import.meta.url')
+    expect(loader).toContain("new URL('../../../../sources/project-index.yml', import.meta.url)")
+  })
+
   it('registers four SSR-safe components with native list and disclosure semantics', () => {
     const loader = readFileSync('docs/.vitepress/theme/data/projectCatalog.data.ts', 'utf8')
     expect(loader).toContain("import { defineLoader } from 'vitepress'")

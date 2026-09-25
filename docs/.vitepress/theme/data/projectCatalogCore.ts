@@ -34,7 +34,8 @@ export function createProjectCatalogLookup(data: ProjectCatalog) {
     if (!allowedPaths.has(sourcePath)) {
       throw new Error(`Undeclared project source: ${subjectId}/${sourcePath}`)
     }
-    return `${subject.canonical_url}/blob/${subject.pinned_commit}/${sourcePath}`
+    const encodedSourcePath = sourcePath.split('/').map(encodeURIComponent).join('/')
+    return `${subject.canonical_url}/blob/${subject.pinned_commit}/${encodedSourcePath}`
   }
 
   return {
