@@ -11,6 +11,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parse } from 'yaml'
+import { getContentItem } from '../docs/.vitepress/theme/data/contentRegistry'
+import { publishedCourseItems } from '../docs/.vitepress/theme/data/courseMap'
 
 const expandedChapterFiles = [
   'docs/chapters/01-ai-native.md',
@@ -910,6 +912,17 @@ describe('publish boundary', () => {
       for (const forbidden of ['/projects/', '/labs/', '标记已读', '加入书签']) {
         expect(errors).toContain(`课程页包含未发布入口或写操作：${forbidden}`)
       }
+
+      const stages = ['基础认知', '核心机制', '生产工程', '应用模式', '项目拆解', '综合实战']
+      const hostileLinks = publishedCourseItems.map(({ itemId }) => {
+        const route = getContentItem(itemId).route
+        return `<a href="https://evil.example/not-the-site${route}">${itemId}</a>`
+      })
+      writeFileSync(
+        join(fixtureDir, 'course/index.html'),
+        `<nav class="course-map">${stages.join('')}本地进度将在页面加载后显示${hostileLinks.join('')}</nav>`,
+      )
+      expect(validateDist(fixtureDir)).toContain('课程页必须包含 20 个唯一的公开课程链接')
     } finally {
       rmSync(fixtureDir, { recursive: true, force: true })
     }

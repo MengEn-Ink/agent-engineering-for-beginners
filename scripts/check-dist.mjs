@@ -35,6 +35,8 @@ const publishedCourseRoutes = [
 ]
 
 const forbiddenCourseMarkers = ['/projects/', '/labs/', '标记已读', '加入书签']
+const siteOrigin = 'https://mengen-ink.github.io'
+const siteBase = '/agent-engineering-for-beginners'
 
 function listFiles(root) {
   if (!existsSync(root)) return []
@@ -44,12 +46,13 @@ function listFiles(root) {
   })
 }
 
-function hrefMatchesRoute(href, route) {
+function normalizeCourseHref(href) {
   try {
-    const pathname = new URL(href, 'https://example.invalid').pathname.replace(/\/$/u, '')
-    return pathname === route || pathname.endsWith(route)
+    const url = new URL(href, `${siteOrigin}${siteBase}/`)
+    if (url.origin !== siteOrigin || !url.pathname.startsWith(`${siteBase}/`)) return null
+    return url.pathname.slice(siteBase.length).replace(/\/$/u, '')
   } catch {
-    return false
+    return null
   }
 }
 
@@ -60,11 +63,17 @@ export function validateCourseDist(html) {
     courseMarkup.matchAll(/<a\b[^>]*\bhref=(["'])(.*?)\1/gu),
     (match) => match[2],
   )
+  const normalizedHrefs = hrefs.map(normalizeCourseHref)
   const hasEveryRouteOnce = publishedCourseRoutes.every((route) =>
-    hrefs.filter((href) => hrefMatchesRoute(href, route)).length === 1,
+    normalizedHrefs.filter((href) => href === route).length === 1,
   )
 
-  if (hrefs.length !== 20 || new Set(hrefs).size !== 20 || !hasEveryRouteOnce) {
+  if (
+    normalizedHrefs.length !== 20
+    || normalizedHrefs.includes(null)
+    || new Set(normalizedHrefs).size !== 20
+    || !hasEveryRouteOnce
+  ) {
     errors.push('课程页必须包含 20 个唯一的公开课程链接')
   }
   if (!courseMarkup.includes('本地进度将在页面加载后显示')) {
