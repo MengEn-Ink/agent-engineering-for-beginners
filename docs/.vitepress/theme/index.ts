@@ -25,6 +25,7 @@ import BrowserEvidence from './components/BrowserEvidence.vue'
 import ChapterFreshness from './components/ChapterFreshness.vue'
 import ReadingPaths from './components/ReadingPaths.vue'
 import ReadingProgress from './components/ReadingProgress.vue'
+import InterviewTrainer from './components/InterviewTrainer.vue'
 import './style.css'
 
 export default {
@@ -57,5 +58,6 @@ export default {
     app.component('ChapterFreshness', ChapterFreshness)
     app.component('ReadingPaths', ReadingPaths)
     app.component('ReadingProgress', ReadingProgress)
+    app.component('InterviewTrainer', InterviewTrainer)
   },
 } satisfies Theme

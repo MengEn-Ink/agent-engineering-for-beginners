@@ -575,6 +575,61 @@ describe('local reading paths and progress', () => {
   })
 })
 
+describe('interview training mode', () => {
+  it('publishes the trainer route without duplicating the question registry', () => {
+    const page = 'docs/appendix/interview-training.md'
+    const componentPath = 'docs/.vitepress/theme/components/InterviewTrainer.vue'
+    const config = readFileSync('docs/.vitepress/config.mts', 'utf8')
+    const theme = readFileSync('docs/.vitepress/theme/index.ts', 'utf8')
+
+    expect(existsSync(page)).toBe(true)
+    expect(readFileSync(page, 'utf8')).toContain('<InterviewTrainer />')
+    expect(config).toContain('/appendix/interview-training')
+    expect(existsSync(componentPath)).toBe(true)
+    expect(theme).toContain("'InterviewTrainer'")
+
+    const component = readFileSync(componentPath, 'utf8')
+    expect(component).toContain("import { interviewQuestions }")
+    expect(component).not.toContain('function question(')
+  })
+
+  it('exposes filters, random draw, answer reveal and local self-assessment', () => {
+    const component = readFileSync(
+      'docs/.vitepress/theme/components/InterviewTrainer.vue',
+      'utf8',
+    )
+    for (const label of [
+      '岗位',
+      '难度',
+      '主题',
+      '随机抽题',
+      '先口答，再看答案',
+      '不会',
+      '模糊',
+      '掌握',
+      '仅存于当前浏览器',
+    ]) {
+      expect(component).toContain(label)
+    }
+    expect(component).toContain('history.replaceState')
+    expect(component).toContain('aria-pressed')
+    expect(component).toContain('window.confirm')
+  })
+
+  it('keeps the trainer readable and touchable on narrow screens', () => {
+    const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
+    for (const selector of [
+      '.interview-trainer',
+      '.trainer-filters',
+      '.trainer-question',
+      '.trainer-mastery',
+    ]) {
+      expect(style).toContain(selector)
+    }
+    expect(style).toMatch(/\.trainer-action[\s\S]*?min-height:\s*44px/u)
+  })
+})
+
 describe('public-boundary validator', () => {
   it('flags local paths, credentials and internal product identifiers', async () => {
     const validatorPath = 'scripts/validate-content.mjs'

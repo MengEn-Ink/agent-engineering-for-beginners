@@ -54,6 +54,7 @@ export default defineConfig({
       { text: '前沿雷达', link: '/radar/' },
       { text: '术语表', link: '/appendix/glossary' },
       { text: '面试题', link: '/appendix/interview' },
+      { text: '面试训练', link: '/appendix/interview-training' },
     ],
     sidebar: [
       {
@@ -101,6 +102,7 @@ export default defineConfig({
           { text: '应用选型矩阵', link: '/appendix/application-matrix' },
           { text: '章节与方案模板', link: '/appendix/chapter-template' },
           { text: '42 道面试题', link: '/appendix/interview' },
+          { text: '面试训练模式', link: '/appendix/interview-training' },
         ],
       },
     ],
