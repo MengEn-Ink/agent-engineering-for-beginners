@@ -35,7 +35,7 @@ const validCatalog = {
     }],
     license_sources: [{ path: 'LICENSE.txt', sha256: 'b'.repeat(64) }],
     watch_url: 'https://github.com/Aider-AI/aider/releases/latest',
-    entrypoints: [{ path: 'aider/main.py', symbol: 'main', responsibility: 'Validate repository arguments.' }],
+    entrypoints: [{ path: 'aider/main.py', symbols: ['main'], responsibility: 'Validate repository arguments.' }],
   }],
   chains: [{
     id: 'aider-chain',
@@ -157,6 +157,32 @@ describe('project catalog schema', () => {
     wrongSymbol.chains[0].steps[0].symbol = 'missing'
     expect(validateProjectCatalog(wrongSymbol)).toContain(
       'Chain aider-chain step entry references an undeclared entrypoint: aider/aider/main.py#missing',
+    )
+
+    const emptySymbols = structuredClone(validCatalog)
+    emptySymbols.subjects[0].entrypoints[0].symbols = []
+    expect(validateProjectCatalog(emptySymbols)).toContain(
+      'Subject aider entrypoint aider/main.py requires non-empty symbols',
+    )
+
+    const blankSymbol = structuredClone(validCatalog)
+    blankSymbol.subjects[0].entrypoints[0].symbols = ['main', '   ']
+    expect(validateProjectCatalog(blankSymbol)).toContain(
+      'Subject aider entrypoint aider/main.py symbols must contain only non-empty strings',
+    )
+
+    const duplicateSymbols = structuredClone(validCatalog)
+    duplicateSymbols.subjects[0].entrypoints[0].symbols = ['main', 'main']
+    expect(validateProjectCatalog(duplicateSymbols)).toContain(
+      'Subject aider entrypoint aider/main.py has duplicate symbols',
+    )
+
+    const legacySymbol = structuredClone(validCatalog) as any
+    legacySymbol.subjects[0].entrypoints[0] = {
+      path: 'aider/main.py', symbol: 'main', responsibility: 'Validate repository arguments.',
+    }
+    expect(validateProjectCatalog(legacySymbol)).toContain(
+      'Subject aider entrypoint aider/main.py requires non-empty symbols',
     )
   })
 

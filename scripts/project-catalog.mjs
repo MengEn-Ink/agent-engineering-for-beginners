@@ -136,8 +136,18 @@ export function validateProjectCatalog(data) {
         errors.push(`Subject ${subject.id} entrypoint at index ${index} must be an object`)
         continue
       }
-      if (!nonEmpty(entry.path) || !nonEmpty(entry.symbol) || !nonEmpty(entry.responsibility)) {
+      if (!nonEmpty(entry.path) || !nonEmpty(entry.responsibility)) {
         errors.push(`Subject ${subject.id} has an incomplete entrypoint`)
+      }
+      if (!Array.isArray(entry.symbols) || entry.symbols.length === 0) {
+        errors.push(`Subject ${subject.id} entrypoint ${entry.path} requires non-empty symbols`)
+      } else {
+        if (!entry.symbols.every(nonEmpty)) {
+          errors.push(`Subject ${subject.id} entrypoint ${entry.path} symbols must contain only non-empty strings`)
+        }
+        if (new Set(entry.symbols).size !== entry.symbols.length) {
+          errors.push(`Subject ${subject.id} entrypoint ${entry.path} has duplicate symbols`)
+        }
       }
       if (entryPaths.has(entry.path)) errors.push(`Subject ${subject.id} has duplicate entrypoint: ${entry.path}`)
       entryPaths.add(entry.path)
@@ -215,7 +225,9 @@ export function validateProjectCatalog(data) {
           : []
         const matchingPath = entrypoints.some((entry) => entry.path === step.source_path)
         const matchingEntrypoint = entrypoints.some(
-          (entry) => entry.path === step.source_path && entry.symbol === step.symbol,
+          (entry) => entry.path === step.source_path
+            && Array.isArray(entry.symbols)
+            && entry.symbols.includes(step.symbol),
         )
         if (!matchingEntrypoint) {
           const reference = `${step.subject_id}/${step.source_path}${matchingPath ? `#${step.symbol}` : ''}`
