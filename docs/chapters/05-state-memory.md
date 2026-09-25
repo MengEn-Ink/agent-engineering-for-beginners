@@ -177,4 +177,4 @@ Coding Agent 的任务状态则需要关联仓库、分支、基线提交、修�
 
 记忆不是一个大口袋。把会话、状态、偏好、知识和审计分开，给每种信息明确的来源、生命周期和权限，Agent 才能在“记得住”的同时“不串台、不乱信、能恢复”。
 
-来源：[source:langgraph-repository] [LangGraph](https://github.com/langchain-ai/langgraph)；[source:wechat-agent-engineering] 微信公众号「Agent 工程实践」合集（观点线索已用官方项目资料交叉核对）；[source:delivery-patterns] 交付型案例推演依据。
+来源：[source:langgraph-repository] [LangGraph](https://github.com/langchain-ai/langgraph)；[source:openai-agents-sessions] [OpenAI Agents SDK · Sessions](https://openai.github.io/openai-agents-python/sessions/)（仅用于会话状态实现）；[source:wechat-agent-engineering] 微信公众号「Agent 工程实践」合集（观点线索已用官方项目资料交叉核对）；[source:delivery-patterns] 交付型案例推演依据。
