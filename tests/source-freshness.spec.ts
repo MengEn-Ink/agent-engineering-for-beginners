@@ -56,6 +56,22 @@ describe('source freshness checker', () => {
     expect(result.findings).not.toContain('broken_link')
   })
 
+  it('treats exhausted DNS, connection and timeout failures as non-permanent network errors', async () => {
+    let attempts = 0
+    const result = await checkSource(baseSource, {
+      fetchImpl: async () => {
+        attempts += 1
+        throw new Error('ECONNRESET')
+      },
+      now: new Date('2026-09-25'),
+      retryAttempts: 2,
+      retryDelayMs: 0,
+    })
+    expect(attempts).toBe(2)
+    expect(result.findings).toContain('source_network_error')
+    expect(result.findings).not.toEqual(expect.arrayContaining(['unreachable', 'broken_link']))
+  })
+
   it('reports review dates and watched versions', async () => {
     const result = await checkSource(
       { ...baseSource, review_by: '2026-09-24', watch_url: 'https://example.com/spec/' },
@@ -101,6 +117,42 @@ describe('source freshness checker', () => {
       },
     )
     expect(result.findings).not.toContain('version_watch')
+  })
+
+  it('does not compare calendar update dates with semantic versions', async () => {
+    const semantic = await checkSource(
+      { ...baseSource, watch_url: 'https://example.com/spec/' },
+      {
+        fetchImpl: async (url: string) => ({
+          status: 200,
+          url,
+          text: async () => (url.endsWith('/spec/')
+            ? 'Current version: v1. Latest update: 2026-09-25'
+            : 'spec v1'),
+        }),
+        now: new Date('2026-09-25'),
+      },
+    )
+    expect(semantic.findings).not.toContain('version_watch')
+
+    const calendar = await checkSource(
+      {
+        ...baseSource,
+        version: '2026-07-28',
+        watch_url: 'https://example.com/spec/',
+      },
+      {
+        fetchImpl: async (url: string) => ({
+          status: 200,
+          url,
+          text: async () => (url.endsWith('/spec/')
+            ? 'Current protocol version: 2026-07-28. Latest SDK: v2.4.0'
+            : 'spec 2026-07-28'),
+        }),
+        now: new Date('2026-09-25'),
+      },
+    )
+    expect(calendar.findings).not.toContain('version_watch')
   })
 
   it('retries transient watch failures and reports non-success statuses', async () => {

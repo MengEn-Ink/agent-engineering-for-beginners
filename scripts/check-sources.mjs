@@ -74,18 +74,25 @@ function normalizedVersion(value) {
 export function watchedVersionChanged(text, expectedVersion) {
   const expected = normalizedVersion(expectedVersion)
   const lifecycle = new Set(['development', 'draft', 'stable'])
-  const numericToken = '(\\d{4}-\\d{2}-\\d{2}|v?\\d+(?:\\.\\d+){0,2})'
-  const lifecycleToken = '(Development|Draft|Stable)'
-  const patterns = lifecycle.has(expected)
-    ? [new RegExp(`status\\s*[:=-]\\s*${lifecycleToken}`, 'giu')]
+  const calendar = /^\d{4}-\d{2}-\d{2}$/u.test(expected)
+  const token = calendar
+    ? '(\\d{4}-\\d{2}-\\d{2})'
+    : '(v?\\d+(?:\\.\\d+){0,2})'
+  const explicitPatterns = lifecycle.has(expected)
+    ? [new RegExp('status\\s*[:=-]\\s*(Development|Draft|Stable)', 'giu')]
     : [
-        new RegExp(`(?:current|latest|stable)(?:\\s+[A-Za-z]+){0,4}\\s*[:=-]\\s*${numericToken}`, 'giu'),
-        new RegExp(`(?:current|latest|stable)(?:\\s+[A-Za-z]+){0,3}\\s+${numericToken}`, 'giu'),
+        new RegExp(`(?:current\\s+)?(?:protocol\\s+|specification\\s+)?version\\s*[:=-]\\s*${token}`, 'giu'),
+        new RegExp(`(?:current|latest)\\s+(?:release|specification|protocol)(?:\\s+version)?\\s*[:=-]?\\s*${token}`, 'giu'),
       ]
-  const advertised = []
-  for (const pattern of patterns) {
-    for (const match of text.matchAll(pattern)) advertised.push(match[1])
-  }
+  const fallbackPatterns = lifecycle.has(expected)
+    ? []
+    : [new RegExp(`(?:current|latest)\\s*[:=-]?\\s*${token}`, 'giu')]
+
+  const collect = (patterns) => patterns.flatMap((pattern) =>
+    Array.from(text.matchAll(pattern), (match) => match[1]),
+  )
+  const explicit = collect(explicitPatterns)
+  const advertised = explicit.length > 0 ? explicit : collect(fallbackPatterns)
   if (advertised.length > 0) {
     return advertised.some((candidate) => normalizedVersion(candidate) !== expected)
   }
@@ -118,7 +125,7 @@ export async function checkSource(source, {
     else if (httpStatus >= 400) findings.push('broken_link')
     if (finalUrl !== source.url) findings.push('redirected')
   } else {
-    findings.push('unreachable')
+    findings.push('source_network_error')
   }
 
   if (source.review_by && source.review_by < isoDate(now)) findings.push('review_due')
@@ -322,7 +329,7 @@ export async function runSourceCheck({
 
   if (strict) {
     const blocking = results.some((result) =>
-      result.findings.some((finding) => ['broken_link', 'unreachable'].includes(finding)),
+      result.findings.includes('broken_link'),
     )
     if (blocking) process.exitCode = 1
   }
