@@ -83,7 +83,6 @@ subjects:
     watch_url: https://github.com/modelcontextprotocol/modelcontextprotocol/releases/latest
     entrypoints:
       - { path: schema/2026-07-28/schema.json, symbols: [CallToolRequest], responsibility: Define the versioned tools/call request and result contract. }
-      - { path: docs/docs/2026-07-28/learn/architecture.mdx, symbols: [Host-Client-Server architecture], responsibility: Define the protocol participants and capability boundaries. }
 
   - id: mcp-python-sdk
     canonical_repo: modelcontextprotocol/python-sdk
@@ -104,12 +103,13 @@ subjects:
     license_sources: [{ path: LICENSE, sha256: 5e13dbbc1d120fc2a03cecde7c91424ae2d7de11b63d58ded2f4431e261ee50d }]
     watch_url: https://github.com/modelcontextprotocol/python-sdk/releases/latest
     entrypoints:
-      - { path: examples/snippets/servers/basic_tool.py, symbols: [mcp.tool], responsibility: Demonstrate registration of a narrow Python tool. }
-      - { path: src/mcp/server/mcpserver/server.py, symbols: [MCPServer.tool], responsibility: Expose the high-level registration and call surface. }
-      - { path: src/mcp/server/mcpserver/tools/tool_manager.py, symbols: [ToolManager.call_tool, ToolManager], responsibility: Resolve and invoke a registered tool. }
-      - { path: src/mcp/server/lowlevel/server.py, symbols: [Server], responsibility: Dispatch protocol methods to handlers. }
-      - { path: src/mcp/server/session.py, symbols: [ServerSession], responsibility: Carry protocol lifecycle and request state. }
+      - { path: examples/snippets/servers/basic_tool.py, symbols: [MCPServer, mcp.tool, sum], responsibility: Register the example tool and expose the host-owned server start point. }
+      - { path: src/mcp/server/mcpserver/server.py, symbols: [MCPServer.run, run_stdio_async, MCPServer._handle_call_tool, MCPServer.call_tool], responsibility: Select stdio and bridge the low-level handler to the high-level tool API. }
       - { path: src/mcp/server/stdio.py, symbols: [stdio_server], responsibility: Transport framed messages over standard I/O. }
+      - { path: src/mcp/server/lowlevel/server.py, symbols: [Server.run, get_request_handler], responsibility: Run the protocol loop and resolve the tools/call handler. }
+      - { path: src/mcp/server/runner.py, symbols: [serve_dual_era_loop, ServerRunner._on_request, ServerRunner._serialize], responsibility: Dispatch requests and serialize JSON-RPC responses for the transport writer. }
+      - { path: src/mcp/server/mcpserver/tools/tool_manager.py, symbols: [ToolManager.call_tool], responsibility: Find the registered tool and delegate execution. }
+      - { path: src/mcp/server/mcpserver/tools/base.py, symbols: [Tool.run], responsibility: Validate tool input, invoke the function, and convert its result. }
 
   - id: aider
     canonical_repo: Aider-AI/aider
@@ -131,11 +131,13 @@ subjects:
     watch_url: https://github.com/Aider-AI/aider/releases/latest
     entrypoints:
       - { path: aider/main.py, symbols: [main], responsibility: Parse options and establish repository context. }
-      - { path: aider/coders/base_coder.py, symbols: [Coder.run, Coder.apply_updates], responsibility: Own the request and iterative coding loop. }
+      - { path: aider/coders/base_coder.py, symbols: [Coder.run, Coder.run_one, Coder.send_message, Coder.send, Coder.apply_updates, Coder.prepare_to_edit, Coder.auto_commit, Coder.lint_edited, Coder.run_shell_commands], responsibility: Coordinate turns, model calls, edit preparation, commits, lint, and confirmed shell commands. }
+      - { path: aider/models.py, symbols: [Model.send_completion, simple_send_with_retries], responsibility: Send the coding request and support model-generated commit messages. }
       - { path: aider/repomap.py, symbols: [RepoMap.get_repo_map], responsibility: Select a bounded structural repository context. }
-      - { path: aider/coders/editblock_coder.py, symbols: [EditBlockCoder.get_edits, EditBlockCoder], responsibility: Parse explicit edit blocks from model output. }
-      - { path: aider/repo.py, symbols: [GitRepo.commit], responsibility: Record bounded file changes in Git. }
-      - { path: aider/run_cmd.py, symbols: [run_cmd], responsibility: Execute configured verification commands and return evidence. }
+      - { path: aider/coders/editblock_coder.py, symbols: [EditBlockCoder.get_edits, EditBlockCoder.apply_edits_dry_run, EditBlockCoder.apply_edits], responsibility: Parse edit tuples, dry-run them, and apply accepted edits. }
+      - { path: aider/io.py, symbols: [InputOutput.write_text, InputOutput.handle_shell_commands], responsibility: Write edited text and require explicit confirmation for shell commands. }
+      - { path: aider/repo.py, symbols: [GitRepo.commit, GitRepo.get_commit_message], responsibility: Generate commit messages and record bounded file changes in Git. }
+      - { path: aider/commands.py, symbols: [Commands.cmd_test], responsibility: Run the optional configured test command. }
 
   - id: openhands-canvas
     canonical_repo: OpenHands/OpenHands
@@ -363,11 +365,18 @@ chains:
     misconception: SDK dispatch does not prove that a business action is authorized or correct.
     steps:
       - { id: schema, label: Protocol schema, subject_id: mcp-spec, source_path: schema/2026-07-28/schema.json, symbol: CallToolRequest, responsibility: Define the versioned request and result contract. }
-      - { id: decorator, label: Tool registration, subject_id: mcp-python-sdk, source_path: examples/snippets/servers/basic_tool.py, symbol: mcp.tool, responsibility: Register a narrow Python capability. }
-      - { id: registry, label: Tool manager, subject_id: mcp-python-sdk, source_path: src/mcp/server/mcpserver/tools/tool_manager.py, symbol: ToolManager, responsibility: Resolve and invoke the registered tool. }
-      - { id: handler, label: Protocol handler, subject_id: mcp-python-sdk, source_path: src/mcp/server/lowlevel/server.py, symbol: Server, responsibility: Dispatch tools/call and normalize errors. }
-      - { id: session, label: Session, subject_id: mcp-python-sdk, source_path: src/mcp/server/session.py, symbol: ServerSession, responsibility: Carry messages and lifecycle state. }
-      - { id: transport, label: Transport, subject_id: mcp-python-sdk, source_path: src/mcp/server/stdio.py, symbol: stdio_server, responsibility: Move framed protocol messages without adding business authority. }
+      - { id: host-run, label: Host starts MCPServer, subject_id: mcp-python-sdk, source_path: src/mcp/server/mcpserver/server.py, symbol: MCPServer.run, responsibility: Let the host select stdio while run_stdio_async performs the adjacent transport setup. }
+      - { id: transport, label: stdio transport, subject_id: mcp-python-sdk, source_path: src/mcp/server/stdio.py, symbol: stdio_server, responsibility: Expose the reader and stdout_writer without adding business authority. }
+      - { id: server-run, label: Low-level server loop, subject_id: mcp-python-sdk, source_path: src/mcp/server/lowlevel/server.py, symbol: Server.run, responsibility: Enter the low-level protocol loop with request-scoped outbound support kept separate. }
+      - { id: runner-loop, label: Dual-era runner loop, subject_id: mcp-python-sdk, source_path: src/mcp/server/runner.py, symbol: serve_dual_era_loop, responsibility: Drive the runner that accepts incoming protocol messages. }
+      - { id: request, label: Request dispatch entry, subject_id: mcp-python-sdk, source_path: src/mcp/server/runner.py, symbol: ServerRunner._on_request, responsibility: Receive one request and hand it to the protocol dispatcher. }
+      - { id: dispatch, label: tools/call handler lookup, subject_id: mcp-python-sdk, source_path: src/mcp/server/lowlevel/server.py, symbol: get_request_handler, responsibility: Select the registered low-level tools/call handler. }
+      - { id: mcp-handler, label: High-level tools/call handler, subject_id: mcp-python-sdk, source_path: src/mcp/server/mcpserver/server.py, symbol: MCPServer._handle_call_tool, responsibility: Adapt the protocol request to the high-level call surface. }
+      - { id: mcp-call, label: MCPServer tool call, subject_id: mcp-python-sdk, source_path: src/mcp/server/mcpserver/server.py, symbol: MCPServer.call_tool, responsibility: Delegate the named tool request to the tool manager. }
+      - { id: tool-lookup, label: Registered tool lookup, subject_id: mcp-python-sdk, source_path: src/mcp/server/mcpserver/tools/tool_manager.py, symbol: ToolManager.call_tool, responsibility: Find the registered tool without owning validation or invocation. }
+      - { id: tool-run, label: Validation and invocation, subject_id: mcp-python-sdk, source_path: src/mcp/server/mcpserver/tools/base.py, symbol: Tool.run, responsibility: Validate input, invoke the Python function, and convert its result. }
+      - { id: tool-function, label: Business tool function, subject_id: mcp-python-sdk, source_path: examples/snippets/servers/basic_tool.py, symbol: sum, responsibility: Execute the registered example capability. }
+      - { id: serialize, label: JSON-RPC response serialization, subject_id: mcp-python-sdk, source_path: src/mcp/server/runner.py, symbol: ServerRunner._serialize, responsibility: Serialize the JSON-RPC response and return it through stdout_writer. }
 
   - id: aider-repo-to-verified-edit
     page_item_id: project-aider
@@ -375,12 +384,27 @@ chains:
     reading_hint: Track what context is selected and where edits become filesystem changes.
     misconception: A generated patch or automatic commit is not proof that the task is correct.
     steps:
-      - { id: cli, label: Repository preflight, subject_id: aider, source_path: aider/main.py, symbol: main, responsibility: Parse options and identify the working repository. }
-      - { id: coder, label: Coder lifecycle, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.run, responsibility: Own the request and iterative response loop. }
-      - { id: map, label: Repository map, subject_id: aider, source_path: aider/repomap.py, symbol: RepoMap.get_repo_map, responsibility: Select a bounded structural context. }
-      - { id: edit, label: Edit parsing, subject_id: aider, source_path: aider/coders/editblock_coder.py, symbol: EditBlockCoder, responsibility: Turn model output into explicit edit operations. }
-      - { id: apply, label: Apply and verify, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.apply_updates, responsibility: Apply edits and surface lint or command evidence. }
-      - { id: git, label: Repository evidence, subject_id: aider, source_path: aider/repo.py, symbol: GitRepo.commit, responsibility: Record a bounded diff without claiming business completion. }
+      - { id: cli, track: 主请求链, label: Repository preflight, subject_id: aider, source_path: aider/main.py, symbol: main, responsibility: Parse options and establish the selected repository conditions. }
+      - { id: run, track: 主请求链, label: Conversation loop, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.run, responsibility: Own the top-level request loop. }
+      - { id: turn, track: 主请求链, label: Single turn, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.run_one, responsibility: Execute one request and response turn. }
+      - { id: context, track: 主请求链, label: Context assembly, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.send_message, responsibility: Assemble chat files and bounded repository context for the turn. }
+      - { id: repo-map, track: 主请求链, label: RepoMap selection, subject_id: aider, source_path: aider/repomap.py, symbol: RepoMap.get_repo_map, responsibility: Produce a budgeted structural summary rather than reading every file. }
+      - { id: send, track: 主请求链, label: Model send, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.send, responsibility: Submit the assembled coding prompt and consume the response stream. }
+      - { id: completion, track: 主请求链, label: Completion stream, subject_id: aider, source_path: aider/models.py, symbol: Model.send_completion, responsibility: Open the selected model completion request. }
+      - { id: parse, track: 主请求链, label: Edit tuple parsing, subject_id: aider, source_path: aider/coders/editblock_coder.py, symbol: EditBlockCoder.get_edits, responsibility: Parse model text into edit tuples without writing files. }
+      - { id: apply-updates, track: 主请求链, label: Update orchestration, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.apply_updates, responsibility: Coordinate validation and application of the parsed edits. }
+      - { id: dry-run, track: 主请求链, label: Dry-run validation, subject_id: aider, source_path: aider/coders/editblock_coder.py, symbol: EditBlockCoder.apply_edits_dry_run, responsibility: Check whether the edit tuples can be applied before mutation. }
+      - { id: prepare, track: 主请求链, label: Dirty-file precommit, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.prepare_to_edit, responsibility: Protect dirty files by committing eligible pre-existing changes before editing. }
+      - { id: apply, track: 主请求链, label: Filesystem edit, subject_id: aider, source_path: aider/coders/editblock_coder.py, symbol: EditBlockCoder.apply_edits, responsibility: Apply validated edit tuples to selected files. }
+      - { id: write, track: 主请求链, label: File write, subject_id: aider, source_path: aider/io.py, symbol: InputOutput.write_text, responsibility: Persist the resulting text to disk. }
+      - { id: auto-commit, track: 自动提交与 lint（条件分支）, label: First auto-commit, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.auto_commit, responsibility: Conditionally request the first post-edit commit. }
+      - { id: commit, track: 自动提交与 lint（条件分支）, label: Git commit, subject_id: aider, source_path: aider/repo.py, symbol: GitRepo.commit, responsibility: Generate a message through the weak or main model and record the bounded diff. }
+      - { id: auto-lint, track: 自动提交与 lint（条件分支）, label: Auto-lint edited files, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.lint_edited, responsibility: By default lint only the files edited in this turn. }
+      - { id: lint-commit, track: 自动提交与 lint（条件分支）, label: Second commit after lint, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.auto_commit, responsibility: Conditionally create a second commit after automatic lint fixes. }
+      - { id: shell-confirm, track: 需确认 Shell 分支, label: Shell confirmation, subject_id: aider, source_path: aider/io.py, symbol: InputOutput.handle_shell_commands, responsibility: Require an explicit yes for proposed shell commands even after yes-always. }
+      - { id: shell-run, track: 需确认 Shell 分支, label: Shell execution, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.run_shell_commands, responsibility: Run only confirmed shell commands without a third automatic commit. }
+      - { id: auto-test, track: 可选 auto-test 分支, label: Optional auto-test, subject_id: aider, source_path: aider/commands.py, symbol: Commands.cmd_test, responsibility: Run configured tests only when auto-test is enabled and do not create a third commit. }
+      - { id: reflection, track: 错误反思回路, label: Error reflection, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.send_message, responsibility: Feed parse, edit, lint, shell, or test failures into a later model turn. }
 
   - id: openhands-canvas-to-workspace-event
     page_item_id: project-openhands
