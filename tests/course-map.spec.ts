@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
+import siteConfig from '../docs/.vitepress/config.mts'
 import {
   contentItems,
   getContentItem,
@@ -205,6 +206,71 @@ describe('registry consumers', () => {
     const interviewSource = readFileSync('docs/.vitepress/theme/data/interviewQuestions.ts', 'utf8')
     expect(interviewSource).not.toContain("'/chapters/")
     expect(interviewSource).toContain('getContentItem')
+  })
+})
+
+describe('course navigation integration', () => {
+  it('tracks every published course item, not only selected path steps', () => {
+    const progress = readFileSync('docs/.vitepress/theme/components/ReadingProgress.vue', 'utf8')
+
+    expect(progress).toContain('publishedCourseItems')
+    expect(progress).toContain('normalizeCourseRoute')
+    expect(progress).toContain('getContentItem')
+    expect(progress).toContain('hasCurrent')
+    expect(progress).not.toContain('readingPaths.some')
+    expect(progress).not.toMatch(/state\.(completed|bookmarks)\.includes\(currentPath\)/u)
+  })
+
+  it('only recommends a next step when the current item belongs to the selected path', () => {
+    const progress = readFileSync('docs/.vitepress/theme/components/ReadingProgress.vue', 'utf8')
+
+    expect(progress).toContain('activePath.value.steps.some')
+    expect(progress).toContain("withBase('/paths/')")
+  })
+
+  it('derives grouped navigation from registry items', () => {
+    const config = readFileSync('docs/.vitepress/config.mts', 'utf8')
+    const themeConfig = siteConfig.themeConfig as {
+      nav: Array<{ text: string; items: Array<{ text: string; link: string }> }>
+      sidebar: Array<{ text: string; items: Array<{ text: string; link: string }> }>
+      socialLinks: Array<{ icon: string; link: string }>
+    }
+    const idByRoute = new Map(contentItems.map((item) => [item.route, item.id]))
+
+    expect(config).toContain("from './theme/data/contentRegistry'")
+    expect(themeConfig.nav.map((group) => group.text)).toEqual(['课程', '实战', '前沿', '复习'])
+    expect(themeConfig.nav.map((group) =>
+      group.items.map((item) => idByRoute.get(item.link)),
+    )).toEqual([
+      ['course', 'preface', 'paths'],
+      ['case-delivery-agent'],
+      ['radar', 'frontier-context-engineering', 'frontier-interoperability-identity', 'frontier-durable-execution', 'frontier-agent-security-evaluation'],
+      ['appendix-interview-training', 'appendix-interview', 'appendix-glossary'],
+    ])
+    expect(themeConfig.sidebar.map((group) => group.text)).toEqual([
+      '课程入口', '第一篇 · 认识 Agent', '第二篇 · 组装 Agent', '第三篇 · 敢于上线',
+      '第四篇 · 应用方向', '案例研究', '活教材 · 前沿层', '随手查',
+    ])
+    expect(themeConfig.sidebar.map((group) =>
+      group.items.map((item) => idByRoute.get(item.link)),
+    )).toEqual([
+      ['course', 'paths'],
+      ['preface', 'chapter-01-ai-native', 'chapter-02-workflow-agent', 'chapter-03-react'],
+      ['chapter-04-tools-mcp', 'chapter-05-state-memory', 'chapter-06-loop-graph', 'chapter-07-multi-agent'],
+      ['chapter-08-evaluation', 'chapter-09-safety-recovery', 'chapter-10-production'],
+      ['chapter-11-research-agent', 'chapter-12-service-operations-agent', 'chapter-13-coding-agent', 'chapter-14-computer-use'],
+      ['case-delivery-agent'],
+      ['radar', 'radar-2026-09', 'frontier-context-engineering', 'frontier-interoperability-identity', 'frontier-durable-execution', 'frontier-agent-security-evaluation'],
+      ['appendix-glossary', 'appendix-review-checklist', 'appendix-reading', 'appendix-application-matrix', 'appendix-chapter-template', 'appendix-interview', 'appendix-interview-training'],
+    ])
+    expect(config).toContain("navigationItem('preface', 'nav')")
+    expect(themeConfig.nav[0].items[1].text).toBe('开始阅读')
+    expect(themeConfig.sidebar[1].items[0].text).toBe('序章 · 会聊天，不等于会做事')
+    expect(themeConfig.socialLinks).toContainEqual({
+      icon: 'github',
+      link: 'https://github.com/MengEn-Ink/agent-engineering-for-beginners',
+    })
+    expect(config).not.toMatch(/link:\s*'\/chapters\//u)
   })
 })
 

@@ -1,32 +1,37 @@
 import { defineConfig } from 'vitepress'
+import { navigationItem } from './theme/data/contentRegistry'
 
 const base = '/agent-engineering-for-beginners/'
 
-const foundationChapters = [
-  { text: '序章 · 会聊天，不等于会做事', link: '/preface' },
-  { text: '01 · AI Native 到底 Native 在哪', link: '/chapters/01-ai-native' },
-  { text: '02 · Prompt、Workflow、Agent', link: '/chapters/02-workflow-agent' },
-  { text: '03 · ReAct：想、做、看、再决定', link: '/chapters/03-react' },
-]
+const navItems = (ids: string[]) => ids.map((id) => navigationItem(id))
 
-const systemChapters = [
-  { text: '04 · 工具与 MCP', link: '/chapters/04-tools-mcp' },
-  { text: '05 · 状态与记忆', link: '/chapters/05-state-memory' },
-  { text: '06 · 从 Loop 到 Graph', link: '/chapters/06-loop-graph' },
-  { text: '07 · 多 Agent 协作', link: '/chapters/07-multi-agent' },
-]
-
-const productionChapters = [
-  { text: '08 · 验证与可观测性', link: '/chapters/08-evaluation' },
-  { text: '09 · 失败、恢复与安全边界', link: '/chapters/09-safety-recovery' },
-  { text: '10 · 从 Demo 到生产', link: '/chapters/10-production' },
-]
-
-const applicationChapters = [
-  { text: '11 · 研究型 Agent', link: '/chapters/11-research-agent' },
-  { text: '12 · 客服与运营 Agent', link: '/chapters/12-service-operations-agent' },
-  { text: '13 · Coding Agent', link: '/chapters/13-coding-agent' },
-  { text: '14 · Computer Use', link: '/chapters/14-computer-use' },
+const sidebar = [
+  { text: '课程入口', items: navItems(['course', 'paths']) },
+  { text: '第一篇 · 认识 Agent', collapsed: false, items: navItems([
+    'preface', 'chapter-01-ai-native', 'chapter-02-workflow-agent', 'chapter-03-react',
+  ]) },
+  { text: '第二篇 · 组装 Agent', collapsed: false, items: navItems([
+    'chapter-04-tools-mcp', 'chapter-05-state-memory', 'chapter-06-loop-graph',
+    'chapter-07-multi-agent',
+  ]) },
+  { text: '第三篇 · 敢于上线', collapsed: false, items: navItems([
+    'chapter-08-evaluation', 'chapter-09-safety-recovery', 'chapter-10-production',
+  ]) },
+  { text: '第四篇 · 应用方向', collapsed: false, items: navItems([
+    'chapter-11-research-agent', 'chapter-12-service-operations-agent',
+    'chapter-13-coding-agent', 'chapter-14-computer-use',
+  ]) },
+  { text: '案例研究', items: navItems(['case-delivery-agent']) },
+  { text: '活教材 · 前沿层', items: navItems([
+    'radar', 'radar-2026-09', 'frontier-context-engineering',
+    'frontier-interoperability-identity', 'frontier-durable-execution',
+    'frontier-agent-security-evaluation',
+  ]) },
+  { text: '随手查', items: navItems([
+    'appendix-glossary', 'appendix-review-checklist', 'appendix-reading',
+    'appendix-application-matrix', 'appendix-chapter-template',
+    'appendix-interview', 'appendix-interview-training',
+  ]) },
 ]
 
 export default defineConfig({
@@ -48,64 +53,12 @@ export default defineConfig({
     logo: '/mark.svg',
     siteTitle: 'Agent 工程入门',
     nav: [
-      { text: '开始阅读', link: '/preface' },
-      { text: '交付型案例', link: '/case-study/delivery-agent' },
-      { text: '阅读路径', link: '/paths/' },
-      { text: '前沿雷达', link: '/radar/' },
-      { text: '术语表', link: '/appendix/glossary' },
-      { text: '面试题', link: '/appendix/interview' },
-      { text: '面试训练', link: '/appendix/interview-training' },
+      { text: '课程', items: [navigationItem('course', 'nav'), navigationItem('preface', 'nav'), navigationItem('paths', 'nav')] },
+      { text: '实战', items: [navigationItem('case-delivery-agent', 'nav')] },
+      { text: '前沿', items: [navigationItem('radar'), navigationItem('frontier-context-engineering'), navigationItem('frontier-interoperability-identity'), navigationItem('frontier-durable-execution'), navigationItem('frontier-agent-security-evaluation')] },
+      { text: '复习', items: [navigationItem('appendix-interview-training'), navigationItem('appendix-interview'), navigationItem('appendix-glossary')] },
     ],
-    sidebar: [
-      {
-        text: '第一篇 · 认识 Agent',
-        collapsed: false,
-        items: foundationChapters,
-      },
-      {
-        text: '第二篇 · 组装 Agent',
-        collapsed: false,
-        items: systemChapters,
-      },
-      {
-        text: '第三篇 · 敢于上线',
-        collapsed: false,
-        items: productionChapters,
-      },
-      {
-        text: '第四篇 · 应用方向',
-        collapsed: false,
-        items: applicationChapters,
-      },
-      {
-        text: '案例研究',
-        items: [{ text: '交付型 Agent 的质量门', link: '/case-study/delivery-agent' }],
-      },
-      {
-        text: '活教材 · 前沿层',
-        items: [
-          { text: '前沿雷达', link: '/radar/' },
-          { text: '2026 年 9 月更新', link: '/radar/2026-09' },
-          { text: 'Context Engineering', link: '/frontier/context-engineering' },
-          { text: 'Agent 互操作与身份', link: '/frontier/interoperability-identity' },
-          { text: '长时运行与恢复', link: '/frontier/durable-execution' },
-          { text: 'Agent 安全评测', link: '/frontier/agent-security-evaluation' },
-        ],
-      },
-      {
-        text: '随手查',
-        items: [
-          { text: '三条阅读路径', link: '/paths/' },
-          { text: '术语表', link: '/appendix/glossary' },
-          { text: '方案评审清单', link: '/appendix/review-checklist' },
-          { text: '延伸阅读', link: '/appendix/reading' },
-          { text: '应用选型矩阵', link: '/appendix/application-matrix' },
-          { text: '章节与方案模板', link: '/appendix/chapter-template' },
-          { text: '42 道面试题', link: '/appendix/interview' },
-          { text: '面试训练模式', link: '/appendix/interview-training' },
-        ],
-      },
-    ],
+    sidebar,
     outline: { level: [2, 3], label: '本页地图' },
     search: {
       provider: 'local',

@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, withBase } from 'vitepress'
-import { findNextReadingStep, readingPathById, readingPaths } from '../data/readingPaths'
+import { publishedCourseItems } from '../data/courseMap'
+import { getContentItem } from '../data/contentRegistry'
+import { findNextReadingStep, readingPathById } from '../data/readingPaths'
 import {
   announceLearningState,
   emptyLearningState,
   learningStateEvent,
   loadLearningState,
-  normalizeLearningPath,
+  normalizeCourseRoute,
   saveLearningState,
   type LearningState,
 } from '../data/learningState'
@@ -15,17 +17,21 @@ import {
 const route = useRoute()
 const state = ref<LearningState>(emptyLearningState())
 const storageAvailable = ref(true)
-const currentPath = computed(() => normalizeLearningPath(route.path))
-const activePath = computed(() => readingPathById[state.value.selectedPath])
-const tracked = computed(() =>
-  readingPaths.some((path) => path.steps.some((step) => step.path === currentPath.value)),
+const currentPath = computed(() => normalizeCourseRoute(route.path))
+const trackedRoutes = new Set(
+  publishedCourseItems
+    .map((item) => normalizeCourseRoute(getContentItem(item.itemId).route))
+    .filter((path): path is string => path !== null),
 )
+const activePath = computed(() => readingPathById[state.value.selectedPath])
+const tracked = computed(() => currentPath.value !== null && trackedRoutes.has(currentPath.value))
 const completedCount = computed(() =>
   activePath.value.steps.filter((step) => state.value.completed.includes(step.path)).length,
 )
-const nextStep = computed(() =>
-  findNextReadingStep(activePath.value, currentPath.value, state.value.completed),
-)
+const nextStep = computed(() => currentPath.value === null
+  || !activePath.value.steps.some((step) => step.path === currentPath.value)
+  ? undefined
+  : findNextReadingStep(activePath.value, currentPath.value, state.value.completed))
 
 function refresh() {
   state.value = loadLearningState()
@@ -38,7 +44,12 @@ function commit(next: LearningState) {
   if (saved) announceLearningState()
 }
 
+function hasCurrent(key: 'completed' | 'bookmarks') {
+  return currentPath.value !== null && state.value[key].includes(currentPath.value)
+}
+
 function toggle(key: 'completed' | 'bookmarks') {
+  if (currentPath.value === null) return
   const items = state.value[key]
   const next = items.includes(currentPath.value)
     ? items.filter((item) => item !== currentPath.value)
@@ -72,18 +83,18 @@ onUnmounted(() => window.removeEventListener(learningStateEvent, refresh))
       <button
         type="button"
         class="reading-action"
-        :aria-pressed="state.completed.includes(currentPath)"
+        :aria-pressed="hasCurrent('completed')"
         @click="toggle('completed')"
       >
-        {{ state.completed.includes(currentPath) ? '撤销已读' : '标记已读' }}
+        {{ hasCurrent('completed') ? '撤销已读' : '标记已读' }}
       </button>
       <button
         type="button"
         class="reading-action"
-        :aria-pressed="state.bookmarks.includes(currentPath)"
+        :aria-pressed="hasCurrent('bookmarks')"
         @click="toggle('bookmarks')"
       >
-        {{ state.bookmarks.includes(currentPath) ? '取消书签' : '加入书签' }}
+        {{ hasCurrent('bookmarks') ? '取消书签' : '加入书签' }}
       </button>
       <a v-if="nextStep" class="reading-next" :href="withBase(nextStep.path)">
         下一站 · {{ nextStep.title }} →

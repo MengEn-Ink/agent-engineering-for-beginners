@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parse } from 'yaml'
+import siteConfig from '../docs/.vitepress/config.mts'
 import { getContentItem } from '../docs/.vitepress/theme/data/contentRegistry'
 import { publishedCourseItems } from '../docs/.vitepress/theme/data/courseMap'
 
@@ -49,6 +50,22 @@ function contentCharacterCount(markdown: string) {
     .length
 }
 
+function configuredNavigationLinks() {
+  type NavEntry = { link?: string; items?: NavEntry[] }
+  const themeConfig = siteConfig.themeConfig as {
+    nav?: NavEntry[]
+    sidebar?: Array<{ items?: NavEntry[] }>
+  }
+  const entryLinks = (entries: NavEntry[] = []): string[] => entries.flatMap((entry) => [
+    ...(entry.link ? [entry.link] : []),
+    ...entryLinks(entry.items),
+  ])
+  return [
+    ...entryLinks(themeConfig.nav),
+    ...entryLinks(themeConfig.sidebar),
+  ]
+}
+
 describe('book scaffold', () => {
   it('declares the public title and all ten chapter routes', () => {
     const configPath = 'docs/.vitepress/config.mts'
@@ -56,10 +73,13 @@ describe('book scaffold', () => {
     expect(existsSync(configPath)).toBe(true)
 
     const config = readFileSync(configPath, 'utf8')
+    const navigationLinks = configuredNavigationLinks()
     expect(config).toContain('别只会和 AI 聊天')
 
     for (let chapter = 1; chapter <= 10; chapter += 1) {
-      expect(config).toContain(`/chapters/${String(chapter).padStart(2, '0')}-`)
+      expect(navigationLinks.some((link) =>
+        link.startsWith(`/chapters/${String(chapter).padStart(2, '0')}-`),
+      )).toBe(true)
     }
   })
 })
@@ -122,14 +142,14 @@ describe('complete handbook scope', () => {
 
 describe('application chapters', () => {
   it('publishes all four application routes', () => {
-    const config = readFileSync('docs/.vitepress/config.mts', 'utf8')
+    const navigationLinks = configuredNavigationLinks()
     for (const route of [
       '/chapters/11-research-agent',
       '/chapters/12-service-operations-agent',
       '/chapters/13-coding-agent',
       '/chapters/14-computer-use',
     ]) {
-      expect(config).toContain(route)
+      expect(navigationLinks).toContain(route)
     }
   })
 
@@ -355,7 +375,7 @@ describe('living handbook frontier', () => {
   ]
 
   it('publishes the radar and four frontier routes in the site navigation', () => {
-    const config = readFileSync('docs/.vitepress/config.mts', 'utf8')
+    const navigationLinks = configuredNavigationLinks()
     expect(frontierPages.filter((page) => !existsSync(page))).toEqual([])
 
     for (const route of [
@@ -366,7 +386,7 @@ describe('living handbook frontier', () => {
       '/frontier/durable-execution',
       '/frontier/agent-security-evaluation',
     ]) {
-      expect(config).toContain(route)
+      expect(navigationLinks).toContain(route)
     }
   })
 
@@ -591,13 +611,12 @@ describe('local reading paths and progress', () => {
   })
 
   it('publishes an interactive path page and global chapter controls', () => {
-    const config = readFileSync('docs/.vitepress/config.mts', 'utf8')
     const theme = readFileSync('docs/.vitepress/theme/index.ts', 'utf8')
     const pathsPage = 'docs/paths/index.md'
     const pathsComponent = 'docs/.vitepress/theme/components/ReadingPaths.vue'
     const progressComponent = 'docs/.vitepress/theme/components/ReadingProgress.vue'
 
-    expect(config).toContain('/paths/')
+    expect(configuredNavigationLinks()).toContain('/paths/')
     expect(existsSync(pathsPage)).toBe(true)
     expect(readFileSync(pathsPage, 'utf8')).toContain('<ReadingPaths />')
     expect(existsSync(pathsComponent)).toBe(true)
@@ -633,12 +652,11 @@ describe('interview training mode', () => {
   it('publishes the trainer route without duplicating the question registry', () => {
     const page = 'docs/appendix/interview-training.md'
     const componentPath = 'docs/.vitepress/theme/components/InterviewTrainer.vue'
-    const config = readFileSync('docs/.vitepress/config.mts', 'utf8')
     const theme = readFileSync('docs/.vitepress/theme/index.ts', 'utf8')
 
     expect(existsSync(page)).toBe(true)
     expect(readFileSync(page, 'utf8')).toContain('<InterviewTrainer />')
-    expect(config).toContain('/appendix/interview-training')
+    expect(configuredNavigationLinks()).toContain('/appendix/interview-training')
     expect(existsSync(componentPath)).toBe(true)
     expect(theme).toContain("'InterviewTrainer'")
 
@@ -986,12 +1004,12 @@ describe('reader aids and landing page', () => {
 
   it('introduces the four-part, fourteen-chapter handbook and worksheets', () => {
     const home = readFileSync('docs/index.md', 'utf8')
-    const config = readFileSync('docs/.vitepress/config.mts', 'utf8')
+    const navigationLinks = configuredNavigationLinks()
     expect(home).toContain('14 章')
     expect(home).toContain('第四篇')
     expect(home).toContain('/chapters/11-research-agent')
-    expect(config).toContain('/appendix/application-matrix')
-    expect(config).toContain('/appendix/chapter-template')
+    expect(navigationLinks).toContain('/appendix/application-matrix')
+    expect(navigationLinks).toContain('/appendix/chapter-template')
     expect(existsSync('docs/appendix/application-matrix.md')).toBe(true)
     expect(existsSync('docs/appendix/chapter-template.md')).toBe(true)
   })
@@ -1165,8 +1183,7 @@ describe('interview placement', () => {
     expect(page).toContain('<InterviewIndex />')
     expect(page).not.toContain('<InterviewQuestion')
 
-    const config = readFileSync('docs/.vitepress/config.mts', 'utf8')
-    expect(config).toContain('/appendix/interview')
+    expect(configuredNavigationLinks()).toContain('/appendix/interview')
   })
 })
 
