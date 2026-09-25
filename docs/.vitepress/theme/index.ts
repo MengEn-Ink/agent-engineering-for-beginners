@@ -26,6 +26,7 @@ import ChapterFreshness from './components/ChapterFreshness.vue'
 import ReadingPaths from './components/ReadingPaths.vue'
 import ReadingProgress from './components/ReadingProgress.vue'
 import InterviewTrainer from './components/InterviewTrainer.vue'
+import CourseMap from './components/CourseMap.vue'
 import './style.css'
 
 export default {
@@ -59,5 +60,6 @@ export default {
     app.component('ReadingPaths', ReadingPaths)
     app.component('ReadingProgress', ReadingProgress)
     app.component('InterviewTrainer', InterviewTrainer)
+    app.component('CourseMap', CourseMap)
   },
 } satisfies Theme
