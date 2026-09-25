@@ -337,6 +337,10 @@ describe('real project catalog', () => {
   })
 
   it('contains the exact approved pages, subjects, and source paths', () => {
+    expect(Object.keys(catalog)).toEqual(['schema_version', 'defaults', 'pages', 'subjects', 'chains'])
+    expect(catalog.schema_version).toBe(1)
+    expect(catalog.defaults).toEqual({ verified_at: '2026-09-26', review_by: '2026-10-26' })
+    expect(digest(catalog)).toBe('8400acf421ec3e147c244f76bdc2a9e37e5f148c9ccf2973f939c473f5c8a878')
     expect(catalog.pages.map((page: { page_item_id: string }) => page.page_item_id)).toEqual(pageIds)
     expect(catalog.subjects.map((subject: { id: string }) => subject.id)).toEqual(subjectIds)
     expect(Object.fromEntries(catalog.subjects.map((subject: any) => [subject.id, [
