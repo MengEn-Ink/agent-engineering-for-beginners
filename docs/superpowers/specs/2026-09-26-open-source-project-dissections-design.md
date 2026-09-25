@@ -216,8 +216,12 @@ subjects:
         note: Preserve notices and separately review logos, trademarks, and third-party files.
     watch_url: https://github.com/Aider-AI/aider/releases/latest
     entrypoints:
-      - aider/main.py
-      - aider/coders/base_coder.py
+      - path: aider/main.py
+        symbols: [main]
+        responsibility: Parse options and establish repository context.
+      - path: aider/coders/base_coder.py
+        symbols: [Coder.run, Coder.send_message, Coder.handle_shell_commands]
+        responsibility: Own the coding loop, confirmed shell execution, and conditional reflection path.
 ```
 
 `project-index.yml` 只包含公开事实和固定源码路径。页面中的解释性段落仍在 Markdown；组件从索引渲染固定版本、仓库状态、教学层级、许可证、源码入口和升级日期。
@@ -233,7 +237,9 @@ page 级 `catalog_tier: core` 表示该页面属于主项目目录，不等于�
 - `pinned_commit` 必须是 40 位小写十六进制 SHA；页面源码链接必须使用该 SHA，不使用 `main`、`master` 或可移动 tag。
 - `pinned_ref` 用于人类识别；`pin_kind` 明确是 `release`、`tag` 或 `commit`。
 - 一个 ref 若存在，远端解析结果必须等于 `pinned_commit`。
-- `entrypoints` 必须在固定 commit 中存在；每个核心页面至少 3 个、最多 8 个。
+- 每个 `entrypoint` 的 schema 固定为 `path + symbols:string[] + responsibility`：`path` 在 subject 内唯一，`symbols` 至少包含一个非空字符串且不得重复，`responsibility` 非空；不再接受单数 `symbol` 字段。
+- `entrypoints` 必须在固定 commit 中存在；每个核心页面至少 3 个。普通核心页最多 8 个，MCP、OpenHands、评测等复杂跨层页面最多 10 个；初始目录共固定 52 个文件级 entrypoint。
+- 调用链 step 的 `source_path` 必须匹配对应 subject 的一个 entrypoint，且 step 的单数 `symbol` 必须属于该 entrypoint 的 `symbols`；同一文件可通过数组声明多个实际使用符号。
 - `repository_status` 只能是 `active`、`archived` 或 `eol`；`archived` 是独立布尔事实，允许表达“已归档且 EOL”。
 - `repository_status: active` 必须搭配 `archived: false`；`repository_status: archived` 必须搭配 `archived: true`；`repository_status: eol` 可按 GitHub 实际归档状态搭配布尔值。
 - subject 的 `catalog_tier` 只能是 `core`、`historical` 或 `watch-only`；page 的 `catalog_tier` 只能是 `core` 或 `historical`。
@@ -291,7 +297,7 @@ page 级 `catalog_tier: core` 表示该页面属于主项目目录，不等于�
 3. **版本与边界卡**：canonical repo、固定 ref/SHA、核验日期、仓库状态、教学层级、许可证作用域；
 4. **原创架构图**：只画本页会追踪的组件，标明“源码事实”和“本书归纳”；
 5. **唯一纵向调用链**：从一个入口追到结果或评分，步骤有稳定编号；
-6. **关键源码入口**：3–8 个固定 commit 链接，写清文件职责与本页使用的符号；
+6. **关键源码入口**：3–10 个固定 commit 文件链接，写清文件职责，并显示该文件在本页使用的全部符号；
 7. **一次请求的数据流**：输入、状态变化、工具或环境、输出证据；
 8. **阅读练习**：要求读者在固定源码中找证据，不要求安装依赖或调用模型；
 9. **失败边界**：至少一个确定性反例，说明哪一层负责停止、恢复或拒绝；
@@ -311,31 +317,34 @@ page 级 `catalog_tier: core` 表示该页面属于主项目目录，不等于�
 ### 10.1 MCP 规范与 Python SDK
 
 - **核心问题：** 一次 `tools/call` 如何从协议消息进入 Python 工具函数，再返回结构化结果。
-- **唯一链路：** 2026-07-28 schema → Python tool 注册 → ToolManager → low-level Server handler → ServerSession → stdio 传输。
+- **唯一链路：** 2026-07-28 schema → Host 调用 `MCPServer.run("stdio")` → `stdio_server` → low-level `Server.run` / `serve_dual_era_loop` → `JSONRPCDispatcher.run` / `_dispatch_request` → `ServerRunner._on_request` → low-level `tools/call` handler → `MCPServer._handle_call_tool` / `call_tool` → `ToolManager.call_tool` → `Tool.run` → `basic_tool.sum` → `ServerRunner._serialize`（只返回 result dict）→ dispatcher 构造并写出 `JSONRPCResponse` → `stdout_writer`。
 - **关键入口：**
   - `schema/2026-07-28/schema.json`
-  - `docs/docs/2026-07-28/learn/architecture.mdx`
   - `examples/snippets/servers/basic_tool.py`
   - `src/mcp/server/mcpserver/server.py`
-  - `src/mcp/server/mcpserver/tools/tool_manager.py`
-  - `src/mcp/server/lowlevel/server.py`
-  - `src/mcp/server/session.py`
   - `src/mcp/server/stdio.py`
-- **必须讲清：** 规范仓库不是 Python 服务实现；SDK 提供协议实现，但不替业务授权、工具最小权限或结果正确性背书。
+  - `src/mcp/server/lowlevel/server.py`
+  - `src/mcp/server/runner.py`
+  - `src/mcp/shared/jsonrpc_dispatcher.py`
+  - `src/mcp/server/mcpserver/tools/tool_manager.py`
+  - `src/mcp/server/mcpserver/tools/base.py`
+- **必须讲清：** 规范仓库不是 Python 服务实现；SDK 提供协议实现，但不替业务授权、工具最小权限或结果正确性背书。`ServerSession` 只作为 request-scoped outbound proxy 的旁路说明，不是入站 `tools/call` 主链节点；`ServerRunner._serialize` 只产出 result dict，JSON-RPC envelope 由 dispatcher 构造并交给 transport。
 - **面试题：** `iq-04-a`、`iq-04-b`、`iq-04-c`。
 
 ### 10.2 Aider
 
 - **核心问题：** 一个 Coding Agent 如何把仓库上下文变成可审查的补丁并接回 Git 证据。
-- **唯一链路：** CLI 参数与仓库确认 → Coder 创建 → repo map/上下文选择 → 模型请求 → edit format 解析 → 文件修改 → lint/test/commit 反馈。
+- **唯一链路：** CLI 参数与仓库确认 → `Coder.run/run_one/send_message` → repo map/上下文选择 → `Coder.send` / `Model.send_completion` → edit block 解析与 dry-run → `prepare_to_edit` → 文件写入 → 条件性的自动提交与 lint → 需两次确认的 shell 分支 → 可选 auto-test → 仅在用户确认修复 lint/test 失败后设置 reflection 并进入后续 turn。
 - **关键入口：**
   - `aider/main.py`
   - `aider/coders/base_coder.py`
+  - `aider/models.py`
   - `aider/repomap.py`
   - `aider/coders/editblock_coder.py`
+  - `aider/io.py`
   - `aider/repo.py`
-  - `aider/run_cmd.py`
-- **必须讲清：** repo map 是上下文选择策略，不等于模型读完全部仓库；自动提交也不等于任务已经通过业务验收。
+  - `aider/commands.py`
+- **必须讲清：** repo map 是上下文选择策略，不等于模型读完全部仓库；自动提交也不等于任务已经通过业务验收。shell 命令由 `Coder.handle_shell_commands` 执行，`InputOutput.confirm_ask` 分别负责“是否执行”和“是否把输出加入上下文”的两次确认；lint/test 失败本身不会自动触发 reflection，只有用户确认尝试修复后才设置 `reflected_message`。
 - **面试题：** `iq-13-a`、`iq-13-b`、`iq-13-c`。
 
 ### 10.3 OpenHands
@@ -533,7 +542,7 @@ Markdown（解释、反例、练习、生产边界）
 - `contentRegistry` 新增且仅新增 8 条项目路由；ID、规范化 route 唯一。
 - `project-index.yml` 包含 13 个 subject：9 个核心页 subject、2 个历史 subject、2 个 watch-only subject。
 - 六个核心页、一个总览和一个历史页均存在；每页 `project-id` 与 registry、项目索引一致。
-- 六个核心页各包含模板 13 个部分、一个主调用链、3–8 个固定源码入口和至少一个失败边界。
+- 六个核心页各包含模板 13 个部分、一个主调用链、3–10 个固定源码入口和至少一个失败边界；全目录精确包含 52 个文件级 entrypoint。
 - 页面所有源码链接使用 40 位固定 commit；不存在 `blob/main/` 或 `blob/master/`。
 - 许可证、仓库状态、教学层级和设计日 pin 与第 8 节逐项一致。
 - 页面引用的面试题 ID 全部存在于现有 42 题；题目数组、答案和分布不变。

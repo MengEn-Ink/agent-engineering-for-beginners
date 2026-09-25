@@ -14,7 +14,7 @@
 
 **Create:**
 
-- `sources/project-index.yml` — canonical project-page mapping, 13 pinned subjects, license scopes, 49 source entrypoints, and seven primary chains.
+- `sources/project-index.yml` — canonical project-page mapping, 13 pinned subjects, license scopes, 52 file-level source entrypoints, and seven primary chains.
 - `scripts/project-catalog.mjs` — schema parser, discriminated license validation, cross-reference validation, and build-time loader.
 - `scripts/project-catalog.d.mts` — TypeScript declaration for the Node catalog loader.
 - `scripts/check-projects.mjs` — bounded GitHub freshness scan that writes project review reports without editing content.
@@ -119,7 +119,7 @@ Expected: branch `feat/open-source-project-dissections`, clean worktree, HEAD `8
 | Approved requirement | Implemented and proved by |
 | --- | --- |
 | Project schema, dual status axes, mixed-license model | Tasks 1–2 |
-| 8 page mappings, 13 exact subjects, 49 exact source entries, 7 chains | Task 2 |
+| 8 page mappings, 13 exact subjects, 52 exact file-level source entries, 7 chains | Task 2 |
 | VitePress loader, pure Vitest lookup, Vue type gate | Task 3 |
 | Separate architecture graph, text call chain, source facts, print fallback | Task 3 |
 | Intermediate commits remain buildable while pages arrive | Task 4 and every task-level full gate |
@@ -181,7 +181,7 @@ const validCatalog = {
     }],
     license_sources: [{ path: 'LICENSE.txt', sha256: 'b'.repeat(64) }],
     watch_url: 'https://github.com/Aider-AI/aider/releases/latest',
-    entrypoints: [{ path: 'aider/main.py', symbol: 'main', responsibility: 'Validate repository arguments.' }],
+    entrypoints: [{ path: 'aider/main.py', symbols: ['main'], responsibility: 'Validate repository arguments.' }],
   }],
   chains: [{
     id: 'aider-chain',
@@ -275,6 +275,38 @@ describe('project catalog schema', () => {
     ]))
     broken.chains[0].steps = []
     expect(validateProjectCatalog(broken)).toContain('Chain aider-chain requires non-empty steps')
+
+    const wrongSymbol = structuredClone(validCatalog)
+    wrongSymbol.chains[0].steps[0].symbol = 'missing'
+    expect(validateProjectCatalog(wrongSymbol)).toContain(
+      'Chain aider-chain step entry references an undeclared entrypoint: aider/aider/main.py#missing',
+    )
+
+    const emptySymbols = structuredClone(validCatalog)
+    emptySymbols.subjects[0].entrypoints[0].symbols = []
+    expect(validateProjectCatalog(emptySymbols)).toContain(
+      'Subject aider entrypoint aider/main.py requires non-empty symbols',
+    )
+
+    const blankSymbol = structuredClone(validCatalog)
+    blankSymbol.subjects[0].entrypoints[0].symbols = ['main', '   ']
+    expect(validateProjectCatalog(blankSymbol)).toContain(
+      'Subject aider entrypoint aider/main.py symbols must contain only non-empty strings',
+    )
+
+    const duplicateSymbols = structuredClone(validCatalog)
+    duplicateSymbols.subjects[0].entrypoints[0].symbols = ['main', 'main']
+    expect(validateProjectCatalog(duplicateSymbols)).toContain(
+      'Subject aider entrypoint aider/main.py has duplicate symbols',
+    )
+
+    const legacySymbol = structuredClone(validCatalog) as any
+    legacySymbol.subjects[0].entrypoints[0] = {
+      path: 'aider/main.py', symbol: 'main', responsibility: 'Validate repository arguments.',
+    }
+    expect(validateProjectCatalog(legacySymbol)).toContain(
+      'Subject aider entrypoint aider/main.py requires non-empty symbols',
+    )
   })
 
   it('parses YAML without accepting an empty or malformed registry', () => {
@@ -414,8 +446,18 @@ export function validateProjectCatalog(data) {
     }
     const entryPaths = new Set()
     for (const entry of subject.entrypoints ?? []) {
-      if (!nonEmpty(entry.path) || !nonEmpty(entry.symbol) || !nonEmpty(entry.responsibility)) {
+      if (!nonEmpty(entry.path) || !nonEmpty(entry.responsibility)) {
         errors.push(`Subject ${subject.id} has an incomplete entrypoint`)
+      }
+      if (!Array.isArray(entry.symbols) || entry.symbols.length === 0) {
+        errors.push(`Subject ${subject.id} entrypoint ${entry.path} requires non-empty symbols`)
+      } else {
+        if (!entry.symbols.every(nonEmpty)) {
+          errors.push(`Subject ${subject.id} entrypoint ${entry.path} symbols must contain only non-empty strings`)
+        }
+        if (new Set(entry.symbols).size !== entry.symbols.length) {
+          errors.push(`Subject ${subject.id} entrypoint ${entry.path} has duplicate symbols`)
+        }
       }
       if (entryPaths.has(entry.path)) errors.push(`Subject ${subject.id} has duplicate entrypoint: ${entry.path}`)
       entryPaths.add(entry.path)
@@ -473,8 +515,16 @@ export function validateProjectCatalog(data) {
         errors.push(`Chain ${chain.id} step ${step.id} references unknown subject: ${step.subject_id}`)
       } else if (!page?.subjects?.includes(step.subject_id)) {
         errors.push(`Chain ${chain.id} step ${step.id} subject is not owned by page: ${step.subject_id}`)
-      } else if (!(subject.entrypoints ?? []).some((entry) => entry.path === step.source_path)) {
-        errors.push(`Chain ${chain.id} step ${step.id} references an undeclared entrypoint: ${step.subject_id}/${step.source_path}`)
+      } else {
+        const matchingPath = (subject.entrypoints ?? []).some((entry) => entry.path === step.source_path)
+        const matchingEntrypoint = (subject.entrypoints ?? []).some((entry) =>
+          entry.path === step.source_path
+          && Array.isArray(entry.symbols)
+          && entry.symbols.includes(step.symbol))
+        if (!matchingEntrypoint) {
+          const reference = `${step.subject_id}/${step.source_path}${matchingPath ? `#${step.symbol}` : ''}`
+          errors.push(`Chain ${chain.id} step ${step.id} references an undeclared entrypoint: ${reference}`)
+        }
       }
     }
   }
@@ -608,9 +658,9 @@ const expectedPageMappings = {
   'project-history-autogpt-flowise': { catalog_tier: 'historical', subjects: ['autogpt', 'flowise'], interview_question_ids: ['iq-02-b', 'iq-07-c', 'iq-10-a'], counted_in_course: false, primary_chain_id: 'autogpt-flowise-evolution' },
 }
 const expectedEntrypoints = {
-  'mcp-spec': ['schema/2026-07-28/schema.json', 'docs/docs/2026-07-28/learn/architecture.mdx'],
-  'mcp-python-sdk': ['examples/snippets/servers/basic_tool.py', 'src/mcp/server/mcpserver/server.py', 'src/mcp/server/mcpserver/tools/tool_manager.py', 'src/mcp/server/lowlevel/server.py', 'src/mcp/server/session.py', 'src/mcp/server/stdio.py'],
-  aider: ['aider/main.py', 'aider/coders/base_coder.py', 'aider/repomap.py', 'aider/coders/editblock_coder.py', 'aider/repo.py', 'aider/run_cmd.py'],
+  'mcp-spec': ['schema/2026-07-28/schema.json'],
+  'mcp-python-sdk': ['examples/snippets/servers/basic_tool.py', 'src/mcp/server/mcpserver/server.py', 'src/mcp/server/stdio.py', 'src/mcp/server/lowlevel/server.py', 'src/mcp/server/runner.py', 'src/mcp/shared/jsonrpc_dispatcher.py', 'src/mcp/server/mcpserver/tools/tool_manager.py', 'src/mcp/server/mcpserver/tools/base.py'],
+  aider: ['aider/main.py', 'aider/coders/base_coder.py', 'aider/models.py', 'aider/repomap.py', 'aider/coders/editblock_coder.py', 'aider/io.py', 'aider/repo.py', 'aider/commands.py'],
   'openhands-canvas': ['src/api/conversation-service/agent-server-conversation-service.api.ts', 'src/api/agent-server-adapter.ts'],
   'openhands-sdk': ['openhands-agent-server/openhands/agent_server/conversation_router.py', 'openhands-agent-server/openhands/agent_server/conversation_service.py', 'openhands-sdk/openhands/sdk/conversation/conversation.py', 'openhands-sdk/openhands/sdk/agent/agent.py', 'openhands-sdk/openhands/sdk/tool/tool.py', 'openhands-sdk/openhands/sdk/workspace/workspace.py'],
   'swe-bench': ['swebench/harness/run_evaluation.py', 'swebench/harness/docker_utils.py', 'swebench/harness/grading.py', 'swebench/harness/reporting.py'],
@@ -622,15 +672,63 @@ const expectedEntrypoints = {
   'hermes-agent': [],
   openclaw: [],
 }
+const expectedCoreEntrypointSymbols = {
+  'mcp-spec': {
+    'schema/2026-07-28/schema.json': ['CallToolRequest'],
+  },
+  'mcp-python-sdk': {
+    'examples/snippets/servers/basic_tool.py': ['MCPServer', 'mcp.tool', 'sum'],
+    'src/mcp/server/mcpserver/server.py': ['MCPServer.run', 'run_stdio_async', 'MCPServer._handle_call_tool', 'MCPServer.call_tool'],
+    'src/mcp/server/stdio.py': ['stdio_server'],
+    'src/mcp/server/lowlevel/server.py': ['Server.run', 'get_request_handler'],
+    'src/mcp/server/runner.py': ['serve_dual_era_loop', 'ServerRunner._on_request', 'ServerRunner._serialize'],
+    'src/mcp/shared/jsonrpc_dispatcher.py': ['JSONRPCDispatcher.run', 'JSONRPCDispatcher._dispatch_request', 'JSONRPCDispatcher._write_result'],
+    'src/mcp/server/mcpserver/tools/tool_manager.py': ['ToolManager.call_tool'],
+    'src/mcp/server/mcpserver/tools/base.py': ['Tool.run'],
+  },
+  aider: {
+    'aider/main.py': ['main'],
+    'aider/coders/base_coder.py': ['Coder.run', 'Coder.run_one', 'Coder.send_message', 'Coder.send', 'Coder.apply_updates', 'Coder.prepare_to_edit', 'Coder.auto_commit', 'Coder.lint_edited', 'Coder.run_shell_commands', 'Coder.handle_shell_commands'],
+    'aider/models.py': ['Model.send_completion', 'simple_send_with_retries'],
+    'aider/repomap.py': ['RepoMap.get_repo_map'],
+    'aider/coders/editblock_coder.py': ['EditBlockCoder.get_edits', 'EditBlockCoder.apply_edits_dry_run', 'EditBlockCoder.apply_edits'],
+    'aider/io.py': ['InputOutput.write_text', 'InputOutput.confirm_ask'],
+    'aider/repo.py': ['GitRepo.commit', 'GitRepo.get_commit_message'],
+    'aider/commands.py': ['Commands.cmd_test'],
+  },
+}
 const expectedChains = {
-  'mcp-tool-call': ['schema:mcp-spec:schema/2026-07-28/schema.json:CallToolRequest', 'decorator:mcp-python-sdk:examples/snippets/servers/basic_tool.py:mcp.tool', 'registry:mcp-python-sdk:src/mcp/server/mcpserver/tools/tool_manager.py:ToolManager', 'handler:mcp-python-sdk:src/mcp/server/lowlevel/server.py:Server', 'session:mcp-python-sdk:src/mcp/server/session.py:ServerSession', 'transport:mcp-python-sdk:src/mcp/server/stdio.py:stdio_server'],
-  'aider-repo-to-verified-edit': ['cli:aider:aider/main.py:main', 'coder:aider:aider/coders/base_coder.py:Coder.run', 'map:aider:aider/repomap.py:RepoMap.get_repo_map', 'edit:aider:aider/coders/editblock_coder.py:EditBlockCoder', 'apply:aider:aider/coders/base_coder.py:Coder.apply_updates', 'git:aider:aider/repo.py:GitRepo.commit'],
+  'mcp-tool-call': ['schema:mcp-spec:schema/2026-07-28/schema.json:CallToolRequest', 'host-run:mcp-python-sdk:src/mcp/server/mcpserver/server.py:MCPServer.run', 'transport:mcp-python-sdk:src/mcp/server/stdio.py:stdio_server', 'server-run:mcp-python-sdk:src/mcp/server/lowlevel/server.py:Server.run', 'runner-loop:mcp-python-sdk:src/mcp/server/runner.py:serve_dual_era_loop', 'dispatcher-loop:mcp-python-sdk:src/mcp/shared/jsonrpc_dispatcher.py:JSONRPCDispatcher.run', 'dispatcher-request:mcp-python-sdk:src/mcp/shared/jsonrpc_dispatcher.py:JSONRPCDispatcher._dispatch_request', 'request:mcp-python-sdk:src/mcp/server/runner.py:ServerRunner._on_request', 'dispatch:mcp-python-sdk:src/mcp/server/lowlevel/server.py:get_request_handler', 'mcp-handler:mcp-python-sdk:src/mcp/server/mcpserver/server.py:MCPServer._handle_call_tool', 'mcp-call:mcp-python-sdk:src/mcp/server/mcpserver/server.py:MCPServer.call_tool', 'tool-lookup:mcp-python-sdk:src/mcp/server/mcpserver/tools/tool_manager.py:ToolManager.call_tool', 'tool-run:mcp-python-sdk:src/mcp/server/mcpserver/tools/base.py:Tool.run', 'tool-function:mcp-python-sdk:examples/snippets/servers/basic_tool.py:sum', 'serialize:mcp-python-sdk:src/mcp/server/runner.py:ServerRunner._serialize', 'dispatcher-response:mcp-python-sdk:src/mcp/shared/jsonrpc_dispatcher.py:JSONRPCDispatcher._write_result', 'stdout:mcp-python-sdk:src/mcp/server/stdio.py:stdio_server'],
+  'aider-repo-to-verified-edit': ['cli:aider:aider/main.py:main', 'run:aider:aider/coders/base_coder.py:Coder.run', 'turn:aider:aider/coders/base_coder.py:Coder.run_one', 'context:aider:aider/coders/base_coder.py:Coder.send_message', 'repo-map:aider:aider/repomap.py:RepoMap.get_repo_map', 'send:aider:aider/coders/base_coder.py:Coder.send', 'completion:aider:aider/models.py:Model.send_completion', 'parse:aider:aider/coders/editblock_coder.py:EditBlockCoder.get_edits', 'apply-updates:aider:aider/coders/base_coder.py:Coder.apply_updates', 'dry-run:aider:aider/coders/editblock_coder.py:EditBlockCoder.apply_edits_dry_run', 'prepare:aider:aider/coders/base_coder.py:Coder.prepare_to_edit', 'apply:aider:aider/coders/editblock_coder.py:EditBlockCoder.apply_edits', 'write:aider:aider/io.py:InputOutput.write_text', 'auto-commit:aider:aider/coders/base_coder.py:Coder.auto_commit', 'commit:aider:aider/repo.py:GitRepo.commit', 'auto-lint:aider:aider/coders/base_coder.py:Coder.lint_edited', 'lint-commit:aider:aider/coders/base_coder.py:Coder.auto_commit', 'shell-confirm:aider:aider/io.py:InputOutput.confirm_ask', 'shell-run:aider:aider/coders/base_coder.py:Coder.handle_shell_commands', 'auto-test:aider:aider/commands.py:Commands.cmd_test', 'reflection:aider:aider/coders/base_coder.py:Coder.run_one'],
   'openhands-canvas-to-workspace-event': ['canvas:openhands-canvas:src/api/conversation-service/agent-server-conversation-service.api.ts:AgentServerConversationService', 'router:openhands-sdk:openhands-agent-server/openhands/agent_server/conversation_router.py:start_conversation', 'service:openhands-sdk:openhands-agent-server/openhands/agent_server/conversation_service.py:ConversationService', 'conversation:openhands-sdk:openhands-sdk/openhands/sdk/conversation/conversation.py:Conversation', 'agent:openhands-sdk:openhands-sdk/openhands/sdk/agent/agent.py:Agent.step', 'tool:openhands-sdk:openhands-sdk/openhands/sdk/tool/tool.py:ToolDefinition.__call__', 'workspace:openhands-sdk:openhands-sdk/openhands/sdk/workspace/workspace.py:Workspace', 'event-return:openhands-canvas:src/api/agent-server-adapter.ts:toAppConversation'],
   'benchmark-task-to-score': ['swe-input:swe-bench:swebench/harness/run_evaluation.py:main', 'swe-env:swe-bench:swebench/harness/docker_utils.py:exec_run_with_timeout', 'swe-grade:swe-bench:swebench/harness/grading.py:get_eval_report', 'swe-report:swe-bench:swebench/harness/reporting.py:make_run_report', 'tau-input:tau2-bench:src/tau2/run.py:run_task', 'tau-sim:tau2-bench:src/tau2/runner/simulation.py:run_simulation', 'tau-env:tau2-bench:src/tau2/environment/environment.py:Environment', 'tau-score:tau2-bench:src/tau2/evaluator/evaluator.py:evaluate_simulation'],
   'dify-request-to-graph-events': ['controller:dify:api/controllers/service_api/app/workflow.py:WorkflowRunApi.post', 'generator:dify:api/core/app/apps/workflow/app_generator.py:WorkflowAppGenerator', 'runner:dify:api/core/app/apps/workflow/app_runner.py:WorkflowAppRunner', 'entry:dify:api/core/workflow/workflow_entry.py:WorkflowEntry', 'factory:dify:api/core/workflow/node_factory.py:DifyNodeFactory', 'agent-node:dify:api/core/workflow/nodes/agent_v2/agent_node.py:DifyAgentNode', 'response:dify:api/core/app/apps/common/workflow_response_converter.py:WorkflowResponseConverter'],
   'crewai-kickoff-to-task-output': ['kickoff:crewai:lib/crewai/src/crewai/crew.py:Crew.kickoff', 'process:crewai:lib/crewai/src/crewai/process.py:Process', 'execution:crewai:lib/crewai/src/crewai/execution.py:begin_execution', 'task:crewai:lib/crewai/src/crewai/task.py:Task.execute_sync', 'agent:crewai:lib/crewai/src/crewai/agent/core.py:Agent.execute_task', 'executor:crewai:lib/crewai/src/crewai/agents/crew_agent_executor.py:CrewAgentExecutor.invoke', 'step:crewai:lib/crewai/src/crewai/agents/step_executor.py:StepExecutor.execute', 'tool:crewai:lib/crewai/src/crewai/tools/tool_usage.py:ToolUsage.use', 'output:crewai:lib/crewai/src/crewai/task.py:Task._export_output'],
   'autogpt-flowise-evolution': ['autogpt-entry:autogpt:classic/original_autogpt/autogpt/app/main.py:run_auto_gpt', 'autogpt-agent:autogpt:classic/original_autogpt/autogpt/agents/agent.py:Agent.execute', 'flowise-entry:flowise:packages/server/src/controllers/predictions/index.ts:createPrediction', 'flowise-service:flowise:packages/server/src/services/predictions/index.ts:buildChatflow'],
 }
+const expectedAiderTracksAndLabels = [
+  ['cli', '主请求链', 'Repository preflight'],
+  ['run', '主请求链', 'Conversation loop'],
+  ['turn', '主请求链', 'Single turn'],
+  ['context', '主请求链', 'Context assembly'],
+  ['repo-map', '主请求链', 'RepoMap selection'],
+  ['send', '主请求链', 'Model send'],
+  ['completion', '主请求链', 'Completion stream'],
+  ['parse', '主请求链', 'Edit tuple parsing'],
+  ['apply-updates', '主请求链', 'Update orchestration'],
+  ['dry-run', '主请求链', 'Dry-run validation'],
+  ['prepare', '主请求链', 'Dirty-file precommit'],
+  ['apply', '主请求链', 'Filesystem edit'],
+  ['write', '主请求链', 'File write'],
+  ['auto-commit', '自动提交与 lint（条件分支）', 'First auto-commit'],
+  ['commit', '自动提交与 lint（条件分支）', 'Git commit'],
+  ['auto-lint', '自动提交与 lint（条件分支）', 'Auto-lint edited files'],
+  ['lint-commit', '自动提交与 lint（条件分支）', 'Second commit after lint'],
+  ['shell-confirm', '需确认 Shell 分支', 'Shell confirmation'],
+  ['shell-run', '需确认 Shell 分支', 'Shell execution'],
+  ['auto-test', '可选 auto-test 分支', 'Optional auto-test'],
+  ['reflection', '错误反思回路', 'Error reflection'],
+]
 const expectedSubjectFacts = {
   'mcp-spec': ['modelcontextprotocol/modelcontextprotocol', '2026-07-28', '5f5440bb26a62e2cf3440b92da5a667efa03b267', 'active', false, 'core', 'LICENSE:0382b0057770ca05e9c350a50aa3b1c1fea84da0bc81d723bf00b9aa841be58a'],
   'mcp-python-sdk': ['modelcontextprotocol/python-sdk', 'v2.2.0', '9972c21aa42054fb1450c5fc614761ed11847ec6', 'active', false, 'core', 'LICENSE:5e13dbbc1d120fc2a03cecde7c91424ae2d7de11b63d58ded2f4431e261ee50d'],
@@ -647,23 +745,23 @@ const expectedSubjectFacts = {
   openclaw: ['openclaw/openclaw', 'v2026.9.6', 'eb377ac59e6c9fd6c7705028034812becf00271b', 'active', false, 'watch-only', 'LICENSE:73571b25326281d369087f469842c02444fe39faaecebda4d82ed21ff3a1c29d|THIRD_PARTY_NOTICES.md:c1d1bbc550feee74853eba104e347341569cbbbe37a9f77659993ca0766277d5'],
 }
 const expectedSubjectDigests = {
-  'mcp-spec': 'f4df5fedc2015571e0620bc41eae96039f148b01ea063d3bc3965df274bf3091',
-  'mcp-python-sdk': '3524c22e73fcad6dd1eea779c67087592236d9929bd67694ec8173f8f31b0786',
-  aider: 'c320cffa1ce96d7836d3ea4bd9072cb7dfcb769e0f6a870fc90ec13cd1072020',
-  'openhands-canvas': 'bc9f57fa9bcbc6dbae3575b9860770682d963ee7e37bdb10141a4421d57d56cc',
-  'openhands-sdk': 'abbec365cd40925f47866045793a26bd5efcd714ca6e390a0b2cca08f2bc5220',
-  'swe-bench': '8e98b719e1f4b7a03056573715dea23a20040a5c78bc3178c2f4938429c01e51',
-  'tau2-bench': 'eb7a25bcdc5cd6fae243a1853f9f105ad0522f34b98f3c369009c98feafe0ab0',
-  dify: '23648ca88f27fd7f00badab56ecdfd1bc4757d0f54415c33f02f7694a4ed2eda',
-  crewai: 'aea49e8094a9fd3d4557e40789ce796e67888ee8c8e4c2bd3c420bceafcd163b',
-  autogpt: 'a62460707a1ef9b3b2aa9a963b5a0768bc225937fa0ec5819b45e4de860bbaf5',
-  flowise: 'caebd20bb0b22a1200cf58d7040cff4ede1ecca626edc3b3f5dc3c19fa848f33',
+  'mcp-spec': '492729a2b1d5e3690d4d4eb8ffb8a6f9089a8d3e21b7a284d49b6c9100788801',
+  'mcp-python-sdk': '21a74ad2294a17ef639fb92539bee85e299dd9cc71fea3e6db72d615da7db867',
+  aider: '5e52014bcd913a55fbbaed8dcdf44cff28bcf19d6d6af5b33264c0bb1caec388',
+  'openhands-canvas': 'a276ba6d4ae6dcbe9bf28fd1f63727d143d8c5e293ffc49ed8f7baf49b946ddc',
+  'openhands-sdk': '238f8bc6be41b1216fc43af67e455cc5309d470603b657a8c08535e657425cb5',
+  'swe-bench': 'e356c00937817246deae70028e1d8068a2e9426e33f5d77e5b44e485adb3efaa',
+  'tau2-bench': 'cefff5beff7a90ca1ef02dd77c683f0474cdd2c0b591f5ed18d709e00536775d',
+  dify: '6881c250b6f94d1ff50aa54d77a493cacb672796350e9c8281b2cc639563d683',
+  crewai: 'c08cfcd2380dbb33b118271457a61aa9b716325f29e25613cc1ddb94a6bd7b56',
+  autogpt: '33d5cf4286bca6be740451dc94daf9c77d633318e95f38760b980c5699d66bf4',
+  flowise: '4c2438da4a88f32b9f6089b64b35bbb383bf60d6b8a9258a5af1e2f5a3b360f5',
   'hermes-agent': 'b1e7efda63633c8af2b155954e2a0145428c19795399837ac745f3681e0a66c4',
   openclaw: '9eb64f3e66b9ca1449a291d1abcdd39493e1ab262467c7b86dceae6792bded62',
 }
 const expectedChainDigests = {
-  'mcp-tool-call': '433de30bddcbbe3117584050bbca33bcf6c99d239e1cda8d61f3d8ee5c596c95',
-  'aider-repo-to-verified-edit': 'c6c6b43eaf5eed9b5ba3fafbb9a70d56c91eedc3378dd645574ec8b0b825c14a',
+  'mcp-tool-call': '54b46cce64ce2559ae2656a61335d2b92df9df99fdf87e1b7215efe76d4a1ab4',
+  'aider-repo-to-verified-edit': '222bc344a8184b8ff7cac95a1e36f620a50a58cacb0f61b459132238164486ce',
   'openhands-canvas-to-workspace-event': '6ee7c2a9660f5f8a0d8457ebf2707ebaea0f6367f9ac8eabffa69f825580c79d',
   'benchmark-task-to-score': 'b7227cce3a43907b38fde1fbbde5548e0d148d6de88ddd9d3ecf5042b1876f49',
   'dify-request-to-graph-events': '060d82f9c004cfb20a95ccf3a951383bb7715b47ba25abb1232dcfc9034b6a50',
@@ -683,6 +781,10 @@ describe('real project catalog', () => {
   })
 
   it('contains the exact approved pages, subjects, and source paths', () => {
+    expect(Object.keys(catalog)).toEqual(['schema_version', 'defaults', 'pages', 'subjects', 'chains'])
+    expect(catalog.schema_version).toBe(1)
+    expect(catalog.defaults).toEqual({ verified_at: '2026-09-26', review_by: '2026-10-26' })
+    expect(digest(catalog)).toBe('30b8858ca207c0b68d3e1173e658d53f37d9edd2560e6312f5d72474a6121c41')
     expect(catalog.pages.map((page: { page_item_id: string }) => page.page_item_id)).toEqual(pageIds)
     expect(catalog.subjects.map((subject: { id: string }) => subject.id)).toEqual(subjectIds)
     expect(Object.fromEntries(catalog.subjects.map((subject: any) => [subject.id, [
@@ -692,17 +794,39 @@ describe('real project catalog', () => {
     ]]))).toEqual(expectedSubjectFacts)
     expect(Object.fromEntries(catalog.subjects.map((subject: { id: string }) => [subject.id, digest(subject)])))
       .toEqual(expectedSubjectDigests)
-    expect(Object.fromEntries(catalog.subjects.map((subject: { id: string; entrypoints: Array<{ path: string; symbol: string; responsibility: string }> }) => [subject.id, subject.entrypoints.map((entry) => entry.path)])))
+    expect(Object.fromEntries(catalog.subjects.map((subject: { id: string; entrypoints: Array<{ path: string; symbols: string[]; responsibility: string }> }) => [subject.id, subject.entrypoints.map((entry) => entry.path)])))
       .toEqual(expectedEntrypoints)
-    const sourceEntries = catalog.subjects.flatMap((subject: { entrypoints: Array<{ path: string; symbol: string; responsibility: string }> }) => subject.entrypoints)
-    expect(sourceEntries).toHaveLength(49)
-    expect(sourceEntries.every((entry: { path: string; symbol: string; responsibility: string }) =>
-      [entry.path, entry.symbol, entry.responsibility].every((value) => value.trim().length > 0),
+    const coreSubjects = Object.fromEntries(catalog.subjects
+      .filter((subject: { id: string }) => Object.hasOwn(expectedCoreEntrypointSymbols, subject.id))
+      .map((subject: { id: string; entrypoints: Array<{ path: string; symbols: string[] }> }) => [
+        subject.id,
+        Object.fromEntries(subject.entrypoints.map((entry) => [entry.path, entry.symbols])),
+      ]))
+    expect(coreSubjects).toEqual(expectedCoreEntrypointSymbols)
+    const sourceEntries = catalog.subjects.flatMap((subject: { entrypoints: Array<{ path: string; symbols: string[]; responsibility: string }> }) => subject.entrypoints)
+    expect(sourceEntries).toHaveLength(52)
+    expect(sourceEntries.every((entry: { path: string; symbols: string[]; responsibility: string }) =>
+      [entry.path, entry.responsibility].every((value) => value.trim().length > 0)
+        && entry.symbols.length > 0
+        && entry.symbols.every((symbol) => symbol.trim().length > 0),
     )).toBe(true)
+    const complexCrossLayerPages = new Set([
+      'project-mcp-python-sdk', 'project-openhands', 'project-agent-benchmarks',
+    ])
+    for (const page of catalog.pages.filter((item: { counted_in_course: boolean }) => item.counted_in_course)) {
+      const count = page.subjects.reduce((total: number, subjectId: string) =>
+        total + catalog.subjects.find((subject: { id: string }) => subject.id === subjectId).entrypoints.length, 0)
+      expect(count).toBeGreaterThanOrEqual(3)
+      expect(count).toBeLessThanOrEqual(complexCrossLayerPages.has(page.page_item_id) ? 10 : 8)
+    }
     expect(Object.fromEntries(catalog.chains.map((chain: { id: string; steps: Array<{ id: string; subject_id: string; source_path: string; symbol: string }> }) => [
       chain.id,
       chain.steps.map((step) => `${step.id}:${step.subject_id}:${step.source_path}:${step.symbol}`),
     ]))).toEqual(expectedChains)
+    const aiderChain = catalog.chains.find((chain: { id: string }) => chain.id === 'aider-repo-to-verified-edit')
+    expect(aiderChain.steps.map((step: { id: string; track?: string; label: string }) =>
+      [step.id, step.track, step.label],
+    )).toEqual(expectedAiderTracksAndLabels)
     expect(Object.fromEntries(catalog.chains.map((chain: { id: string }) => [chain.id, digest(chain)])))
       .toEqual(expectedChainDigests)
     expect(Object.fromEntries(catalog.pages.map((page: { page_item_id: string }) => {
@@ -750,7 +874,7 @@ describe('real project catalog', () => {
 })
 ```
 
-The per-subject SHA-256 assertion covers the complete parsed subject object, including `pin_kind`, `license_summary`, ordered `license_scopes`, `watch_url`, `license_sources`, and every entrypoint `path/symbol/responsibility`. The per-chain digest covers `page_item_id`, label, reading hint, misconception, and every ordered step field; changing any value requires an intentional expected-digest review.
+The full-catalog SHA-256 assertion covers exact top-level structure and ordering. The per-subject assertion covers the complete parsed subject object, including `pin_kind`, `license_summary`, ordered `license_scopes`, `watch_url`, `license_sources`, and every entrypoint `path/symbols/responsibility`. The per-chain digest covers `page_item_id`, label, reading hint, misconception, and every ordered step field; changing any value requires an intentional expected-digest review. All three digest layers must be computed from the concatenated YAML snippets below after parsing; never hand-edit or guess a digest.
 
 - [ ] **Step 2: Run only the existence test and verify RED**
 
@@ -879,8 +1003,7 @@ subjects:
     license_sources: [{ path: LICENSE, sha256: 0382b0057770ca05e9c350a50aa3b1c1fea84da0bc81d723bf00b9aa841be58a }]
     watch_url: https://github.com/modelcontextprotocol/modelcontextprotocol/releases/latest
     entrypoints:
-      - { path: schema/2026-07-28/schema.json, symbol: CallToolRequest, responsibility: Define the versioned tools/call request and result contract. }
-      - { path: docs/docs/2026-07-28/learn/architecture.mdx, symbol: Host-Client-Server architecture, responsibility: Define the protocol participants and capability boundaries. }
+      - { path: schema/2026-07-28/schema.json, symbols: [CallToolRequest], responsibility: Define the versioned tools/call request and result contract. }
 
   - id: mcp-python-sdk
     canonical_repo: modelcontextprotocol/python-sdk
@@ -901,12 +1024,14 @@ subjects:
     license_sources: [{ path: LICENSE, sha256: 5e13dbbc1d120fc2a03cecde7c91424ae2d7de11b63d58ded2f4431e261ee50d }]
     watch_url: https://github.com/modelcontextprotocol/python-sdk/releases/latest
     entrypoints:
-      - { path: examples/snippets/servers/basic_tool.py, symbol: mcp.tool, responsibility: Demonstrate registration of a narrow Python tool. }
-      - { path: src/mcp/server/mcpserver/server.py, symbol: MCPServer.tool, responsibility: Expose the high-level registration and call surface. }
-      - { path: src/mcp/server/mcpserver/tools/tool_manager.py, symbol: ToolManager.call_tool, responsibility: Resolve and invoke a registered tool. }
-      - { path: src/mcp/server/lowlevel/server.py, symbol: Server, responsibility: Dispatch protocol methods to handlers. }
-      - { path: src/mcp/server/session.py, symbol: ServerSession, responsibility: Carry protocol lifecycle and request state. }
-      - { path: src/mcp/server/stdio.py, symbol: stdio_server, responsibility: Transport framed messages over standard I/O. }
+      - { path: examples/snippets/servers/basic_tool.py, symbols: [MCPServer, mcp.tool, sum], responsibility: Register the example tool and expose the host-owned server start point. }
+      - { path: src/mcp/server/mcpserver/server.py, symbols: [MCPServer.run, run_stdio_async, MCPServer._handle_call_tool, MCPServer.call_tool], responsibility: Select stdio and bridge the low-level handler to the high-level tool API. }
+      - { path: src/mcp/server/stdio.py, symbols: [stdio_server], responsibility: Transport framed messages from the reader through the final stdout_writer. }
+      - { path: src/mcp/server/lowlevel/server.py, symbols: [Server.run, get_request_handler], responsibility: Run the protocol loop and resolve the tools/call handler. }
+      - { path: src/mcp/server/runner.py, symbols: [serve_dual_era_loop, ServerRunner._on_request, ServerRunner._serialize], responsibility: Drive the era-specific loop, execute request handlers, and normalize result dictionaries. }
+      - { path: src/mcp/shared/jsonrpc_dispatcher.py, symbols: [JSONRPCDispatcher.run, JSONRPCDispatcher._dispatch_request, JSONRPCDispatcher._write_result], responsibility: Dispatch inbound JSON-RPC requests and construct and write JSONRPCResponse messages. }
+      - { path: src/mcp/server/mcpserver/tools/tool_manager.py, symbols: [ToolManager.call_tool], responsibility: Find the registered tool and delegate execution. }
+      - { path: src/mcp/server/mcpserver/tools/base.py, symbols: [Tool.run], responsibility: Validate tool input, invoke the function, and convert its result. }
 
   - id: aider
     canonical_repo: Aider-AI/aider
@@ -927,12 +1052,14 @@ subjects:
     license_sources: [{ path: LICENSE.txt, sha256: cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30 }]
     watch_url: https://github.com/Aider-AI/aider/releases/latest
     entrypoints:
-      - { path: aider/main.py, symbol: main, responsibility: Parse options and establish repository context. }
-      - { path: aider/coders/base_coder.py, symbol: Coder.run, responsibility: Own the request and iterative coding loop. }
-      - { path: aider/repomap.py, symbol: RepoMap.get_repo_map, responsibility: Select a bounded structural repository context. }
-      - { path: aider/coders/editblock_coder.py, symbol: EditBlockCoder.get_edits, responsibility: Parse explicit edit blocks from model output. }
-      - { path: aider/repo.py, symbol: GitRepo.commit, responsibility: Record bounded file changes in Git. }
-      - { path: aider/run_cmd.py, symbol: run_cmd, responsibility: Execute configured verification commands and return evidence. }
+      - { path: aider/main.py, symbols: [main], responsibility: Parse options and establish repository context. }
+      - { path: aider/coders/base_coder.py, symbols: [Coder.run, Coder.run_one, Coder.send_message, Coder.send, Coder.apply_updates, Coder.prepare_to_edit, Coder.auto_commit, Coder.lint_edited, Coder.run_shell_commands, Coder.handle_shell_commands], responsibility: Coordinate turns, model calls, edit preparation, commits, lint, and confirmed shell commands. }
+      - { path: aider/models.py, symbols: [Model.send_completion, simple_send_with_retries], responsibility: Send the coding request and support model-generated commit messages. }
+      - { path: aider/repomap.py, symbols: [RepoMap.get_repo_map], responsibility: Select a bounded structural repository context. }
+      - { path: aider/coders/editblock_coder.py, symbols: [EditBlockCoder.get_edits, EditBlockCoder.apply_edits_dry_run, EditBlockCoder.apply_edits], responsibility: Parse edit tuples, dry-run them, and apply accepted edits. }
+      - { path: aider/io.py, symbols: [InputOutput.write_text, InputOutput.confirm_ask], responsibility: Write edited text and enforce explicit confirmation policies. }
+      - { path: aider/repo.py, symbols: [GitRepo.commit, GitRepo.get_commit_message], responsibility: Generate commit messages and record bounded file changes in Git. }
+      - { path: aider/commands.py, symbols: [Commands.cmd_test], responsibility: Run the optional configured test command. }
 ```
 
 - [ ] **Step 7: Add OpenHands and benchmark subject records**
@@ -955,8 +1082,8 @@ Append the next four subjects:
     license_sources: [{ path: LICENSE, sha256: e1d1fa9f3a8d7bef24449d488fcd8f00f8f272cac297bb9bed161eb6175b876a }]
     watch_url: https://github.com/OpenHands/OpenHands/releases/latest
     entrypoints:
-      - { path: src/api/conversation-service/agent-server-conversation-service.api.ts, symbol: AgentServerConversationService, responsibility: Translate Canvas actions into Agent Server requests. }
-      - { path: src/api/agent-server-adapter.ts, symbol: toAppConversation, responsibility: Normalize server conversation data for Canvas. }
+      - { path: src/api/conversation-service/agent-server-conversation-service.api.ts, symbols: [AgentServerConversationService], responsibility: Translate Canvas actions into Agent Server requests. }
+      - { path: src/api/agent-server-adapter.ts, symbols: [toAppConversation], responsibility: Normalize server conversation data for Canvas. }
 
   - id: openhands-sdk
     canonical_repo: OpenHands/software-agent-sdk
@@ -972,12 +1099,12 @@ Append the next four subjects:
     license_sources: [{ path: LICENSE, sha256: 14a9b631c658eee682c6c2973525fbdf808c3457176bc47513052c559cc5ce86 }]
     watch_url: https://github.com/OpenHands/software-agent-sdk/releases/latest
     entrypoints:
-      - { path: openhands-agent-server/openhands/agent_server/conversation_router.py, symbol: start_conversation, responsibility: Admit and route conversation operations. }
-      - { path: openhands-agent-server/openhands/agent_server/conversation_service.py, symbol: ConversationService, responsibility: Create and coordinate SDK conversations. }
-      - { path: openhands-sdk/openhands/sdk/conversation/conversation.py, symbol: Conversation, responsibility: Own conversation state and event progression. }
-      - { path: openhands-sdk/openhands/sdk/agent/agent.py, symbol: Agent.step, responsibility: Produce and evaluate the next agent actions. }
-      - { path: openhands-sdk/openhands/sdk/tool/tool.py, symbol: ToolDefinition.__call__, responsibility: Convert an action into a bounded tool invocation. }
-      - { path: openhands-sdk/openhands/sdk/workspace/workspace.py, symbol: Workspace, responsibility: Define the environment boundary in which tools act. }
+      - { path: openhands-agent-server/openhands/agent_server/conversation_router.py, symbols: [start_conversation], responsibility: Admit and route conversation operations. }
+      - { path: openhands-agent-server/openhands/agent_server/conversation_service.py, symbols: [ConversationService], responsibility: Create and coordinate SDK conversations. }
+      - { path: openhands-sdk/openhands/sdk/conversation/conversation.py, symbols: [Conversation], responsibility: Own conversation state and event progression. }
+      - { path: openhands-sdk/openhands/sdk/agent/agent.py, symbols: [Agent.step], responsibility: Produce and evaluate the next agent actions. }
+      - { path: openhands-sdk/openhands/sdk/tool/tool.py, symbols: [ToolDefinition.__call__], responsibility: Convert an action into a bounded tool invocation. }
+      - { path: openhands-sdk/openhands/sdk/workspace/workspace.py, symbols: [Workspace], responsibility: Define the environment boundary in which tools act. }
 
   - id: swe-bench
     canonical_repo: SWE-bench/SWE-bench
@@ -993,10 +1120,10 @@ Append the next four subjects:
     license_sources: [{ path: LICENSE, sha256: 2bd2e08df7147f67a69b42c10efae09bd4bf119df397371036187d5dd1b02f57 }]
     watch_url: https://github.com/SWE-bench/SWE-bench/tags
     entrypoints:
-      - { path: swebench/harness/run_evaluation.py, symbol: main, responsibility: Bind predictions to instances and coordinate evaluation. }
-      - { path: swebench/harness/docker_utils.py, symbol: exec_run_with_timeout, responsibility: Execute commands in the evaluation container with a timeout. }
-      - { path: swebench/harness/grading.py, symbol: get_eval_report, responsibility: Convert test evidence into resolution status. }
-      - { path: swebench/harness/reporting.py, symbol: make_run_report, responsibility: Aggregate per-instance evidence without changing the denominator. }
+      - { path: swebench/harness/run_evaluation.py, symbols: [main], responsibility: Bind predictions to instances and coordinate evaluation. }
+      - { path: swebench/harness/docker_utils.py, symbols: [exec_run_with_timeout], responsibility: Execute commands in the evaluation container with a timeout. }
+      - { path: swebench/harness/grading.py, symbols: [get_eval_report], responsibility: Convert test evidence into resolution status. }
+      - { path: swebench/harness/reporting.py, symbols: [make_run_report], responsibility: Aggregate per-instance evidence without changing the denominator. }
 
   - id: tau2-bench
     canonical_repo: sierra-research/tau2-bench
@@ -1012,10 +1139,10 @@ Append the next four subjects:
     license_sources: [{ path: LICENSE, sha256: e67c5aa0074dfcaefd3c3a1aedb94cb539234aecd15d5a972574e3200e6252fe }]
     watch_url: https://github.com/sierra-research/tau2-bench/releases/latest
     entrypoints:
-      - { path: src/tau2/run.py, symbol: run_task, responsibility: Select the task, participants, and domain. }
-      - { path: src/tau2/runner/simulation.py, symbol: run_simulation, responsibility: Coordinate the multi-turn trajectory. }
-      - { path: src/tau2/environment/environment.py, symbol: Environment, responsibility: Apply tools to authoritative domain state. }
-      - { path: src/tau2/evaluator/evaluator.py, symbol: evaluate_simulation, responsibility: Judge the outcome and produce reward evidence. }
+      - { path: src/tau2/run.py, symbols: [run_task], responsibility: Select the task, participants, and domain. }
+      - { path: src/tau2/runner/simulation.py, symbols: [run_simulation], responsibility: Coordinate the multi-turn trajectory. }
+      - { path: src/tau2/environment/environment.py, symbols: [Environment], responsibility: Apply tools to authoritative domain state. }
+      - { path: src/tau2/evaluator/evaluator.py, symbols: [evaluate_simulation], responsibility: Judge the outcome and produce reward evidence. }
 ```
 
 - [ ] **Step 8: Add Dify and CrewAI subject records**
@@ -1043,13 +1170,13 @@ Append:
     license_sources: [{ path: LICENSE, sha256: 232cf91474932d5110ed304e53b6b742a58463857c571fae803fdf2ac36d7bb3 }]
     watch_url: https://github.com/langgenius/dify/releases/latest
     entrypoints:
-      - { path: api/controllers/service_api/app/workflow.py, symbol: WorkflowRunApi.post, responsibility: Validate and admit a workflow request. }
-      - { path: api/core/app/apps/workflow/app_generator.py, symbol: WorkflowAppGenerator, responsibility: Build the application execution context. }
-      - { path: api/core/app/apps/workflow/app_runner.py, symbol: WorkflowAppRunner, responsibility: Start and supervise workflow execution. }
-      - { path: api/core/workflow/workflow_entry.py, symbol: WorkflowEntry, responsibility: Configure Graphon and execution layers. }
-      - { path: api/core/workflow/node_factory.py, symbol: DifyNodeFactory, responsibility: Resolve versioned node implementations. }
-      - { path: api/core/workflow/nodes/agent_v2/agent_node.py, symbol: DifyAgentNode, responsibility: Execute the agent-specific node contract. }
-      - { path: api/core/app/apps/common/workflow_response_converter.py, symbol: WorkflowResponseConverter, responsibility: Convert graph events to the public response stream. }
+      - { path: api/controllers/service_api/app/workflow.py, symbols: [WorkflowRunApi.post], responsibility: Validate and admit a workflow request. }
+      - { path: api/core/app/apps/workflow/app_generator.py, symbols: [WorkflowAppGenerator], responsibility: Build the application execution context. }
+      - { path: api/core/app/apps/workflow/app_runner.py, symbols: [WorkflowAppRunner], responsibility: Start and supervise workflow execution. }
+      - { path: api/core/workflow/workflow_entry.py, symbols: [WorkflowEntry], responsibility: Configure Graphon and execution layers. }
+      - { path: api/core/workflow/node_factory.py, symbols: [DifyNodeFactory], responsibility: Resolve versioned node implementations. }
+      - { path: api/core/workflow/nodes/agent_v2/agent_node.py, symbols: [DifyAgentNode], responsibility: Execute the agent-specific node contract. }
+      - { path: api/core/app/apps/common/workflow_response_converter.py, symbols: [WorkflowResponseConverter], responsibility: Convert graph events to the public response stream. }
 
   - id: crewai
     canonical_repo: crewAIInc/crewAI
@@ -1065,14 +1192,14 @@ Append:
     license_sources: [{ path: LICENSE, sha256: 28868731966f4aa37f02879839aabc797137e27ddde4e274ef9cf965f9a71774 }]
     watch_url: https://github.com/crewAIInc/crewAI/releases/latest
     entrypoints:
-      - { path: lib/crewai/src/crewai/crew.py, symbol: Crew.kickoff, responsibility: Initialize crew execution and choose a process. }
-      - { path: lib/crewai/src/crewai/process.py, symbol: Process, responsibility: Define the orchestration mode. }
-      - { path: lib/crewai/src/crewai/execution.py, symbol: begin_execution, responsibility: Establish shared execution and tracing state. }
-      - { path: lib/crewai/src/crewai/task.py, symbol: Task.execute_sync, responsibility: Bind expected output and delegate work to an agent. }
-      - { path: lib/crewai/src/crewai/agent/core.py, symbol: Agent.execute_task, responsibility: Prepare and launch task-specific agent execution. }
-      - { path: lib/crewai/src/crewai/agents/crew_agent_executor.py, symbol: CrewAgentExecutor.invoke, responsibility: Run the reasoning and tool loop. }
-      - { path: lib/crewai/src/crewai/agents/step_executor.py, symbol: StepExecutor.execute, responsibility: Execute one parsed agent step. }
-      - { path: lib/crewai/src/crewai/tools/tool_usage.py, symbol: ToolUsage.use, responsibility: Invoke a selected tool and record its outcome. }
+      - { path: lib/crewai/src/crewai/crew.py, symbols: [Crew.kickoff], responsibility: Initialize crew execution and choose a process. }
+      - { path: lib/crewai/src/crewai/process.py, symbols: [Process], responsibility: Define the orchestration mode. }
+      - { path: lib/crewai/src/crewai/execution.py, symbols: [begin_execution], responsibility: Establish shared execution and tracing state. }
+      - { path: lib/crewai/src/crewai/task.py, symbols: [Task.execute_sync, Task._export_output], responsibility: Bind expected output and delegate work to an agent. }
+      - { path: lib/crewai/src/crewai/agent/core.py, symbols: [Agent.execute_task], responsibility: Prepare and launch task-specific agent execution. }
+      - { path: lib/crewai/src/crewai/agents/crew_agent_executor.py, symbols: [CrewAgentExecutor.invoke], responsibility: Run the reasoning and tool loop. }
+      - { path: lib/crewai/src/crewai/agents/step_executor.py, symbols: [StepExecutor.execute], responsibility: Execute one parsed agent step. }
+      - { path: lib/crewai/src/crewai/tools/tool_usage.py, symbols: [ToolUsage.use], responsibility: Invoke a selected tool and record its outcome. }
 ```
 
 - [ ] **Step 9: Add historical and watch-only subject records**
@@ -1105,8 +1232,8 @@ Append:
     license_sources: [{ path: LICENSE, sha256: aafc62ebf01092909ae72131b66f48c89ea7eaf4bd7e916f3f05f7960611799a }]
     watch_url: https://github.com/Significant-Gravitas/AutoGPT/releases/latest
     entrypoints:
-      - { path: classic/original_autogpt/autogpt/app/main.py, symbol: run_auto_gpt, responsibility: Enter the classic autonomous interaction loop. }
-      - { path: classic/original_autogpt/autogpt/agents/agent.py, symbol: Agent.execute, responsibility: Execute a proposed action in the classic agent. }
+      - { path: classic/original_autogpt/autogpt/app/main.py, symbols: [run_auto_gpt], responsibility: Enter the classic autonomous interaction loop. }
+      - { path: classic/original_autogpt/autogpt/agents/agent.py, symbols: [Agent.execute], responsibility: Execute a proposed action in the classic agent. }
 
   - id: flowise
     canonical_repo: FlowiseAI/Flowise
@@ -1137,8 +1264,8 @@ Append:
     license_sources: [{ path: LICENSE.md, sha256: eb8cc244c81eb4a556f9ac22edc3033ac4fa12f7ef7a8899bb5ddc4578c2dd73 }]
     watch_url: https://github.com/FlowiseAI/Flowise/discussions/6727
     entrypoints:
-      - { path: packages/server/src/controllers/predictions/index.ts, symbol: createPrediction, responsibility: Admit a visual-flow prediction request. }
-      - { path: packages/server/src/services/predictions/index.ts, symbol: buildChatflow, responsibility: Execute the configured chatflow service path. }
+      - { path: packages/server/src/controllers/predictions/index.ts, symbols: [createPrediction], responsibility: Admit a visual-flow prediction request. }
+      - { path: packages/server/src/services/predictions/index.ts, symbols: [buildChatflow], responsibility: Execute the configured chatflow service path. }
 
   - id: hermes-agent
     canonical_repo: NousResearch/hermes-agent
@@ -1188,11 +1315,22 @@ chains:
     misconception: SDK dispatch does not prove that a business action is authorized or correct.
     steps:
       - { id: schema, label: Protocol schema, subject_id: mcp-spec, source_path: schema/2026-07-28/schema.json, symbol: CallToolRequest, responsibility: Define the versioned request and result contract. }
-      - { id: decorator, label: Tool registration, subject_id: mcp-python-sdk, source_path: examples/snippets/servers/basic_tool.py, symbol: mcp.tool, responsibility: Register a narrow Python capability. }
-      - { id: registry, label: Tool manager, subject_id: mcp-python-sdk, source_path: src/mcp/server/mcpserver/tools/tool_manager.py, symbol: ToolManager, responsibility: Resolve and invoke the registered tool. }
-      - { id: handler, label: Protocol handler, subject_id: mcp-python-sdk, source_path: src/mcp/server/lowlevel/server.py, symbol: Server, responsibility: Dispatch tools/call and normalize errors. }
-      - { id: session, label: Session, subject_id: mcp-python-sdk, source_path: src/mcp/server/session.py, symbol: ServerSession, responsibility: Carry messages and lifecycle state. }
-      - { id: transport, label: Transport, subject_id: mcp-python-sdk, source_path: src/mcp/server/stdio.py, symbol: stdio_server, responsibility: Move framed protocol messages without adding business authority. }
+      - { id: host-run, label: Host starts MCPServer, subject_id: mcp-python-sdk, source_path: src/mcp/server/mcpserver/server.py, symbol: MCPServer.run, responsibility: Let the host select stdio while run_stdio_async performs the adjacent transport setup. }
+      - { id: transport, label: stdio transport, subject_id: mcp-python-sdk, source_path: src/mcp/server/stdio.py, symbol: stdio_server, responsibility: Expose the reader and stdout_writer without adding business authority. }
+      - { id: server-run, label: Low-level server loop, subject_id: mcp-python-sdk, source_path: src/mcp/server/lowlevel/server.py, symbol: Server.run, responsibility: Enter the low-level protocol loop with request-scoped outbound support kept separate. }
+      - { id: runner-loop, label: Dual-era runner loop, subject_id: mcp-python-sdk, source_path: src/mcp/server/runner.py, symbol: serve_dual_era_loop, responsibility: Drive the runner that accepts incoming protocol messages. }
+      - { id: dispatcher-loop, label: JSON-RPC dispatcher loop, subject_id: mcp-python-sdk, source_path: src/mcp/shared/jsonrpc_dispatcher.py, symbol: JSONRPCDispatcher.run, responsibility: Read framed messages and route requests into the dispatcher request path. }
+      - { id: dispatcher-request, label: Dispatcher request callback, subject_id: mcp-python-sdk, source_path: src/mcp/shared/jsonrpc_dispatcher.py, symbol: JSONRPCDispatcher._dispatch_request, responsibility: Invoke ServerRunner._on_request through the registered on_request callback. }
+      - { id: request, label: Request handler entry, subject_id: mcp-python-sdk, source_path: src/mcp/server/runner.py, symbol: ServerRunner._on_request, responsibility: Build request context, run the selected handler, and return a normalized result dictionary. }
+      - { id: dispatch, label: tools/call handler lookup, subject_id: mcp-python-sdk, source_path: src/mcp/server/lowlevel/server.py, symbol: get_request_handler, responsibility: Select the registered low-level tools/call handler. }
+      - { id: mcp-handler, label: High-level tools/call handler, subject_id: mcp-python-sdk, source_path: src/mcp/server/mcpserver/server.py, symbol: MCPServer._handle_call_tool, responsibility: Adapt the protocol request to the high-level call surface. }
+      - { id: mcp-call, label: MCPServer tool call, subject_id: mcp-python-sdk, source_path: src/mcp/server/mcpserver/server.py, symbol: MCPServer.call_tool, responsibility: Delegate the named tool request to the tool manager. }
+      - { id: tool-lookup, label: Registered tool lookup, subject_id: mcp-python-sdk, source_path: src/mcp/server/mcpserver/tools/tool_manager.py, symbol: ToolManager.call_tool, responsibility: Find the registered tool without owning validation or invocation. }
+      - { id: tool-run, label: Validation and invocation, subject_id: mcp-python-sdk, source_path: src/mcp/server/mcpserver/tools/base.py, symbol: Tool.run, responsibility: Validate input, invoke the Python function, and convert its result. }
+      - { id: tool-function, label: Business tool function, subject_id: mcp-python-sdk, source_path: examples/snippets/servers/basic_tool.py, symbol: sum, responsibility: Execute the registered example capability. }
+      - { id: serialize, label: Result normalization, subject_id: mcp-python-sdk, source_path: src/mcp/server/runner.py, symbol: ServerRunner._serialize, responsibility: Normalize the handler result into a versioned result dictionary without constructing or writing JSONRPCResponse. }
+      - { id: dispatcher-response, label: JSON-RPC response write, subject_id: mcp-python-sdk, source_path: src/mcp/shared/jsonrpc_dispatcher.py, symbol: JSONRPCDispatcher._write_result, responsibility: Construct JSONRPCResponse and write it through the dispatcher stream. }
+      - { id: stdout, label: stdout delivery, subject_id: mcp-python-sdk, source_path: src/mcp/server/stdio.py, symbol: stdio_server, responsibility: Carry the dispatched response through the transport stdout_writer. }
 
   - id: aider-repo-to-verified-edit
     page_item_id: project-aider
@@ -1200,12 +1338,27 @@ chains:
     reading_hint: Track what context is selected and where edits become filesystem changes.
     misconception: A generated patch or automatic commit is not proof that the task is correct.
     steps:
-      - { id: cli, label: Repository preflight, subject_id: aider, source_path: aider/main.py, symbol: main, responsibility: Parse options and identify the working repository. }
-      - { id: coder, label: Coder lifecycle, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.run, responsibility: Own the request and iterative response loop. }
-      - { id: map, label: Repository map, subject_id: aider, source_path: aider/repomap.py, symbol: RepoMap.get_repo_map, responsibility: Select a bounded structural context. }
-      - { id: edit, label: Edit parsing, subject_id: aider, source_path: aider/coders/editblock_coder.py, symbol: EditBlockCoder, responsibility: Turn model output into explicit edit operations. }
-      - { id: apply, label: Apply and verify, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.apply_updates, responsibility: Apply edits and surface lint or command evidence. }
-      - { id: git, label: Repository evidence, subject_id: aider, source_path: aider/repo.py, symbol: GitRepo.commit, responsibility: Record a bounded diff without claiming business completion. }
+      - { id: cli, track: 主请求链, label: Repository preflight, subject_id: aider, source_path: aider/main.py, symbol: main, responsibility: Parse options and establish the selected repository conditions. }
+      - { id: run, track: 主请求链, label: Conversation loop, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.run, responsibility: Own the top-level request loop. }
+      - { id: turn, track: 主请求链, label: Single turn, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.run_one, responsibility: Execute one request and response turn. }
+      - { id: context, track: 主请求链, label: Context assembly, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.send_message, responsibility: Assemble chat files and bounded repository context for the turn. }
+      - { id: repo-map, track: 主请求链, label: RepoMap selection, subject_id: aider, source_path: aider/repomap.py, symbol: RepoMap.get_repo_map, responsibility: Produce a budgeted structural summary rather than reading every file. }
+      - { id: send, track: 主请求链, label: Model send, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.send, responsibility: Submit the assembled coding prompt and consume the response stream. }
+      - { id: completion, track: 主请求链, label: Completion stream, subject_id: aider, source_path: aider/models.py, symbol: Model.send_completion, responsibility: Open the selected model completion request. }
+      - { id: parse, track: 主请求链, label: Edit tuple parsing, subject_id: aider, source_path: aider/coders/editblock_coder.py, symbol: EditBlockCoder.get_edits, responsibility: Parse model text into edit tuples without writing files. }
+      - { id: apply-updates, track: 主请求链, label: Update orchestration, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.apply_updates, responsibility: Coordinate validation and application of the parsed edits. }
+      - { id: dry-run, track: 主请求链, label: Dry-run validation, subject_id: aider, source_path: aider/coders/editblock_coder.py, symbol: EditBlockCoder.apply_edits_dry_run, responsibility: Check whether the edit tuples can be applied before mutation. }
+      - { id: prepare, track: 主请求链, label: Dirty-file precommit, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.prepare_to_edit, responsibility: Protect dirty files by committing eligible pre-existing changes before editing. }
+      - { id: apply, track: 主请求链, label: Filesystem edit, subject_id: aider, source_path: aider/coders/editblock_coder.py, symbol: EditBlockCoder.apply_edits, responsibility: Apply validated edit tuples to selected files. }
+      - { id: write, track: 主请求链, label: File write, subject_id: aider, source_path: aider/io.py, symbol: InputOutput.write_text, responsibility: Persist the resulting text to disk. }
+      - { id: auto-commit, track: 自动提交与 lint（条件分支）, label: First auto-commit, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.auto_commit, responsibility: Conditionally request the first post-edit commit. }
+      - { id: commit, track: 自动提交与 lint（条件分支）, label: Git commit, subject_id: aider, source_path: aider/repo.py, symbol: GitRepo.commit, responsibility: Generate a message through the weak or main model and record the bounded diff. }
+      - { id: auto-lint, track: 自动提交与 lint（条件分支）, label: Auto-lint edited files, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.lint_edited, responsibility: By default lint only the files edited in this turn. }
+      - { id: lint-commit, track: 自动提交与 lint（条件分支）, label: Second commit after lint, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.auto_commit, responsibility: Conditionally create a second commit after automatic lint fixes. }
+      - { id: shell-confirm, track: 需确认 Shell 分支, label: Shell confirmation, subject_id: aider, source_path: aider/io.py, symbol: InputOutput.confirm_ask, responsibility: Set explicit_yes_required to require yes for proposed shell commands even after yes-always. }
+      - { id: shell-run, track: 需确认 Shell 分支, label: Shell execution, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.handle_shell_commands, responsibility: Execute the confirmed command and return its output without a third automatic commit. }
+      - { id: auto-test, track: 可选 auto-test 分支, label: Optional auto-test, subject_id: aider, source_path: aider/commands.py, symbol: Commands.cmd_test, responsibility: Run configured tests only when auto-test is enabled and do not create a third commit. }
+      - { id: reflection, track: 错误反思回路, label: Error reflection, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.run_one, responsibility: Repeat only when reflected_message was set; lint and test failures require Attempt to fix confirmation, while shell output requires separate confirmation before joining cur_messages. }
 
   - id: openhands-canvas-to-workspace-event
     page_item_id: project-openhands
@@ -1370,7 +1523,7 @@ describe('project presentation primitives', () => {
     expect(getProjectSubject('aider').pinned_ref).toBe('v0.86.0')
     expect(getProjectSubject('hermes-agent').risk_tags).toEqual(['长期自主', '长期记忆', '外部系统'])
     expect(getProjectSubject('openclaw').risk_tags).toEqual(['长期自主', 'IM', '桌面控制', '外部系统'])
-    expect(getProjectChain('aider-repo-to-verified-edit').steps).toHaveLength(6)
+    expect(getProjectChain('aider-repo-to-verified-edit').steps).toHaveLength(21)
     for (const id of ['missing', 'toString', 'constructor', '__proto__']) {
       expect(() => getProjectPage(id)).toThrow(`Unknown project page: ${id}`)
       expect(() => getProjectSubject(id)).toThrow(`Unknown project subject: ${id}`)
@@ -1420,7 +1573,8 @@ describe('project presentation primitives', () => {
     expect(meta).toContain('scope.path_or_glob ?? scope.selector')
     expect(meta).toContain('projectSourceUrl(subject.id, source.path)')
     const sources = readFileSync('docs/.vitepress/theme/components/ProjectSourceLinks.vue', 'utf8')
-    for (const field of ['row.path', 'row.symbol', 'row.responsibility']) expect(sources).toContain(field)
+    for (const field of ['row.path', 'row.symbols', 'row.responsibility']) expect(sources).toContain(field)
+    expect(sources).toContain("row.symbols.join(' · ')")
     const overview = readFileSync('docs/.vitepress/theme/components/ProjectOverview.vue', 'utf8')
     expect(overview).toContain('subject.risk_tags')
     for (const id of ['frontier-agent-security-evaluation', 'chapter-09-safety-recovery', 'radar']) {
@@ -1470,7 +1624,7 @@ export interface LicenseScope {
 
 export interface ProjectSourceEntrypoint {
   path: string
-  symbol: string
+  symbols: string[]
   responsibility: string
 }
 
@@ -1766,7 +1920,7 @@ const rows = computed(() => getProjectPage(props.projectId).subjects.flatMap((su
     subjectId,
     repo: subject.canonical_repo,
     path: entry.path,
-    symbol: entry.symbol,
+    symbols: entry.symbols,
     responsibility: entry.responsibility,
     href: projectSourceUrl(subjectId, entry.path),
   }))
@@ -1777,7 +1931,7 @@ const rows = computed(() => getProjectPage(props.projectId).subjects.flatMap((su
   <ol class="project-source-links" role="list">
     <li v-for="row in rows" :key="`${row.subjectId}:${row.path}`" role="listitem">
       <a :href="row.href"><code>{{ row.path }}</code></a>
-      <strong>{{ row.symbol }}</strong>
+      <strong>{{ row.symbols.join(' · ') }}</strong>
       <span>{{ row.responsibility }}</span>
       <small>{{ row.repo }} · 固定 commit</small>
     </li>
@@ -2178,9 +2332,45 @@ describe('MCP and Aider dissections', () => {
     const mcp = readFileSync('docs/projects/mcp-python-sdk.md', 'utf8')
     expect(mcp).toContain('规范仓库定义协议，Python SDK 实现协议')
     expect(mcp).toContain('业务授权')
+    expect(mcp).toContain('basic_tool.py 只注册工具')
+    expect(mcp).toContain('宿主调用 `mcp.run`')
+    expect(mcp).toContain('Runner 负责')
+    expect(mcp).toContain('ServerSession 只是 request-scoped outbound proxy')
+    expect(mcp).toContain('ToolManager 只负责查找')
+    expect(mcp).toContain('Tool.run 才负责输入验证、调用函数和结果转换')
+    expect(mcp).toContain('JSONRPCDispatcher._dispatch_request 调用 `ServerRunner._on_request`')
+    expect(mcp).toContain('ServerRunner._serialize 只负责规范化 result dict')
+    expect(mcp).toContain('JSONRPCDispatcher._write_result 构造并写回 `JSONRPCResponse`')
+    expect(mcp).toContain('connection、dispatcher 和 request-context')
     const aider = readFileSync('docs/projects/aider.md', 'utf8')
     expect(aider).toContain('RepoMap 不是“读完全部仓库”')
     expect(aider).toContain('生成补丁不等于任务完成')
+    expect(aider).toContain('lint 默认开启，而且只检查已编辑文件')
+    expect(aider).toContain('test 默认关闭')
+    expect(aider).toContain('shell 命令必须显式回答 yes')
+    expect(aider).toContain('yes-always 也不会放行 shell')
+    expect(aider).toContain('InputOutput.confirm_ask')
+    expect(aider).toContain('explicit_yes_required=True')
+    expect(aider).toContain('Coder.handle_shell_commands')
+    expect(aider).toContain('lint 修复后可能产生第二次提交')
+    expect(aider).toContain('shell 或 test 之后没有第三次自动提交')
+    expect(aider).toContain('commit message 会调用 weak/main model')
+    expect(aider).toContain('parser 只产出 tuples')
+    expect(aider).toContain('写盘发生在 `apply_edits` 和 `InputOutput.write_text`')
+    expect(aider).toContain('lint/test failure 只有在用户确认 Attempt to fix 后才设置 reflected_message')
+    expect(aider).toContain('shell output 只有再次确认后才加入 cur_messages')
+    expect(aider).toContain('不自动触发当前 run_one 的 reflection')
+  })
+
+  it('keeps the approved MCP and Aider file-level source inventories visible', () => {
+    const entrypointCount = (pageId: string) => getProjectPage(pageId).subjects.reduce(
+      (total, subjectId) => total + getProjectSubject(subjectId).entrypoints.length,
+      0,
+    )
+    expect(entrypointCount('project-mcp-python-sdk')).toBe(9)
+    expect(entrypointCount('project-aider')).toBe(8)
+    expect(getProjectSubject('mcp-python-sdk').entrypoints.map((entry) => entry.path))
+      .toContain('src/mcp/shared/jsonrpc_dispatcher.py')
   })
 })
 ```
@@ -2209,7 +2399,7 @@ MCP 统一的是 Host、Client、Server 之间如何描述能力和交换消息�
 
 ## 为什么选
 
-它把第 4 章的“工具契约”落到真实 schema、session 和 transport。读完应能指出协议层、SDK 层与业务层分别负责什么，而不是把 MCP 叫作万能插件市场。
+它把第 4 章的“工具契约”落到真实 schema、dispatcher、runner、transport 和工具对象。读完应能指出协议层、SDK 层与业务层分别负责什么，而不是把 MCP 叫作万能插件市场。
 
 ## 版本与边界
 
@@ -2221,11 +2411,11 @@ MCP 统一的是 Host、Client、Server 之间如何描述能力和交换消息�
 
 <ProjectCallChain project-id="project-mcp-python-sdk" />
 
-图中每一层都可以替换实现，但消息结构、会话生命周期和业务授权不能互相冒充。
+图中每一层都可以替换实现，但消息结构、请求分发和业务授权不能互相冒充。示例里的 basic_tool.py 只注册工具，真正启动服务由宿主调用 `mcp.run`。
 
 ## 唯一纵向调用链
 
-从 `CallToolRequest` 开始，沿注册、查找、协议分发、会话和 stdio 返回结果。阅读时先找“谁决定调用哪个函数”，再找“谁只负责搬运消息”。
+从 `CallToolRequest` 开始，沿宿主的 `MCPServer.run("stdio")`、`stdio_server`、`Server.run` 和 `serve_dual_era_loop` 进入 `JSONRPCDispatcher.run`。JSONRPCDispatcher._dispatch_request 调用 `ServerRunner._on_request`，后者再经 `get_request_handler`、`MCPServer._handle_call_tool`、`MCPServer.call_tool`、`ToolManager.call_tool`、`Tool.run` 到示例 `sum`。返回时 ServerRunner._serialize 只负责规范化 result dict，JSONRPCDispatcher._write_result 构造并写回 `JSONRPCResponse`，最终由 stdio transport 的 `stdout_writer` 输出。
 
 ## 关键源码入口
 
@@ -2235,13 +2425,13 @@ MCP 统一的是 Host、Client、Server 之间如何描述能力和交换消息�
 
 ## 一次请求的数据流
 
-客户端发送带工具名和参数的 `tools/call`。ServerSession 接收协议消息，low-level Server 选择 handler，ToolManager 根据注册表解析工具，Python 函数返回内容或错误，再沿同一会话封装成协议结果。业务系统必须在工具内部或执行层重新校验调用主体、资源范围与副作用。
+客户端发送带工具名和参数的 `tools/call`。Runner 负责连接事实、handler 执行与 result dict 规范化；独立的 JSONRPCDispatcher 读取消息、调用 `ServerRunner._on_request`，并在返回路径构造和写入 `JSONRPCResponse`。stdio 层只提供 reader 与最终的 `stdout_writer`。ServerSession 只是 request-scoped outbound proxy 旁路，不是入站请求的主 dispatcher。高层 handler 把请求交给工具路径后，ToolManager 只负责查找，Tool.run 才负责输入验证、调用函数和结果转换。业务系统仍必须重新校验调用主体、资源范围与副作用。
 
 ## 阅读练习
 
 1. 在 schema 中找到 `CallToolRequest` 与结果类型。
-2. 从 `basic_tool.py` 的注册点追到 ToolManager。
-3. 标出 stdio 只负责传输、不能决定业务权限的证据。
+2. 从宿主启动 `MCPServer.run("stdio")` 追到 dispatcher 的 `_write_result`。
+3. 对比 ToolManager 的查找职责与 Tool.run 的验证、调用和结果转换。
 
 ## 失败边界
 
@@ -2259,7 +2449,7 @@ SDK 不自动提供租户隔离、凭证托管、数据可信度、工具审批�
 
 ## 升级复核
 
-新版本出现时依次比较 schema、版本协商、tool result、session 生命周期和 transport；最后检查 Python SDK 对该规范版本的支持矩阵。只在差异影响本页主链时修订正文。
+新版本出现时依次比较 schema、版本协商、tool result、connection、dispatcher 和 request-context；最后检查 Python SDK 对该规范版本的支持矩阵。只在差异影响本页主链时修订正文。
 
 ## 来源与归因
 
@@ -2290,17 +2480,17 @@ Aider 的价值不只是“在终端里聊天”，而是把仓库识别、上�
 
 <ProjectMeta project-id="project-aider" />
 
-本页固定在 v0.86.0，只追踪一个 edit-block 路径。其他模型适配、语音、网页 UI 和排行榜不进入主链。
+本页固定在 v0.86.0，只追踪一个 edit-block 路径。所选条件是 Git 仓库内启用默认 auto-commit 与 auto-lint，同时保持 auto-test 关闭；其他模型适配、语音、网页 UI 和排行榜不进入主链。
 
 ## 原创建筑图
 
 <ProjectCallChain project-id="project-aider" />
 
-RepoMap 是被预算约束的结构摘要，不是“读完全部仓库”；真正写盘发生在 edit 解析之后。
+RepoMap 不是“读完全部仓库”，而是被预算约束的结构摘要。parser 只产出 tuples，写盘发生在 `apply_edits` 和 `InputOutput.write_text`。
 
 ## 唯一纵向调用链
 
-从 `main` 的仓库预检进入 `Coder.run`，再跟踪 repo map、模型响应、edit-block 解析、`apply_updates` 和 Git 记录。每一步都问：输入来自哪里，失败是否停止，证据保存在哪里。
+从 `main` 进入 `Coder.run` / `Coder.run_one`，由 `Coder.send_message` 组装聊天文件和 RepoMap 上下文，再经 `Coder.send`、`Model.send_completion`、edit tuple 解析、dry run、脏文件预提交、写盘、自动提交和 lint。之后分别观察需确认的 shell、可选 auto-test 与错误 reflection 分支。
 
 ## 关键源码入口
 
@@ -2308,17 +2498,17 @@ RepoMap 是被预算约束的结构摘要，不是“读完全部仓库”；真
 
 ## 一次请求的数据流
 
-用户请求先与明确加入的文件和 RepoMap 组合。Coder 生成消息并请求模型，edit format 把文本限制成结构化修改，应用层检查文件是否可编辑并落盘，随后 lint、命令或 Git diff 提供反馈。下一轮应消费这些环境事实，而不是只相信模型的完成声明。
+用户请求先与明确加入的文件和 RepoMap 组合，`Coder.send` 再通过 `Model.send_completion` 请求模型。`EditBlockCoder.get_edits` 这个 parser 只产出 tuples；`apply_edits_dry_run` 先验证，`prepare_to_edit` 为脏文件做预提交，写盘发生在 `apply_edits` 和 `InputOutput.write_text`。编辑后可先自动提交；commit message 会调用 weak/main model。lint 默认开启，而且只检查已编辑文件，lint 修复后可能产生第二次提交。test 默认关闭；shell 命令必须显式回答 yes：调用 `InputOutput.confirm_ask` 时设置 `explicit_yes_required=True`，所以 yes-always 也不会放行 shell；确认后才由 `Coder.handle_shell_commands` 执行。shell 或 test 之后没有第三次自动提交。lint/test failure 只有在用户确认 Attempt to fix 后才设置 reflected_message；shell output 只有再次确认后才加入 cur_messages，不自动触发当前 run_one 的 reflection。
 
 ## 阅读练习
 
 1. 找出仓库根目录与脏文件在进入 Coder 前如何处理。
 2. 比较 RepoMap 与聊天文件的来源和预算。
-3. 从 `get_edits` 追到 `apply_updates`，记录三个可能停止修改的条件。
+3. 从 `get_edits` 追到 `write_text`，再按 track 标出首次提交、lint 后第二次提交、shell、test 与条件 reflection。
 
 ## 失败边界
 
-当模型输出不能解析为 edit block，正确结果是保留原文件并反馈格式错误；不能用模糊字符串替换“尽量改一下”。当测试命令失败，提交存在也不能被报告为任务成功。
+当模型输出不能解析为 edit block，正确结果是保留原文件并反馈格式错误；不能用模糊字符串替换“尽量改一下”。dry run 或脏文件保护失败也必须在写盘前停止。lint 或 test 错误只有在用户确认 Attempt to fix 后进入 reflection；shell 输出则需要再次确认才进入对话历史。当 lint、shell 或测试命令失败，提交存在也不能被报告为任务成功。
 
 ## 生产边界
 
@@ -2332,7 +2522,7 @@ Aider 不替团队决定需求是否正确，也不自动解决权限、秘密�
 
 ## 升级复核
 
-重点比较 CLI 入口、Coder 生命周期、RepoMap 选择、默认 edit format、文件安全检查和 Git 行为。模型列表或榜单变化只进入更新记录，不自动改写稳定工程结论。
+重点比较 CLI 入口、`run_one` 与 `send_message` 生命周期、RepoMap 选择、edit tuple parser、脏文件预提交、自动 lint/test 默认值、shell 确认和 Git 提交时序。模型列表或榜单变化只进入更新记录，不自动改写稳定工程结论。
 
 ## 来源与归因
 
@@ -3655,7 +3845,7 @@ const projectSubject = {
   verified_at: '2026-09-26',
   review_by: '2026-10-26',
   license_sources: [{ path: 'LICENSE.txt', sha256: licenseDigest }],
-  entrypoints: [{ path: 'aider/main.py', symbol: 'main', responsibility: 'Validate repository arguments.' }],
+  entrypoints: [{ path: 'aider/main.py', symbols: ['main'], responsibility: 'Validate repository arguments.' }],
 }
 
 describe('project freshness checker', () => {
@@ -4737,7 +4927,7 @@ const expected = Object.fromEntries(pageIds.map((pageId) => {
     const subject = subjects[subjectId]
     return [
       subject.pinned_commit,
-      ...subject.entrypoints.flatMap((entry) => [entry.path, entry.symbol, entry.responsibility]),
+      ...subject.entrypoints.flatMap((entry) => [entry.path, ...entry.symbols, entry.responsibility]),
       ...subject.license_sources.map((source) => `${subject.canonical_url}/blob/${subject.pinned_commit}/${source.path}`),
     ]
   })
@@ -5113,7 +5303,7 @@ Send the production site URL, `/projects/` URL, six core URLs, historical URL, c
 - [ ] The overview maps all 13 subjects; watch-only subjects appear nowhere else.
 - [ ] AutoGPT is `active + historical`; Hermes/OpenClaw are `active + watch-only`; Flowise is `eol + archived:true + historical`.
 - [ ] MCP contribution scopes coexist without path-conflict errors; Dify, AutoGPT, and Flowise path scopes resolve by specificity.
-- [ ] Forty-nine source entrypoints exist at their pinned commits.
+- [ ] Fifty-two file-level source entrypoints exist at their pinned commits.
 - [ ] Course denominator is 26; project stage has seven items; engineering path has 17 steps; localStorage keys and old routes are unchanged.
 - [ ] All diagrams are original; direct assets, if any, have exact provenance records.
 - [ ] Source automation reports changes but never edits or publishes content.
