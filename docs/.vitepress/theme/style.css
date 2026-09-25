@@ -404,8 +404,8 @@ body {
 }
 
 .acts-section {
-  color: var(--book-paper-bright);
-  background: var(--book-ink);
+  color: var(--reading-text);
+  background: var(--reading-bg-soft);
 }
 
 .act-list {
@@ -418,20 +418,20 @@ body {
   gap: 2rem;
   align-items: center;
   padding: 2rem 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.25);
-  color: var(--book-paper-bright) !important;
+  border-top: 1px solid var(--reading-rule);
+  color: var(--reading-text) !important;
   text-decoration: none !important;
   transition: padding 180ms ease, color 180ms ease;
 }
 
 .act-list a:last-child {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+  border-bottom: 1px solid var(--reading-rule);
 }
 
 .act-list a:hover,
 .act-list a:focus-visible {
   padding-inline: 1rem;
-  color: var(--book-lime) !important;
+  color: var(--reading-link) !important;
 }
 
 .act-list strong {
@@ -448,7 +448,8 @@ body {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
   gap: 8vw;
-  background: var(--book-coral);
+  background: var(--reading-bg);
+  box-shadow: inset 8px 0 0 var(--reading-risk);
 }
 
 .case-copy {
@@ -464,7 +465,7 @@ body {
 
 .start-section {
   min-height: 76vh;
-  background: var(--book-lime);
+  background: var(--reading-bg-soft);
 }
 
 .start-section .primary-action {

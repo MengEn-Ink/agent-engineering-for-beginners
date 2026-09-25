@@ -10,7 +10,7 @@ description: 从会写 Prompt，到能交付一个可靠的 Agent 系统。
     <div class="hero-copy">
       <p class="eyebrow">AI NATIVE / AGENT ENGINEERING 01</p>
       <h1>别只会和<br><em>AI 聊天</em></h1>
-      <p class="hero-lead">从一句 Prompt 到可靠交付：写给产品、运营、设计和初级开发者的 Agent 工程入门书。</p>
+      <p class="hero-lead">14 章完整手册：从一句 Prompt 到可靠交付，写给产品、运营、设计和初级开发者。</p>
       <div class="hero-actions">
         <a class="primary-action" href="./preface">开始阅读 <span>→</span></a>
         <a class="text-action" href="./case-study/delivery-agent">先看真实案例</a>
@@ -38,8 +38,8 @@ description: 从会写 Prompt，到能交付一个可靠的 Agent 系统。
   </section>
 
   <section class="home-section acts-section">
-    <p class="section-index">01—10 / 全书路线</p>
-    <h2>先认识，再组装，最后上线</h2>
+    <p class="section-index">01—14 / 全书路线</p>
+    <h2>先认识，再组装，再上线，最后进入真实场景</h2>
     <div class="act-list">
       <a href="./chapters/01-ai-native">
         <span>ACT I</span>
@@ -55,6 +55,11 @@ description: 从会写 Prompt，到能交付一个可靠的 Agent 系统。
         <span>ACT III</span>
         <strong>从能跑到敢上线</strong>
         <small>评测 · 证据 · 安全 · 恢复 · 运营</small>
+      </a>
+      <a href="./chapters/11-research-agent">
+        <span>第四篇 / ACT IV</span>
+        <strong>把方法放进真实应用</strong>
+        <small>研究 · 客服运营 · Coding · Computer Use</small>
       </a>
     </div>
   </section>

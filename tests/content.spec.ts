@@ -111,6 +111,43 @@ describe('complete handbook scope', () => {
   })
 })
 
+describe('application chapters', () => {
+  it('publishes all four application routes', () => {
+    const config = readFileSync('docs/.vitepress/config.mts', 'utf8')
+    for (const route of [
+      '/chapters/11-research-agent',
+      '/chapters/12-service-operations-agent',
+      '/chapters/13-coding-agent',
+      '/chapters/14-computer-use',
+    ]) {
+      expect(config).toContain(route)
+    }
+  })
+
+  it('gives each application chapter two first-party sources', () => {
+    const sources = parse(readFileSync('sources/source-index.yml', 'utf8')).sources as Array<{
+      grade: string
+      chapters: string[]
+    }>
+
+    for (const chapter of ['11', '12', '13', '14']) {
+      const firstParty = sources.filter(
+        (source) => source.grade === 'A' && source.chapters.includes(chapter),
+      )
+      expect(firstParty.length, `chapter ${chapter}`).toBeGreaterThanOrEqual(2)
+    }
+  })
+
+  it('states the operating and failure boundaries for every application', () => {
+    const boundaries = ['适合做什么', '不适合做什么', '最低权限', '可接受损失', '人工接管', '最终证据']
+    for (const chapter of applicationChapterFiles) {
+      expect(existsSync(chapter)).toBe(true)
+      const text = readFileSync(chapter, 'utf8')
+      for (const boundary of boundaries) expect(text, chapter).toContain(boundary)
+    }
+  })
+})
+
 describe('reading theme', () => {
   it('uses quiet light and dark reading tokens', () => {
     const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
@@ -496,6 +533,28 @@ describe('reader aids and landing page', () => {
       expect(readme).toContain(command)
     }
     expect(readme).toContain('https://mengen-ink.github.io/agent-engineering-for-beginners/')
+  })
+
+  it('introduces the four-part, fourteen-chapter handbook and worksheets', () => {
+    const home = readFileSync('docs/index.md', 'utf8')
+    const config = readFileSync('docs/.vitepress/config.mts', 'utf8')
+    expect(home).toContain('14 章')
+    expect(home).toContain('第四篇')
+    expect(home).toContain('/chapters/11-research-agent')
+    expect(config).toContain('/appendix/application-matrix')
+    expect(config).toContain('/appendix/chapter-template')
+    expect(existsSync('docs/appendix/application-matrix.md')).toBe(true)
+    expect(existsSync('docs/appendix/chapter-template.md')).toBe(true)
+  })
+
+  it('keeps saturated fields out of long homepage sections', () => {
+    const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
+    const acts = style.match(/\.acts-section\s*\{([\s\S]*?)\}/u)?.[1] ?? ''
+    const caseCallout = style.match(/\.case-callout\s*\{([\s\S]*?)\}/u)?.[1] ?? ''
+    const start = style.match(/\.start-section\s*\{([\s\S]*?)\}/u)?.[1] ?? ''
+    expect(acts).toContain('background: var(--reading-bg-soft)')
+    expect(caseCallout).toContain('background: var(--reading-bg)')
+    expect(start).toContain('background: var(--reading-bg-soft)')
   })
 })
 

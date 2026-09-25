@@ -1,6 +1,6 @@
 # 别只会和 AI 聊天
 
-一本面向产品、运营、设计、初级开发者和技术管理者的中文 AI Native / Agent 工程入门书。
+一本面向产品、运营、设计、初级开发者和技术管理者的中文 AI Native / Agent 工程入门书。全书共 4 篇、14 章，包含研究、客服运营、Coding 与 Computer Use 应用方向。
 
 在线阅读：<https://mengen-ink.github.io/agent-engineering-for-beginners/>
 
