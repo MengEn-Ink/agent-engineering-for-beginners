@@ -159,18 +159,22 @@ export type ContentKind =
   | 'case-study'
   | 'radar'
   | 'appendix'
+  | 'project'
+  | 'lab'
+  | 'capstone'
 
 export interface ContentItem {
   id: string
   route: string
   title: string
+  navTitle?: string
   kind: ContentKind
 }
 
 export const contentItems: ContentItem[] = [
-  { id: 'course', route: '/course/', title: '课程地图', kind: 'course' },
-  { id: 'paths', route: '/paths/', title: '三条阅读路径', kind: 'paths' },
-  { id: 'preface', route: '/preface', title: '序章 · 会聊天，不等于会做事', kind: 'chapter' },
+  { id: 'course', route: '/course/', title: 'Agent 工程完整课程地图', navTitle: '课程地图', kind: 'course' },
+  { id: 'paths', route: '/paths/', title: '三条阅读路径', navTitle: '阅读路径', kind: 'paths' },
+  { id: 'preface', route: '/preface', title: '序章 · 会聊天，不等于会做事', navTitle: '开始阅读', kind: 'chapter' },
   { id: 'chapter-01-ai-native', route: '/chapters/01-ai-native', title: '01 · AI Native 到底 Native 在哪', kind: 'chapter' },
   { id: 'chapter-02-workflow-agent', route: '/chapters/02-workflow-agent', title: '02 · Prompt、Workflow、Agent', kind: 'chapter' },
   { id: 'chapter-03-react', route: '/chapters/03-react', title: '03 · ReAct：想、做、看、再决定', kind: 'chapter' },
@@ -189,7 +193,7 @@ export const contentItems: ContentItem[] = [
   { id: 'frontier-interoperability-identity', route: '/frontier/interoperability-identity', title: 'Agent 互操作与身份', kind: 'frontier' },
   { id: 'frontier-durable-execution', route: '/frontier/durable-execution', title: '长时运行与恢复', kind: 'frontier' },
   { id: 'frontier-agent-security-evaluation', route: '/frontier/agent-security-evaluation', title: 'Agent 安全评测', kind: 'frontier' },
-  { id: 'case-delivery-agent', route: '/case-study/delivery-agent', title: '交付型 Agent 的质量门', kind: 'case-study' },
+  { id: 'case-delivery-agent', route: '/case-study/delivery-agent', title: '交付型 Agent 的质量门', navTitle: '交付型案例', kind: 'case-study' },
   { id: 'radar', route: '/radar/', title: '前沿雷达', kind: 'radar' },
   { id: 'radar-2026-09', route: '/radar/2026-09', title: '2026 年 9 月更新', kind: 'radar' },
   { id: 'appendix-glossary', route: '/appendix/glossary', title: '术语表', kind: 'appendix' },
@@ -211,11 +215,13 @@ export function getContentItem(id: string): ContentItem {
   return item
 }
 
-export function navigationItem(id: string) {
+export function navigationItem(id: string, variant: 'title' | 'nav' = 'title') {
   const item = getContentItem(id)
-  return { text: item.title, link: item.route }
+  return { text: variant === 'nav' ? (item.navTitle ?? item.title) : item.title, link: item.route }
 }
 ```
+
+Add a registry test proving `navigationItem('preface', 'nav').text === '开始阅读'` while `navigationItem('preface').text` remains the canonical long title. This is the only permitted context-specific label mechanism; callers may not pass arbitrary title strings.
 
 - [ ] **Step 4: Run registry tests and verify GREEN**
 
@@ -309,7 +315,32 @@ export const courseStages: CourseStage[] = [
 ]
 ```
 
-Create the 20 `CourseItem` records exactly as specified in section 5.3 of the approved design. Implement:
+Create the 20 `CourseItem` records with the exact `itemId / stageId / prerequisites` from section 5.3 of the approved design and these fixed display fields:
+
+| itemId | outcome | evidence |
+| --- | --- | --- |
+| `preface` | 说清 Agent 工程课程解决什么问题，以及学习顺序为何这样安排 | 一张个人学习目标与已有基础清单 |
+| `chapter-01-ai-native` | 区分 AI-Enhanced 与 AI-Native，并划分模型和确定性代码责任 | 一张 AI Native 改造画布 |
+| `chapter-02-workflow-agent` | 为具体任务选择 Prompt、Workflow 或 Agent | 一份控制方式选择单 |
+| `chapter-03-react` | 设计可观察、可停止、可恢复的 Agent 循环 | 一份行动、观察与停止契约 |
+| `chapter-04-tools-mcp` | 写出窄能力、可授权、可验证的工具契约 | 一份工具契约 YAML 与风险清单 |
+| `frontier-context-engineering` | 为一次决策选择、压缩、隔离和验证上下文 | 一张上下文预算与来源表 |
+| `chapter-05-state-memory` | 分开任务状态、会话、长期偏好、知识和审计 | 一份记忆写入与删除协议 |
+| `chapter-06-loop-graph` | 把分支、并行、汇合和恢复画成显式控制流 | 一张带失败回边的状态图 |
+| `chapter-07-multi-agent` | 判断多 Agent 是否比单 Agent 基线更有价值 | 一份 handoff 契约与角色消融方案 |
+| `frontier-interoperability-identity` | 区分 MCP 与 A2A，并画出身份、授权和委托链 | 一张跨 Agent 委托与审计链路图 |
+| `chapter-08-evaluation` | 联合评估结果、轨迹、业务证据、成本和延迟 | 一组 10 条微型评测样本与评分表 |
+| `chapter-09-safety-recovery` | 为高风险动作设计权限、幂等、补偿和人工接管 | 一张权限与恢复矩阵 |
+| `chapter-10-production` | 设计版本、门禁、灰度、SLO、回滚与退役 | 一份二维上线矩阵与回滚清单 |
+| `frontier-durable-execution` | 设计检查点、租约、重放和版本迁移 | 一份可恢复任务协议 |
+| `frontier-agent-security-evaluation` | 用任务后果和自适应攻击衡量 Agent 劫持风险 | 一张安全评测集结构与指标表 |
+| `chapter-11-research-agent` | 组织检索、证据、冲突与研究结论 | 一份带引用覆盖率的研究计划 |
+| `chapter-12-service-operations-agent` | 设计客服运营中的政策、动作与升级边界 | 一张人工升级与业务回执流程 |
+| `chapter-13-coding-agent` | 约束仓库理解、修改、测试和交付证据 | 一份 Coding Agent 任务与验证契约 |
+| `chapter-14-computer-use` | 为界面操作设计观察、权限和最终证据 | 一张 Computer Use 风险与证据闭环 |
+| `case-delivery-agent` | 把评测、安全和生产门禁组合到一个交付型案例 | 一份可复核的质量门评审记录 |
+
+Do not paraphrase these values during implementation; tests should compare all 20 `outcome` and `evidence` strings against this table. Then implement:
 
 ```ts
 export interface CourseProgress {
@@ -355,7 +386,7 @@ Add:
 ```ts
 import {
   learningStorageKeys,
-  normalizeLearningPath,
+  normalizeCourseRoute,
   readCourseProgress,
 } from '../docs/.vitepress/theme/data/learningState'
 
@@ -363,15 +394,15 @@ describe('course progress input', () => {
   const origin = 'https://mengen-ink.github.io'
 
   it('normalizes only same-origin handbook routes', () => {
-    expect(normalizeLearningPath('/agent-engineering-for-beginners/chapters/01-ai-native/?x=1#top', origin)).toBe('/chapters/01-ai-native')
-    expect(normalizeLearningPath('/agent-engineering-for-beginners/chapters/01-ai-native.html', origin)).toBe('/chapters/01-ai-native')
-    expect(normalizeLearningPath('/agent-engineering-for-beginners/paths/index.html', origin)).toBe('/paths')
-    expect(normalizeLearningPath('https://mengen-ink.github.io/agent-engineering-for-beginners/chapters/01-ai-native', origin)).toBe('/chapters/01-ai-native')
-    expect(normalizeLearningPath('https://evil.example/agent-engineering-for-beginners/chapters/01-ai-native', origin)).toBeNull()
-    expect(normalizeLearningPath('/agent-engineering-for-beginners/%E0%A4%A', origin)).toBeNull()
+    expect(normalizeCourseRoute('/agent-engineering-for-beginners/chapters/01-ai-native/?x=1#top', origin)).toBe('/chapters/01-ai-native')
+    expect(normalizeCourseRoute('/agent-engineering-for-beginners/chapters/01-ai-native.html', origin)).toBe('/chapters/01-ai-native')
+    expect(normalizeCourseRoute('/agent-engineering-for-beginners/paths/index.html', origin)).toBe('/paths')
+    expect(normalizeCourseRoute('https://mengen-ink.github.io/agent-engineering-for-beginners/chapters/01-ai-native', origin)).toBe('/chapters/01-ai-native')
+    expect(normalizeCourseRoute('https://evil.example/agent-engineering-for-beginners/chapters/01-ai-native', origin)).toBeNull()
+    expect(normalizeCourseRoute('/agent-engineering-for-beginners/%E0%A4%A', origin)).toBeNull()
 
     const normalizedRegistryRoutes = contentItems.map((item) =>
-      normalizeLearningPath(item.route, origin),
+      normalizeCourseRoute(item.route, origin),
     )
     expect(normalizedRegistryRoutes.every(Boolean)).toBe(true)
     expect(new Set(normalizedRegistryRoutes).size).toBe(contentItems.length)
@@ -414,7 +445,7 @@ export interface ReadOnlyStorage {
   getItem(key: string): string | null
 }
 
-export function normalizeLearningPath(
+export function normalizeCourseRoute(
   raw: string,
   origin = typeof window === 'undefined' ? 'https://mengen-ink.github.io' : window.location.origin,
   base = '/agent-engineering-for-beginners',
@@ -436,7 +467,7 @@ Implementation rules:
 Use this concrete normalization and read structure:
 
 ```ts
-export function normalizeLearningPath(
+export function normalizeCourseRoute(
   raw: string,
   origin = typeof window === 'undefined' ? 'https://mengen-ink.github.io' : window.location.origin,
   base = '/agent-engineering-for-beginners',
@@ -457,6 +488,12 @@ export function normalizeLearningPath(
   } catch {
     return null
   }
+}
+
+// Preserve the existing string-returning API until Tasks 4 and 6 migrate
+// current consumers to registry IDs and nullable course normalization.
+export function normalizeLearningPath(path: string): string {
+  return normalizeCourseRoute(path) ?? path
 }
 
 export function readCourseProgress(
@@ -500,7 +537,12 @@ pnpm vitest run tests/interview-training.spec.ts
 
 Expected: existing path, bookmark, storage failure, and mastery behavior remains green.
 
-- [ ] **Step 6: Commit the reader**
+- [ ] **Step 6: Verify the intermediate commit still builds**
+
+Run: `pnpm build`
+Expected: build and dist validation pass because existing consumers still call the compatibility `normalizeLearningPath(): string` wrapper.
+
+- [ ] **Step 7: Commit the reader**
 
 ```bash
 git add docs/.vitepress/theme/data/learningState.ts tests/course-map.spec.ts
@@ -579,6 +621,113 @@ Expected: FAIL because paths and freshness still store route strings.
 
 Export raw `readingPathDefinitions` containing only `{ itemId, why }`. Export derived `readingPaths` that resolves every item through `getContentItem` and returns `{ itemId, path, title, why }`, so `ReadingPaths.vue`, `ReadingProgress.vue`, and `findNextReadingStep` continue to work.
 
+Use this exact data shape and derivation:
+
+```ts
+import { getContentItem } from './contentRegistry'
+
+export type ReadingPathId = 'beginner' | 'engineering' | 'interview'
+
+export interface ReadingPathDefinition {
+  id: ReadingPathId
+  title: string
+  summary: string
+  pace: string
+  steps: Array<{ itemId: string; why: string }>
+}
+
+export const readingPathDefinitions: ReadingPathDefinition[] = [
+  {
+    id: 'beginner',
+    title: '小白入门',
+    summary: '先建立 Agent 的完整心智模型，再进入状态、评测、安全和上线。',
+    pace: '8 站 · 约 4–6 小时',
+    steps: [
+      { itemId: 'chapter-01-ai-native', why: '先理解系统为何要重新分工' },
+      { itemId: 'chapter-02-workflow-agent', why: '学会选择最简单的自动化形态' },
+      { itemId: 'chapter-03-react', why: '看懂 Agent 如何行动和观察' },
+      { itemId: 'chapter-04-tools-mcp', why: '给能力加上契约和权限' },
+      { itemId: 'chapter-05-state-memory', why: '别把所有历史都塞回窗口' },
+      { itemId: 'chapter-08-evaluation', why: '从一次答对走向可重复验证' },
+      { itemId: 'chapter-09-safety-recovery', why: '为失败和高风险动作留出口' },
+      { itemId: 'chapter-10-production', why: '把版本、灰度和运营串起来' },
+    ],
+  },
+  {
+    id: 'engineering',
+    title: '工程实战',
+    summary: '围绕工具、状态、Graph、验证和应用边界，形成可以落地的系统设计。',
+    pace: '10 站 · 建议边读边做',
+    steps: [
+      { itemId: 'chapter-02-workflow-agent', why: '避免一开始就过度 Agent 化' },
+      { itemId: 'chapter-03-react', why: '明确观察、停止与恢复' },
+      { itemId: 'chapter-04-tools-mcp', why: '缩小能力与权限边界' },
+      { itemId: 'chapter-05-state-memory', why: '让任务可恢复、信息可治理' },
+      { itemId: 'chapter-06-loop-graph', why: '把分支、汇合和错误边画出来' },
+      { itemId: 'chapter-08-evaluation', why: '同时看结果、轨迹、证据和成本' },
+      { itemId: 'chapter-09-safety-recovery', why: '处理幂等、补偿与接管' },
+      { itemId: 'chapter-10-production', why: '用灰度、SLO 和回滚保护上线' },
+      { itemId: 'chapter-13-coding-agent', why: '把工程原则放进真实仓库任务' },
+      { itemId: 'chapter-14-computer-use', why: '验证高不确定环境里的证据链' },
+    ],
+  },
+  {
+    id: 'interview',
+    title: '面试冲刺',
+    summary: '先补术语，再按高频系统设计主题复习，最后进入 42 道题的训练。',
+    pace: '11 站 · 适合分 3 次复习',
+    steps: [
+      { itemId: 'appendix-glossary', why: '先把容易混淆的概念说清' },
+      { itemId: 'appendix-interview', why: '了解题型与自己的薄弱区' },
+      { itemId: 'chapter-02-workflow-agent', why: '回答方案选择和成本取舍' },
+      { itemId: 'chapter-04-tools-mcp', why: '回答协议、契约与权限边界' },
+      { itemId: 'chapter-05-state-memory', why: '回答上下文和持久化分层' },
+      { itemId: 'chapter-06-loop-graph', why: '回答控制流与恢复设计' },
+      { itemId: 'chapter-07-multi-agent', why: '回答协作收益和额外成本' },
+      { itemId: 'chapter-08-evaluation', why: '把可靠性指标说成可计算公式' },
+      { itemId: 'chapter-09-safety-recovery', why: '处理注入、幂等和人工接管' },
+      { itemId: 'chapter-10-production', why: '完成一轮系统设计串讲' },
+      { itemId: 'appendix-interview-training', why: '用筛选、口答和自评完成闭环' },
+    ],
+  },
+]
+
+export interface ReadingStep {
+  itemId: string
+  path: string
+  title: string
+  why: string
+}
+
+export interface ReadingPath extends Omit<ReadingPathDefinition, 'steps'> {
+  steps: ReadingStep[]
+}
+
+export const readingPaths: ReadingPath[] = readingPathDefinitions.map((path) => ({
+  ...path,
+  steps: path.steps.map((step) => {
+    const item = getContentItem(step.itemId)
+    return { ...step, path: item.route, title: item.title }
+  }),
+}))
+
+export const readingPathById = Object.fromEntries(
+  readingPaths.map((path) => [path.id, path]),
+) as Record<ReadingPathId, ReadingPath>
+
+export function findNextReadingStep(
+  path: ReadingPath,
+  currentPath: string,
+  completed: string[],
+): ReadingStep | undefined {
+  const currentIndex = path.steps.findIndex((step) => step.path === currentPath)
+  if (currentIndex >= 0) {
+    return currentIndex < path.steps.length - 1 ? path.steps[currentIndex + 1] : undefined
+  }
+  return path.steps.find((step) => !completed.includes(step.path))
+}
+```
+
 - [ ] **Step 4: Migrate chapter freshness and Markdown props**
 
 Change `ChapterMeta.path` to `ChapterMeta.itemId`, export `chapterMetaByItemId`, and change the component prop to `itemId`. Mechanically update all 18 tags:
@@ -589,6 +738,53 @@ Change `ChapterMeta.path` to `ChapterMeta.itemId`, export `chapterMetaByItemId`,
 ```
 
 Use each file's exact ID from the approved 20-row table; do not touch surrounding prose.
+
+Apply this complete file-to-ID mapping:
+
+| Markdown file | itemId |
+| --- | --- |
+| `docs/chapters/01-ai-native.md` | `chapter-01-ai-native` |
+| `docs/chapters/02-workflow-agent.md` | `chapter-02-workflow-agent` |
+| `docs/chapters/03-react.md` | `chapter-03-react` |
+| `docs/chapters/04-tools-mcp.md` | `chapter-04-tools-mcp` |
+| `docs/chapters/05-state-memory.md` | `chapter-05-state-memory` |
+| `docs/chapters/06-loop-graph.md` | `chapter-06-loop-graph` |
+| `docs/chapters/07-multi-agent.md` | `chapter-07-multi-agent` |
+| `docs/chapters/08-evaluation.md` | `chapter-08-evaluation` |
+| `docs/chapters/09-safety-recovery.md` | `chapter-09-safety-recovery` |
+| `docs/chapters/10-production.md` | `chapter-10-production` |
+| `docs/chapters/11-research-agent.md` | `chapter-11-research-agent` |
+| `docs/chapters/12-service-operations-agent.md` | `chapter-12-service-operations-agent` |
+| `docs/chapters/13-coding-agent.md` | `chapter-13-coding-agent` |
+| `docs/chapters/14-computer-use.md` | `chapter-14-computer-use` |
+| `docs/frontier/context-engineering.md` | `frontier-context-engineering` |
+| `docs/frontier/interoperability-identity.md` | `frontier-interoperability-identity` |
+| `docs/frontier/durable-execution.md` | `frontier-durable-execution` |
+| `docs/frontier/agent-security-evaluation.md` | `frontier-agent-security-evaluation` |
+
+Use these exact type and lookup changes while leaving every version/source value unchanged:
+
+```ts
+export interface ChapterMeta {
+  itemId: string
+  lastVerified: string
+  reviewBy: string
+  versions: string[]
+  sourceIds: string[]
+  stability: ContentStability
+}
+
+export const chapterMetaByItemId = Object.fromEntries(
+  chapterMeta.map((item) => [item.itemId, item]),
+) as Record<string, ChapterMeta>
+```
+
+In `ChapterFreshness.vue`, use:
+
+```ts
+const props = defineProps<{ itemId: string }>()
+const meta = computed(() => chapterMetaByItemId[props.itemId])
+```
 
 - [ ] **Step 5: Derive interview chapter paths**
 
@@ -629,7 +825,12 @@ pnpm vitest run tests/interview-training.spec.ts
 
 Expected: all tests pass; the existing 42-question counts and 18 freshness records remain unchanged.
 
-- [ ] **Step 7: Commit the migration**
+- [ ] **Step 7: Verify the migrated consumers build**
+
+Run: `pnpm build`
+Expected: VitePress client and SSR bundles build, all 18 freshness blocks render, and dist validation passes.
+
+- [ ] **Step 8: Commit the migration**
 
 ```bash
 git add docs/.vitepress/theme/data docs/.vitepress/theme/components/ChapterFreshness.vue docs/chapters docs/frontier tests
@@ -910,16 +1111,83 @@ Expected: FAIL because tracking and config still use path arrays.
 
 Import `publishedCourseItems` and determine `tracked` from their registry-derived normalized routes. Continue to write the current normalized route into the existing progress/bookmark arrays. Keep selected reading path and next-step logic unchanged; a course item outside the selected path gets mark/bookmark actions but its fallback link is `/paths/`, not an invented next step.
 
+Replace the current route/tracking block with this nullable-safe form:
+
+```ts
+import { publishedCourseItems } from '../data/courseMap'
+import { getContentItem } from '../data/contentRegistry'
+import { normalizeCourseRoute } from '../data/learningState'
+
+const currentPath = computed(() => normalizeCourseRoute(route.path))
+const trackedRoutes = new Set(
+  publishedCourseItems
+    .map((item) => normalizeCourseRoute(getContentItem(item.itemId).route))
+    .filter((path): path is string => path !== null),
+)
+const tracked = computed(() => currentPath.value !== null && trackedRoutes.has(currentPath.value))
+const nextStep = computed(() => currentPath.value === null
+  ? undefined
+  : findNextReadingStep(activePath.value, currentPath.value, state.value.completed))
+
+function toggle(key: 'completed' | 'bookmarks') {
+  if (currentPath.value === null) return
+  const items = state.value[key]
+  const next = items.includes(currentPath.value)
+    ? items.filter((item) => item !== currentPath.value)
+    : [...items, currentPath.value]
+  commit({ ...state.value, [key]: next })
+}
+```
+
+Remove the old `readingPaths.some(...)` tracking expression. Do not add course-page write controls.
+
 - [ ] **Step 4: Replace literal nav targets with registry lookups**
 
 In `config.mts`, import `getContentItem` or `navigationItem`, build the four top-level dropdowns, and build sidebar chapter/frontier/resource entries by item ID. The intended top-level shape is:
 
 ```ts
 nav: [
-  { text: '课程', items: [navigationItem('course'), navigationItem('preface'), navigationItem('paths')] },
-  { text: '实战', items: [navigationItem('case-delivery-agent')] },
+  { text: '课程', items: [navigationItem('course', 'nav'), navigationItem('preface', 'nav'), navigationItem('paths', 'nav')] },
+  { text: '实战', items: [navigationItem('case-delivery-agent', 'nav')] },
   { text: '前沿', items: [navigationItem('radar'), navigationItem('frontier-context-engineering'), navigationItem('frontier-interoperability-identity'), navigationItem('frontier-durable-execution'), navigationItem('frontier-agent-security-evaluation')] },
   { text: '复习', items: [navigationItem('appendix-interview-training'), navigationItem('appendix-interview'), navigationItem('appendix-glossary')] },
+]
+```
+
+Build every sidebar item with `navigationItem(id)` so it uses the canonical full title. Top-level compact entries use `navigationItem(id, 'nav')`; tests must assert `preface` renders “开始阅读” in the top menu and the full “序章 · 会聊天，不等于会做事” in the sidebar.
+
+Use these exact ID lists for the sidebar:
+
+```ts
+const navItems = (ids: string[]) => ids.map((id) => navigationItem(id))
+
+const sidebar = [
+  { text: '课程入口', items: navItems(['course', 'paths']) },
+  { text: '第一篇 · 认识 Agent', collapsed: false, items: navItems([
+    'preface', 'chapter-01-ai-native', 'chapter-02-workflow-agent', 'chapter-03-react',
+  ]) },
+  { text: '第二篇 · 组装 Agent', collapsed: false, items: navItems([
+    'chapter-04-tools-mcp', 'chapter-05-state-memory', 'chapter-06-loop-graph',
+    'chapter-07-multi-agent',
+  ]) },
+  { text: '第三篇 · 敢于上线', collapsed: false, items: navItems([
+    'chapter-08-evaluation', 'chapter-09-safety-recovery', 'chapter-10-production',
+  ]) },
+  { text: '第四篇 · 应用方向', collapsed: false, items: navItems([
+    'chapter-11-research-agent', 'chapter-12-service-operations-agent',
+    'chapter-13-coding-agent', 'chapter-14-computer-use',
+  ]) },
+  { text: '案例研究', items: navItems(['case-delivery-agent']) },
+  { text: '活教材 · 前沿层', items: navItems([
+    'radar', 'radar-2026-09', 'frontier-context-engineering',
+    'frontier-interoperability-identity', 'frontier-durable-execution',
+    'frontier-agent-security-evaluation',
+  ]) },
+  { text: '随手查', items: navItems([
+    'appendix-glossary', 'appendix-review-checklist', 'appendix-reading',
+    'appendix-application-matrix', 'appendix-chapter-template',
+    'appendix-interview', 'appendix-interview-training',
+  ]) },
 ]
 ```
 
@@ -936,7 +1204,12 @@ pnpm vitest run tests/content.spec.ts -t 'public navigation|application chapters
 
 Expected: new integration tests and all legacy route checks pass.
 
-- [ ] **Step 6: Commit navigation integration**
+- [ ] **Step 6: Verify the reorganized navigation builds**
+
+Run: `pnpm build`
+Expected: VitePress renders the registry-derived top nav/sidebar and dist validation passes with no missing route.
+
+- [ ] **Step 7: Commit navigation integration**
 
 ```bash
 git add docs/.vitepress/config.mts docs/.vitepress/theme/components/ReadingProgress.vue tests
@@ -979,6 +1252,164 @@ Expected: FAIL because course-specific styles are absent.
 - [ ] **Step 3: Add restrained course styles**
 
 Use existing `--reading-*` tokens. Desktop uses a vertical rail with numbered stages, thin rules, compact completion text, and no card-grid shadow. At `max-width: 700px`, use one column, preserve all text, keep links at least 44px tall, and use native `<details>` for stages longer than four items. Add focus-visible, print, dark mode, and reduced-motion rules without new saturated backgrounds or continuous animation.
+
+Append this complete course-specific block to `style.css`:
+
+```css
+.course-map {
+  margin: 2.5rem 0;
+  color: var(--reading-text);
+}
+
+.course-progress {
+  display: grid;
+  gap: 0.55rem;
+  margin-bottom: 2rem;
+  padding: 1rem 0;
+  border-block: 1px solid var(--reading-rule);
+}
+
+.course-progress p,
+.course-progress strong {
+  margin: 0;
+}
+
+.course-progress progress,
+.course-stage progress {
+  width: 100%;
+  height: 0.42rem;
+  accent-color: var(--reading-success);
+}
+
+.course-stage-list,
+.course-item-list,
+.course-stage-more ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.course-stage-list {
+  border-top: 1px solid var(--reading-rule);
+}
+
+.course-stage {
+  display: grid;
+  grid-template-columns: minmax(11rem, 0.42fr) 1fr;
+  gap: 1.25rem 2rem;
+  padding: 2rem 0;
+  border-bottom: 1px solid var(--reading-rule);
+}
+
+.course-stage.is-current {
+  box-shadow: inset 4px 0 0 var(--reading-link);
+  padding-left: 1rem;
+}
+
+.course-stage > header {
+  display: grid;
+  gap: 0.45rem;
+  align-content: start;
+}
+
+.course-stage > header > span,
+.course-stage > header > small,
+.course-item small {
+  color: var(--reading-text-soft);
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.72rem;
+}
+
+.course-stage h2 {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: 1.55rem;
+}
+
+.course-stage header p,
+.course-item p,
+.course-stage-boundary {
+  margin: 0;
+  color: var(--reading-text-soft);
+  font-size: 0.9rem;
+  line-height: 1.65;
+}
+
+.course-item-list,
+.course-stage-more ol {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.course-item {
+  display: grid;
+  gap: 0.3rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--reading-rule);
+}
+
+.course-item a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--reading-text);
+  font-weight: 800;
+}
+
+.course-item a:hover,
+.course-item a:focus-visible {
+  color: var(--reading-link);
+}
+
+.course-stage-more {
+  grid-column: 2;
+}
+
+.course-stage-more summary {
+  min-height: 44px;
+  cursor: pointer;
+  color: var(--reading-link);
+  font-weight: 750;
+}
+
+.course-stage-more summary:focus-visible,
+.course-item a:focus-visible {
+  border-radius: 2px;
+  outline: 3px solid var(--reading-link);
+  outline-offset: 3px;
+}
+
+.course-stage-boundary {
+  padding: 1rem;
+  border: 1px dashed var(--reading-rule);
+  background: var(--reading-bg-soft);
+}
+
+@media (max-width: 700px) {
+  .course-stage {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .course-stage-more {
+    grid-column: 1;
+  }
+}
+
+@media print {
+  .course-stage-more[open] summary,
+  .course-progress progress,
+  .course-stage progress {
+    display: none;
+  }
+
+  .course-stage,
+  .course-item {
+    break-inside: avoid;
+  }
+}
+```
 
 - [ ] **Step 4: Update README**
 
