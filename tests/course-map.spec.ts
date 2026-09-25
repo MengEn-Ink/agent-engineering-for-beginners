@@ -319,8 +319,32 @@ describe('course page', () => {
     expect(style).toContain('.course-item')
     expect(style).toContain('@media (max-width: 700px)')
     expect(style).toContain('min-height: 44px')
-    expect(style).toContain('.course-stage-more:not([open]) > *:not(summary)')
     expect(style).toContain('.course-stage-more > summary')
     expect(style).not.toContain('background-attachment: fixed')
+  })
+
+  it('prints deferred course titles outside closed disclosures without duplicate links', () => {
+    const component = readFileSync('docs/.vitepress/theme/components/CourseMap.vue', 'utf8')
+    const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
+    const printStart = style.lastIndexOf('@media print')
+    const screenStyle = style.slice(0, printStart)
+    const printStyle = style.slice(printStart)
+    const fallback = component.match(
+      /<\/details>\s*(<ol class="course-print-items" aria-hidden="true">[\s\S]*?<\/ol>)/u,
+    )?.[1]
+
+    expect(courseStages.flatMap((stage) => stage.itemIds.slice(4))).toEqual([
+      'chapter-07-multi-agent',
+      'frontier-interoperability-identity',
+      'frontier-agent-security-evaluation',
+    ])
+    expect(fallback).toBeDefined()
+    expect(fallback).toContain('stage.itemIds.slice(4)')
+    expect(fallback).toContain('<span>{{ contentById[itemId].title }}</span>')
+    expect(fallback).not.toContain('<a')
+    expect(screenStyle).toMatch(/\.course-print-items\s*\{[^}]*display:\s*none;/u)
+    expect(printStyle).toMatch(/\.course-stage-more,\s*\.course-stage-more > summary,[\s\S]*display:\s*none;/u)
+    expect(printStyle).toMatch(/\.course-print-items\s*\{[^}]*display:\s*grid;/u)
+    expect(style).not.toContain('.course-stage-more:not([open]) > *:not(summary)')
   })
 })

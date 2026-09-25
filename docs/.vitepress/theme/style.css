@@ -2033,6 +2033,13 @@ summary {
   outline-offset: 3px;
 }
 
+.course-print-items {
+  display: none;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
 .course-stage-boundary {
   padding: 1rem;
   border: 1px dashed var(--reading-rule);
@@ -2051,14 +2058,26 @@ summary {
 }
 
 @media print {
+  .course-stage-more,
   .course-stage-more > summary,
   .course-progress progress,
   .course-stage progress {
     display: none;
   }
 
-  .course-stage-more:not([open]) > *:not(summary) {
-    display: block !important;
+  .course-print-items {
+    display: grid;
+    grid-column: 2;
+    gap: 0.75rem;
+  }
+
+  .course-print-items li {
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--reading-rule);
+  }
+
+  .course-print-items span {
+    font-weight: 800;
   }
 
   .course-stage,

@@ -121,6 +121,11 @@ onUnmounted(() => {
               </li>
             </ol>
           </details>
+          <ol class="course-print-items" aria-hidden="true">
+            <li v-for="itemId in stage.itemIds.slice(4)" :key="`print-${itemId}`">
+              <span>{{ contentById[itemId].title }}</span>
+            </li>
+          </ol>
         </template>
       </li>
     </ol>
