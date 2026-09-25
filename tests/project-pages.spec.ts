@@ -190,3 +190,24 @@ describe('MCP and Aider dissections', () => {
     expect(aider).toContain('不自动触发当前 run_one 的 reflection')
   })
 })
+
+describe('OpenHands and benchmark dissections', () => {
+  it('publishes both complete reading-only pages', () => {
+    expectCoreProjectPage('docs/projects/openhands.md', 'project-openhands')
+    expectCoreProjectPage('docs/projects/agent-benchmarks.md', 'project-agent-benchmarks')
+  })
+
+  it('uses the current OpenHands multi-repository boundary', () => {
+    const text = readFileSync('docs/projects/openhands.md', 'utf8')
+    expect(text).toContain('Agent Canvas')
+    expect(text).toContain('software-agent-sdk')
+    expect(text).toContain('不是旧版单体 Python Agent 仓库')
+  })
+
+  it('does not present local fixtures or cross-benchmark scores as official results', () => {
+    const text = readFileSync('docs/projects/agent-benchmarks.md', 'utf8')
+    expect(text).toContain('不能直接横比')
+    expect(text).toContain('不是官方 benchmark 成绩')
+    expect(text).not.toMatch(/本书.*SWE-bench.*(?:得分|准确率|通过率)\s*\d/iu)
+  })
+})
