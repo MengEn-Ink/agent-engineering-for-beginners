@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { chapterMetaByPath, isReviewOverdue, type ContentStability } from '../data/chapterMeta'
+import { chapterMetaByItemId, isReviewOverdue, type ContentStability } from '../data/chapterMeta'
 
-const props = defineProps<{ path: string }>()
-const meta = computed(() => chapterMetaByPath[props.path])
+const props = defineProps<{ itemId: string }>()
+const meta = computed(() => chapterMetaByItemId[props.itemId])
 const reviewStatus = ref<'pending' | 'current' | 'overdue'>('pending')
 const statusLabel = computed(() => ({
   pending: '按日期复核',

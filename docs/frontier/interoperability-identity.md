@@ -5,7 +5,7 @@ description: 分清 MCP 与 A2A 的职责，并把身份、授权、委托和审
 
 # Agent 互操作与身份：能连上，不代表可以替你行动
 
-<ChapterFreshness path="/frontier/interoperability-identity" />
+<ChapterFreshness item-id="frontier-interoperability-identity" />
 
 跨系统协作至少有两个不同问题：一个 Agent 怎样接入工具与上下文，两个独立 Agent 系统又怎样互相发现、分派任务和交付结果。MCP 与 A2A 分别处理这两个方向的互操作，但都不能凭协议名称自动解决业务授权。
 

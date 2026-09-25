@@ -32,6 +32,13 @@ const applicationChapterFiles = [
   'docs/chapters/14-computer-use.md',
 ]
 
+const frontierFiles = [
+  'docs/frontier/context-engineering.md',
+  'docs/frontier/interoperability-identity.md',
+  'docs/frontier/durable-execution.md',
+  'docs/frontier/agent-security-evaluation.md',
+]
+
 function contentCharacterCount(markdown: string) {
   return markdown
     .replace(/^---[\s\S]*?---\s*/u, '')
@@ -443,7 +450,7 @@ describe('chapter freshness', () => {
     const { chapterMeta } = await import(pathToFileURL(join(process.cwd(), dataPath)).href)
 
     expect(chapterMeta).toHaveLength(18)
-    expect(new Set(chapterMeta.map((item: { path: string }) => item.path)).size).toBe(18)
+    expect(new Set(chapterMeta.map((item: { itemId: string }) => item.itemId)).size).toBe(18)
 
     const sourceData = parse(readFileSync('sources/source-index.yml', 'utf8')) as {
       sources: Array<{ id: string }>
@@ -451,7 +458,7 @@ describe('chapter freshness', () => {
     const sourceIds = new Set(sourceData.sources.map((source) => source.id))
 
     for (const item of chapterMeta) {
-      expect(item.path).toMatch(/^\/(chapters|frontier)\//u)
+      expect(item.itemId).toMatch(/^(chapter|frontier)-/u)
       expect(item.lastVerified).toMatch(/^\d{4}-\d{2}-\d{2}$/u)
       expect(item.reviewBy).toMatch(/^\d{4}-\d{2}-\d{2}$/u)
       expect(new Date(item.lastVerified).toString()).not.toBe('Invalid Date')
@@ -467,6 +474,9 @@ describe('chapter freshness', () => {
   it('renders one compact freshness block after every tracked page title', async () => {
     const dataPath = 'docs/.vitepress/theme/data/chapterMeta.ts'
     const { chapterMeta } = await import(pathToFileURL(join(process.cwd(), dataPath)).href)
+    const { getContentItem } = await import(
+      pathToFileURL(join(process.cwd(), 'docs/.vitepress/theme/data/contentRegistry.ts')).href
+    )
     const theme = readFileSync('docs/.vitepress/theme/index.ts', 'utf8')
     const componentPath = 'docs/.vitepress/theme/components/ChapterFreshness.vue'
     const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
@@ -476,13 +486,21 @@ describe('chapter freshness', () => {
     expect(style).toContain('.chapter-freshness')
 
     for (const item of chapterMeta) {
-      const markdown = `docs${item.path}.md`
+      const markdown = `docs${getContentItem(item.itemId).route}.md`
       expect(existsSync(markdown), markdown).toBe(true)
       const text = readFileSync(markdown, 'utf8')
-      const placements = text.match(/<ChapterFreshness\s+path="[^"]+"\s*\/>/gu) ?? []
+      const placements = text.match(/<ChapterFreshness\s+item-id="[^"]+"\s*\/>/gu) ?? []
       expect(placements, markdown).toHaveLength(1)
-      expect(placements[0], markdown).toContain(`path="${item.path}"`)
+      expect(placements[0], markdown).toContain(`item-id="${item.itemId}"`)
       expect(text.indexOf(placements[0]), markdown).toBeGreaterThan(text.indexOf('\n# '))
+    }
+  })
+
+  it('uses one item-id freshness marker per tracked page', () => {
+    for (const file of [...expandedChapterFiles, ...applicationChapterFiles, ...frontierFiles]) {
+      const text = readFileSync(file, 'utf8')
+      expect(text.match(/<ChapterFreshness item-id="[^"]+" \/>/gu)).toHaveLength(1)
+      expect(text).not.toContain('<ChapterFreshness path=')
     }
   })
 

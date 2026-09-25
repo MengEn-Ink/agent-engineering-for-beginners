@@ -5,7 +5,7 @@ description: 先选最便宜、最稳定的控制方式，再决定是否需要�
 
 # Prompt、Workflow、Agent，不是三种包装
 
-<ChapterFreshness path="/chapters/02-workflow-agent" />
+<ChapterFreshness item-id="chapter-02-workflow-agent" />
 
 很多方案把 Prompt、Workflow、Agent 画成三级火箭：Prompt 最初级，Workflow 进阶，Agent 最高级。这个比喻最大的副作用，是让团队为了“先进”而选择更难控制的系统。事实上，它们是三种不同的控制方式，没有谁天然高贵。
 

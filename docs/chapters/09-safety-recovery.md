@@ -5,7 +5,7 @@ description: 重试之前先想清楚副作用，自动化之前先画出最小�
 
 # 失败、恢复与安全边界
 
-<ChapterFreshness path="/chapters/09-safety-recovery" />
+<ChapterFreshness item-id="chapter-09-safety-recovery" />
 
 Agent 连接真实工具后，错误不再只是一段答非所问。它可能重复发消息、覆盖文件、创建多笔订单，或把不该离开系统的数据带出去。安全不能在上线前一天补一条“请谨慎”的 Prompt；它必须和正常流程一起设计。
 

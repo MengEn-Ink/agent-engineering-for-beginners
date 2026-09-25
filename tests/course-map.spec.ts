@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import {
   contentItems,
   getContentItem,
@@ -177,5 +177,33 @@ describe('course progress input', () => {
 
     expect(readCourseProgress({ getItem() { throw new Error('blocked') } })).toEqual({ status: 'blocked', completed: null })
     expect(values.get(learningStorageKeys.progress)).toBe('{broken')
+  })
+})
+
+describe('registry consumers', () => {
+  it('stores path steps as item IDs and derives display fields', async () => {
+    const module = await import('../docs/.vitepress/theme/data/readingPaths')
+    for (const path of module.readingPathDefinitions) {
+      for (const step of path.steps) {
+        expect(step).toEqual({ itemId: expect.any(String), why: expect.any(String) })
+        expect(getContentItem(step.itemId)).toBeDefined()
+      }
+    }
+    for (const path of module.readingPaths) {
+      for (const step of path.steps) {
+        expect(step.path).toBe(getContentItem(step.itemId).route)
+        expect(step.title).toBe(getContentItem(step.itemId).title)
+      }
+    }
+  })
+
+  it('keys chapter freshness and interview routes through content IDs', async () => {
+    const { chapterMeta } = await import('../docs/.vitepress/theme/data/chapterMeta')
+    expect(chapterMeta).toHaveLength(18)
+    expect(chapterMeta.every((meta: { itemId?: string; path?: string }) => meta.itemId && !meta.path)).toBe(true)
+
+    const interviewSource = readFileSync('docs/.vitepress/theme/data/interviewQuestions.ts', 'utf8')
+    expect(interviewSource).not.toContain("'/chapters/")
+    expect(interviewSource).toContain('getContentItem')
   })
 })

@@ -1,3 +1,5 @@
+import { getContentItem } from './contentRegistry'
+
 export type InterviewRole = '工程' | '产品'
 export type InterviewDifficulty = '基础' | '进阶' | '系统设计'
 
@@ -15,21 +17,21 @@ export interface InterviewQuestion {
   pitfall: string
 }
 
-const chapterPaths: Record<number, string> = {
-  1: '/chapters/01-ai-native',
-  2: '/chapters/02-workflow-agent',
-  3: '/chapters/03-react',
-  4: '/chapters/04-tools-mcp',
-  5: '/chapters/05-state-memory',
-  6: '/chapters/06-loop-graph',
-  7: '/chapters/07-multi-agent',
-  8: '/chapters/08-evaluation',
-  9: '/chapters/09-safety-recovery',
-  10: '/chapters/10-production',
-  11: '/chapters/11-research-agent',
-  12: '/chapters/12-service-operations-agent',
-  13: '/chapters/13-coding-agent',
-  14: '/chapters/14-computer-use',
+const chapterItemIds: Record<number, string> = {
+  1: 'chapter-01-ai-native',
+  2: 'chapter-02-workflow-agent',
+  3: 'chapter-03-react',
+  4: 'chapter-04-tools-mcp',
+  5: 'chapter-05-state-memory',
+  6: 'chapter-06-loop-graph',
+  7: 'chapter-07-multi-agent',
+  8: 'chapter-08-evaluation',
+  9: 'chapter-09-safety-recovery',
+  10: 'chapter-10-production',
+  11: 'chapter-11-research-agent',
+  12: 'chapter-12-service-operations-agent',
+  13: 'chapter-13-coding-agent',
+  14: 'chapter-14-computer-use',
 }
 
 function question(
@@ -47,7 +49,7 @@ function question(
   return {
     id,
     chapter,
-    path: chapterPaths[chapter],
+    path: getContentItem(chapterItemIds[chapter]).route,
     topic,
     role,
     difficulty,

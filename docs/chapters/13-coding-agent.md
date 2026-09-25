@@ -5,7 +5,7 @@ description: 让 Agent 在真实仓库里理解、计划、修改、验证和交
 
 # Coding Agent：会写代码，不等于会完成工程任务
 
-<ChapterFreshness path="/chapters/13-coding-agent" />
+<ChapterFreshness item-id="chapter-13-coding-agent" />
 
 代码生成是 Coding Agent 最显眼的能力，却不是最难的部分。真实任务要求它找到正确仓库和分支，理解现有约束，复现问题，修改最小范围，运行有效测试，保留用户改动，解释风险，并把结果交付到可审查的提交或 PR。
 

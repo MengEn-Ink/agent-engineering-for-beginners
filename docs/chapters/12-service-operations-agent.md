@@ -5,7 +5,7 @@ description: 在政策、情绪、业务动作和人工队列之间，设计可�
 
 # 客服与运营 Agent：会说人话，更要守业务边界
 
-<ChapterFreshness path="/chapters/12-service-operations-agent" />
+<ChapterFreshness item-id="chapter-12-service-operations-agent" />
 
 客服是最容易让 Agent 显得聪明的场景，也是最容易把错误变成承诺的场景。模型可以理解口语、总结上下文、匹配知识并生成自然回复；一旦连接订单、退款、优惠和消息工具，它说的每句话都可能推动真实业务。
 

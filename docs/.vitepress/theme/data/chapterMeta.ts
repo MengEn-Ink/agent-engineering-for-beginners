@@ -1,7 +1,7 @@
 export type ContentStability = 'evergreen' | 'evolving' | 'frontier'
 
 export interface ChapterMeta {
-  path: string
+  itemId: string
   lastVerified: string
   reviewBy: string
   versions: string[]
@@ -17,7 +17,7 @@ const quarterlyReview = '2026-12-24'
 
 export const chapterMeta: ChapterMeta[] = [
   {
-    path: '/chapters/01-ai-native',
+    itemId: 'chapter-01-ai-native',
     lastVerified: verified,
     reviewBy: quarterlyReview,
     versions: ['常青原则 · 不绑定模型版本'],
@@ -25,7 +25,7 @@ export const chapterMeta: ChapterMeta[] = [
     stability: 'evergreen',
   },
   {
-    path: '/chapters/02-workflow-agent',
+    itemId: 'chapter-02-workflow-agent',
     lastVerified: verified,
     reviewBy: quarterlyReview,
     versions: ['常青原则 · 不绑定框架版本'],
@@ -33,7 +33,7 @@ export const chapterMeta: ChapterMeta[] = [
     stability: 'evergreen',
   },
   {
-    path: '/chapters/03-react',
+    itemId: 'chapter-03-react',
     lastVerified: verified,
     reviewBy: monthlyReview,
     versions: ['Agent loop · rolling'],
@@ -41,7 +41,7 @@ export const chapterMeta: ChapterMeta[] = [
     stability: 'evolving',
   },
   {
-    path: '/chapters/04-tools-mcp',
+    itemId: 'chapter-04-tools-mcp',
     lastVerified: verified,
     reviewBy: monthlyReview,
     versions: ['MCP 2026-07-28', 'A2A v1.0.1'],
@@ -49,7 +49,7 @@ export const chapterMeta: ChapterMeta[] = [
     stability: 'evolving',
   },
   {
-    path: '/chapters/05-state-memory',
+    itemId: 'chapter-05-state-memory',
     lastVerified: verified,
     reviewBy: monthlyReview,
     versions: ['Sessions · rolling', 'LangGraph · rolling'],
@@ -57,7 +57,7 @@ export const chapterMeta: ChapterMeta[] = [
     stability: 'evolving',
   },
   {
-    path: '/chapters/06-loop-graph',
+    itemId: 'chapter-06-loop-graph',
     lastVerified: verified,
     reviewBy: quarterlyReview,
     versions: ['Graph 原则 · 不绑定框架版本'],
@@ -65,7 +65,7 @@ export const chapterMeta: ChapterMeta[] = [
     stability: 'evergreen',
   },
   {
-    path: '/chapters/07-multi-agent',
+    itemId: 'chapter-07-multi-agent',
     lastVerified: verified,
     reviewBy: monthlyReview,
     versions: ['A2A v1.0.1', 'AutoGen · rolling'],
@@ -73,7 +73,7 @@ export const chapterMeta: ChapterMeta[] = [
     stability: 'evolving',
   },
   {
-    path: '/chapters/08-evaluation',
+    itemId: 'chapter-08-evaluation',
     lastVerified: verified,
     reviewBy: monthlyReview,
     versions: ['ADK evaluation · rolling', 'OTel GenAI · Development'],
@@ -81,7 +81,7 @@ export const chapterMeta: ChapterMeta[] = [
     stability: 'evolving',
   },
   {
-    path: '/chapters/09-safety-recovery',
+    itemId: 'chapter-09-safety-recovery',
     lastVerified: verified,
     reviewBy: monthlyReview,
     versions: ['MCP 2026-07-28', 'OWASP Agentic Top 10 · 2026'],
@@ -89,7 +89,7 @@ export const chapterMeta: ChapterMeta[] = [
     stability: 'evolving',
   },
   {
-    path: '/chapters/10-production',
+    itemId: 'chapter-10-production',
     lastVerified: verified,
     reviewBy: quarterlyReview,
     versions: ['生产化原则 · 不绑定部署平台'],
@@ -97,7 +97,7 @@ export const chapterMeta: ChapterMeta[] = [
     stability: 'evergreen',
   },
   {
-    path: '/chapters/11-research-agent',
+    itemId: 'chapter-11-research-agent',
     lastVerified: verified,
     reviewBy: monthlyReview,
     versions: ['Research Agent · rolling'],
@@ -105,7 +105,7 @@ export const chapterMeta: ChapterMeta[] = [
     stability: 'evolving',
   },
   {
-    path: '/chapters/12-service-operations-agent',
+    itemId: 'chapter-12-service-operations-agent',
     lastVerified: verified,
     reviewBy: monthlyReview,
     versions: ['Operations Agent · rolling'],
@@ -113,7 +113,7 @@ export const chapterMeta: ChapterMeta[] = [
     stability: 'evolving',
   },
   {
-    path: '/chapters/13-coding-agent',
+    itemId: 'chapter-13-coding-agent',
     lastVerified: verified,
     reviewBy: monthlyReview,
     versions: ['Claude Code / Copilot Agent · rolling'],
@@ -121,7 +121,7 @@ export const chapterMeta: ChapterMeta[] = [
     stability: 'evolving',
   },
   {
-    path: '/chapters/14-computer-use',
+    itemId: 'chapter-14-computer-use',
     lastVerified: verified,
     reviewBy: monthlyReview,
     versions: ['Computer Use · rolling'],
@@ -129,7 +129,7 @@ export const chapterMeta: ChapterMeta[] = [
     stability: 'frontier',
   },
   {
-    path: '/frontier/context-engineering',
+    itemId: 'frontier-context-engineering',
     lastVerified: verified,
     reviewBy: monthlyReview,
     versions: ['Context Engineering · rolling'],
@@ -137,7 +137,7 @@ export const chapterMeta: ChapterMeta[] = [
     stability: 'evolving',
   },
   {
-    path: '/frontier/interoperability-identity',
+    itemId: 'frontier-interoperability-identity',
     lastVerified: verified,
     reviewBy: monthlyReview,
     versions: ['MCP 2026-07-28', 'A2A v1.0.1'],
@@ -145,7 +145,7 @@ export const chapterMeta: ChapterMeta[] = [
     stability: 'frontier',
   },
   {
-    path: '/frontier/durable-execution',
+    itemId: 'frontier-durable-execution',
     lastVerified: verified,
     reviewBy: monthlyReview,
     versions: ['Managed Agents · rolling'],
@@ -153,7 +153,7 @@ export const chapterMeta: ChapterMeta[] = [
     stability: 'frontier',
   },
   {
-    path: '/frontier/agent-security-evaluation',
+    itemId: 'frontier-agent-security-evaluation',
     lastVerified: verified,
     reviewBy: monthlyReview,
     versions: ['NIST Agent Hijacking · rolling', 'OTel GenAI · Development'],
@@ -162,7 +162,7 @@ export const chapterMeta: ChapterMeta[] = [
   },
 ]
 
-export const chapterMetaByPath = Object.fromEntries(
-  chapterMeta.map((item) => [item.path, item]),
+export const chapterMetaByItemId = Object.fromEntries(
+  chapterMeta.map((item) => [item.itemId, item]),
 ) as Record<string, ChapterMeta>
 

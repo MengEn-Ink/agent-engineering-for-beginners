@@ -5,7 +5,7 @@ description: 用一张工程路线图，把聪明演示变成可运营、可验�
 
 # 从 Demo 到生产：一张工程路线图
 
-<ChapterFreshness path="/chapters/10-production" />
+<ChapterFreshness item-id="chapter-10-production" />
 
 Demo 的任务是证明“有可能”；生产系统的任务是证明“每天都能在边界内完成”。二者都重要，却不能互相冒充。一个 Demo 可以手动准备完美输入、忽略偶发失败；生产系统要面对脏数据、权限变化、模型升级、网络抖动和用户突然改主意。
 

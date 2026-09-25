@@ -5,7 +5,7 @@ description: AI Native 不是给旧产品贴一层聊天框，而是重新安排
 
 # AI Native 到底 Native 在哪
 
-<ChapterFreshness path="/chapters/01-ai-native" />
+<ChapterFreshness item-id="chapter-01-ai-native" />
 
 “AI Native”听起来像一张很贵的贴纸：把它贴在产品首页，估值仿佛就能多一个零。可工程上真正有意义的 Native，不在宣传词，而在**系统是不是围绕模型的不确定能力重新设计**。
 

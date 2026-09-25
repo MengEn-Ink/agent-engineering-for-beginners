@@ -5,7 +5,7 @@ description: 工具让模型接触真实世界，契约与权限决定它能安�
 
 # 工具与 MCP：给 AI 装上手脚
 
-<ChapterFreshness path="/chapters/04-tools-mcp" />
+<ChapterFreshness item-id="chapter-04-tools-mcp" />
 
 模型本身更像一个坐在资料室里的顾问：会理解、会写、会推测，但不能凭空知道你今天的库存，也不能真的退款。工具把系统连接到搜索、文件、数据库和业务 API；MCP 则提供一种标准化的连接方式。连接上世界的同时，也把世界的风险接了进来。
 

@@ -5,7 +5,7 @@ description: 角色变多会带来专业化，也会带来交接、冲突、成�
 
 # 多 Agent：开会的人多了，事情不一定更快
 
-<ChapterFreshness path="/chapters/07-multi-agent" />
+<ChapterFreshness item-id="chapter-07-multi-agent" />
 
 多 Agent 的演示很吸引人：研究员找资料，写作者成文，审稿人挑错，经理统筹。屏幕上四个名字轮流发言，像一个不会请假的梦之队。工程上真正的问题是：这些角色是否有不同能力和权限？它们如何共享事实？冲突由谁裁决？如果都只是同一个模型换四个头像，可能只是在付四份 token 费用。
 

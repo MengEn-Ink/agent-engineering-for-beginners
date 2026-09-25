@@ -5,7 +5,7 @@ description: Agent 的基本功不是“想很久”，而是通过行动不断�
 
 # ReAct：一边做，一边看，一边修正
 
-<ChapterFreshness path="/chapters/03-react" />
+<ChapterFreshness item-id="chapter-03-react" />
 
 ReAct 常被展开为 Reasoning + Acting。对入门者来说，更安全也更实用的理解是：**维护一份可审计的计划摘要，执行一个动作，读取环境结果，再决定下一步。** 系统不需要展示模型的私有思维链，但必须记录它做了什么、看到了什么、为什么继续或停止。
 

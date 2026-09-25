@@ -5,7 +5,7 @@ description: 让 Agent 在进程重启、上下文切换和版本变化后仍能
 
 # 长时运行：不是让一次对话永远不结束
 
-<ChapterFreshness path="/frontier/durable-execution" />
+<ChapterFreshness item-id="frontier-durable-execution" />
 
 一个持续数小时或数天的 Agent，会经历上下文耗尽、网络中断、工具超时、人工等待、模型升级和执行环境回收。Durable Execution 的目标不是保证进程永不退出，而是让任务在退出后能从明确、可验证的位置继续。
 
