@@ -486,7 +486,7 @@ describe('chapter freshness', () => {
     }
   })
 
-  it('shows stable labels and calculates overdue state only in the browser', () => {
+  it('shows stable labels and renders the overdue state during SSR', async () => {
     const component = readFileSync(
       'docs/.vitepress/theme/components/ChapterFreshness.vue',
       'utf8',
@@ -494,9 +494,18 @@ describe('chapter freshness', () => {
     for (const label of ['常青', '持续演进', '前沿观察', '最后核验', '下次复核', '版本关注']) {
       expect(component).toContain(label)
     }
-    expect(component).toContain('onMounted')
+    expect(component).not.toContain('onMounted')
+    expect(component).toContain('isReviewOverdue')
     expect(component).toContain('需要复核')
     expect(component).toContain('<time')
+
+    const { isReviewOverdue, reviewDateInShanghai } = await import(
+      pathToFileURL(join(process.cwd(), 'docs/.vitepress/theme/data/chapterMeta.ts')).href
+    )
+    const afterMidnightInShanghai = new Date('2026-09-24T16:30:00Z')
+    expect(reviewDateInShanghai(afterMidnightInShanghai)).toBe('2026-09-25')
+    expect(isReviewOverdue('2026-09-24', afterMidnightInShanghai)).toBe(true)
+    expect(isReviewOverdue('2026-09-25', afterMidnightInShanghai)).toBe(false)
   })
 })
 
@@ -511,6 +520,8 @@ describe('local reading paths and progress', () => {
       'engineering',
       'interview',
     ])
+    expect(readingPaths.find((path: { id: string }) => path.id === 'interview')?.steps.at(-1)?.path)
+      .toBe('/appendix/interview-training')
     for (const path of readingPaths) {
       expect(path.title).toEqual(expect.any(String))
       expect(path.summary).toEqual(expect.any(String))
@@ -540,6 +551,18 @@ describe('local reading paths and progress', () => {
     expect(state).not.toContain('fetch(')
   })
 
+  it('never recommends the current page as its own next step', async () => {
+    const dataPath = 'docs/.vitepress/theme/data/readingPaths.ts'
+    const { findNextReadingStep, readingPathById } = await import(
+      pathToFileURL(join(process.cwd(), dataPath)).href
+    )
+    const path = readingPathById.engineering
+    const current = '/chapters/14-computer-use'
+    expect(findNextReadingStep(path, current, [])?.path).not.toBe(current)
+    expect(findNextReadingStep(path, current, path.steps.slice(0, -1).map((step: { path: string }) => step.path)))
+      .toBeUndefined()
+  })
+
   it('publishes an interactive path page and global chapter controls', () => {
     const config = readFileSync('docs/.vitepress/config.mts', 'utf8')
     const theme = readFileSync('docs/.vitepress/theme/index.ts', 'utf8')
@@ -564,6 +587,10 @@ describe('local reading paths and progress', () => {
     expect(progressSource).toContain('标记已读')
     expect(progressSource).toContain('加入书签')
     expect(progressSource).toContain('仅存于当前浏览器')
+    expect(progressSource).toContain('aria-label="阅读进度"')
+    expect(pathsSource).toContain('<ol class="path-step-list" role="list">')
+    expect(pathsSource).toContain('if (saved) announceLearningState()')
+    expect(progressSource).toContain('if (saved) announceLearningState()')
   })
 
   it('styles local controls for touch and narrow screens', () => {
@@ -612,8 +639,11 @@ describe('interview training mode', () => {
       expect(component).toContain(label)
     }
     expect(component).toContain('history.replaceState')
+    expect(component).toContain('window.location.hash')
+    expect(component).toContain('currentQuestion.id')
     expect(component).toContain('aria-pressed')
     expect(component).toContain('window.confirm')
+    expect(component).toContain('if (cleared) mastery.value = {}')
   })
 
   it('keeps the trainer readable and touchable on narrow screens', () => {

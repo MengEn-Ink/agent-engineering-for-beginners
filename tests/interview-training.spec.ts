@@ -6,6 +6,7 @@ import {
   filterInterviewQuestions,
   loadInterviewMastery,
   parseTrainingQuery,
+  questionFromHash,
   saveInterviewMastery,
 } from '../docs/.vitepress/theme/data/interviewTraining'
 
@@ -44,6 +45,13 @@ describe('interview training helpers', () => {
       difficulty: '全部',
       topic: '全部',
     })
+  })
+
+  it('restores a shared question hash only when it belongs to the filtered pool', () => {
+    const engineering = interviewQuestions.filter((question) => question.role === '工程')
+    expect(questionFromHash('#iq-13-b', engineering)?.id).toBe('iq-13-b')
+    expect(questionFromHash('#iq-01-c', engineering)).toBeUndefined()
+    expect(questionFromHash('#missing', engineering)).toBeUndefined()
   })
 
   it('draws from filtered questions without immediately repeating the current item', () => {

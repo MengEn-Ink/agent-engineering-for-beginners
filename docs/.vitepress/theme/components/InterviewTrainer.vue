@@ -11,6 +11,7 @@ import {
   interviewTopics,
   loadInterviewMastery,
   parseTrainingQuery,
+  questionFromHash,
   saveInterviewMastery,
   type InterviewFilters,
   type InterviewMastery,
@@ -34,10 +35,11 @@ const masteryCounts = computed(() => ({
   mastered: interviewQuestions.filter((question) => mastery.value[question.id] === 'mastered').length,
 }))
 
-function syncQuery() {
+function syncUrl() {
   if (!ready.value) return
   const query = buildTrainingQuery(filters.value)
-  const nextUrl = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`
+  const hash = currentQuestion.value ? `#${currentQuestion.value.id}` : ''
+  const nextUrl = `${window.location.pathname}${query ? `?${query}` : ''}${hash}`
   window.history.replaceState(window.history.state, '', nextUrl)
 }
 
@@ -62,20 +64,30 @@ function assess(level: InterviewMastery) {
 
 function resetMastery() {
   if (!window.confirm('清除当前浏览器中 42 道题的掌握度记录？此操作无法撤销。')) return
-  storageAvailable.value = clearInterviewMastery()
-  mastery.value = {}
+  const cleared = clearInterviewMastery()
+  storageAvailable.value = cleared
+  if (cleared) mastery.value = {}
 }
 
 watch(filters, () => {
   resetCurrent()
-  syncQuery()
+  syncUrl()
 }, { deep: true })
+
+watch(currentId, () => {
+  if (!ready.value) return
+  answerVisible.value = false
+  syncUrl()
+})
 
 onMounted(() => {
   filters.value = parseTrainingQuery(window.location.search)
   mastery.value = loadInterviewMastery()
-  currentId.value = filteredQuestions.value[0]?.id ?? null
+  currentId.value = questionFromHash(window.location.hash, filteredQuestions.value)?.id
+    ?? filteredQuestions.value[0]?.id
+    ?? null
   ready.value = true
+  syncUrl()
 })
 </script>
 

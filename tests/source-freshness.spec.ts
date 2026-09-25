@@ -155,6 +155,23 @@ describe('source freshness checker', () => {
     expect(calendar.findings).not.toContain('version_watch')
   })
 
+  it('ignores previous-version labels and accepts latest version without a colon', async () => {
+    const result = await checkSource(
+      { ...baseSource, watch_url: 'https://example.com/spec/' },
+      {
+        fetchImpl: async (url: string) => ({
+          status: 200,
+          url,
+          text: async () => (url.endsWith('/spec/')
+            ? 'Previous version: v1. Latest version v2'
+            : 'spec v1'),
+        }),
+        now: new Date('2026-09-25'),
+      },
+    )
+    expect(result.findings).toContain('version_watch')
+  })
+
   it('retries transient watch failures and reports non-success statuses', async () => {
     let attempts = 0
     const recovered = await checkSource(

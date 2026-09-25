@@ -81,7 +81,7 @@ export function watchedVersionChanged(text, expectedVersion) {
   const explicitPatterns = lifecycle.has(expected)
     ? [new RegExp('status\\s*[:=-]\\s*(Development|Draft|Stable)', 'giu')]
     : [
-        new RegExp(`(?:current\\s+)?(?:protocol\\s+|specification\\s+)?version\\s*[:=-]\\s*${token}`, 'giu'),
+        new RegExp(`(?:current|latest)\\s+(?:protocol\\s+|specification\\s+)?version\\s*[:=-]?\\s*${token}`, 'giu'),
         new RegExp(`(?:current|latest)\\s+(?:release|specification|protocol)(?:\\s+version)?\\s*[:=-]?\\s*${token}`, 'giu'),
       ]
   const fallbackPatterns = lifecycle.has(expected)

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, withBase } from 'vitepress'
-import { readingPathById, readingPaths } from '../data/readingPaths'
+import { findNextReadingStep, readingPathById, readingPaths } from '../data/readingPaths'
 import {
   announceLearningState,
   emptyLearningState,
@@ -20,18 +20,12 @@ const activePath = computed(() => readingPathById[state.value.selectedPath])
 const tracked = computed(() =>
   readingPaths.some((path) => path.steps.some((step) => step.path === currentPath.value)),
 )
-const currentIndex = computed(() =>
-  activePath.value.steps.findIndex((step) => step.path === currentPath.value),
-)
 const completedCount = computed(() =>
   activePath.value.steps.filter((step) => state.value.completed.includes(step.path)).length,
 )
-const nextStep = computed(() => {
-  if (currentIndex.value >= 0 && currentIndex.value < activePath.value.steps.length - 1) {
-    return activePath.value.steps[currentIndex.value + 1]
-  }
-  return activePath.value.steps.find((step) => !state.value.completed.includes(step.path))
-})
+const nextStep = computed(() =>
+  findNextReadingStep(activePath.value, currentPath.value, state.value.completed),
+)
 
 function refresh() {
   state.value = loadLearningState()
@@ -39,8 +33,9 @@ function refresh() {
 
 function commit(next: LearningState) {
   state.value = next
-  storageAvailable.value = saveLearningState(next)
-  announceLearningState()
+  const saved = saveLearningState(next)
+  storageAvailable.value = saved
+  if (saved) announceLearningState()
 }
 
 function toggle(key: 'completed' | 'bookmarks') {
@@ -64,6 +59,13 @@ onUnmounted(() => window.removeEventListener(learningStateEvent, refresh))
     <div class="reading-progress-copy">
       <span>本地阅读 · {{ activePath.title }}</span>
       <strong>{{ completedCount }} / {{ activePath.steps.length }} 站完成</strong>
+      <progress
+        :value="completedCount"
+        :max="activePath.steps.length"
+        aria-label="阅读进度"
+      >
+        {{ completedCount }} / {{ activePath.steps.length }}
+      </progress>
       <small>{{ storageAvailable ? '仅存于当前浏览器' : '本地存储不可用，本页操作不会保留' }}</small>
     </div>
     <div class="reading-progress-actions">

@@ -62,6 +62,18 @@ export function buildTrainingQuery(filters: InterviewFilters): string {
   return params.toString()
 }
 
+export function questionFromHash(
+  hash: string,
+  questions: InterviewQuestion[],
+): InterviewQuestion | undefined {
+  try {
+    const id = decodeURIComponent(hash.replace(/^#/u, ''))
+    return questions.find((question) => question.id === id)
+  } catch {
+    return undefined
+  }
+}
+
 export function chooseRandomQuestion<T extends { id: string }>(
   questions: T[],
   currentId: string | null,

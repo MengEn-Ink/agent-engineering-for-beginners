@@ -25,8 +25,9 @@ function refresh() {
 
 function commit(next: LearningState) {
   state.value = next
-  storageAvailable.value = saveLearningState(next)
-  announceLearningState()
+  const saved = saveLearningState(next)
+  storageAvailable.value = saved
+  if (saved) announceLearningState()
 }
 
 function selectPath(id: ReadingPath['id']) {
@@ -41,8 +42,9 @@ function toggleList(key: 'completed' | 'bookmarks', path: string) {
 
 function clearLocalRecords() {
   if (!window.confirm('清除当前浏览器中的阅读路径、进度和书签？此操作无法撤销。')) return
-  storageAvailable.value = clearLearningState()
-  state.value = emptyLearningState()
+  const cleared = clearLearningState()
+  storageAvailable.value = cleared
+  if (cleared) state.value = emptyLearningState()
 }
 
 onMounted(() => {
@@ -87,7 +89,7 @@ onUnmounted(() => window.removeEventListener(learningStateEvent, refresh))
       </progress>
     </div>
 
-    <ol class="path-step-list">
+    <ol class="path-step-list" role="list">
       <li
         v-for="(step, index) in activePath.steps"
         :key="step.path"

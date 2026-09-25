@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { chapterMetaByPath, type ContentStability } from '../data/chapterMeta'
+import { computed } from 'vue'
+import { chapterMetaByPath, isReviewOverdue, type ContentStability } from '../data/chapterMeta'
 
 const props = defineProps<{ path: string }>()
 const meta = computed(() => chapterMetaByPath[props.path])
-const overdue = ref(false)
+const overdue = computed(() => Boolean(meta.value && isReviewOverdue(meta.value.reviewBy)))
 
 const stabilityLabels: Record<ContentStability, string> = {
   evergreen: '常青',
@@ -12,10 +12,6 @@ const stabilityLabels: Record<ContentStability, string> = {
   frontier: '前沿观察',
 }
 
-onMounted(() => {
-  const today = new Date().toISOString().slice(0, 10)
-  overdue.value = Boolean(meta.value && meta.value.reviewBy < today)
-})
 </script>
 
 <template>

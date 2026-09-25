@@ -63,9 +63,22 @@ export const readingPaths: ReadingPath[] = [
       { path: '/chapters/08-evaluation', title: '评测', why: '把可靠性指标说成可计算公式' },
       { path: '/chapters/09-safety-recovery', title: '安全与恢复', why: '处理注入、幂等和人工接管' },
       { path: '/chapters/10-production', title: '生产化', why: '完成一轮系统设计串讲' },
+      { path: '/appendix/interview-training', title: '随机训练', why: '用筛选、口答和自评完成闭环' },
     ],
   },
 ]
+
+export function findNextReadingStep(
+  path: ReadingPath,
+  currentPath: string,
+  completed: string[],
+): ReadingStep | undefined {
+  const currentIndex = path.steps.findIndex((step) => step.path === currentPath)
+  if (currentIndex >= 0) {
+    return currentIndex < path.steps.length - 1 ? path.steps[currentIndex + 1] : undefined
+  }
+  return path.steps.find((step) => !completed.includes(step.path))
+}
 
 export const readingPathById = Object.fromEntries(
   readingPaths.map((path) => [path.id, path]),
