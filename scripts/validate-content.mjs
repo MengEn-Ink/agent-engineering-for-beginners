@@ -91,7 +91,7 @@ export function validateSourceRegistry(sourcePath) {
   const sources = Array.isArray(data?.sources)
     ? data.sources.map((source) => ({ ...defaults, ...source }))
     : []
-  const required = [
+  const requiredScalars = [
     'id',
     'title',
     'publisher',
@@ -102,8 +102,6 @@ export function validateSourceRegistry(sourcePath) {
     'last_verified',
     'review_by',
     'status',
-    'replaced_by',
-    'impact_chapters',
     'note',
   ]
   const errors = []
@@ -118,11 +116,13 @@ export function validateSourceRegistry(sourcePath) {
   if (sources.length < 15) errors.push('来源索引至少需要 15 条记录')
 
   for (const [index, source] of sources.entries()) {
-    for (const field of required) {
-      if (source?.[field] === undefined || source?.[field] === '') {
-        errors.push(`来源 ${index + 1} 缺少字段 ${field}`)
+    for (const field of requiredScalars) {
+      if (typeof source?.[field] !== 'string' || source[field].trim() === '') {
+        errors.push(`来源 ${index + 1} 的字段 ${field} 必须为非空字符串`)
       }
     }
+    if (source?.replaced_by === undefined) errors.push(`来源 ${index + 1} 缺少字段 replaced_by`)
+    if (source?.impact_chapters === undefined) errors.push(`来源 ${index + 1} 缺少字段 impact_chapters`)
     if (!['A', 'B', 'C'].includes(source?.grade)) errors.push(`来源 ${source?.id} 的 grade 无效`)
     if (!/^https:\/\//.test(source?.url ?? '')) errors.push(`来源 ${source?.id} 不是 HTTPS URL`)
     if (!isValidDate(source?.accessed)) {
@@ -161,6 +161,34 @@ export function validateSourceRegistry(sourcePath) {
     }
     if (source?.replaced_by === source?.id) {
       errors.push(`来源 ${source?.id} 不能用自己作为 replaced_by`)
+    }
+  }
+
+  const replacementById = new Map(
+    sources
+      .filter((source) => typeof source?.id === 'string' && typeof source?.replaced_by === 'string')
+      .map((source) => [source.id, source.replaced_by]),
+  )
+  const reportedCycles = new Set()
+  for (const start of replacementById.keys()) {
+    const path = []
+    const positions = new Map()
+    let current = start
+    while (replacementById.has(current)) {
+      if (positions.has(current)) {
+        const cycle = path.slice(positions.get(current))
+        if (cycle.length > 1) {
+          const key = [...cycle].sort().join('|')
+          if (!reportedCycles.has(key)) {
+            errors.push(`来源 replaced_by 形成循环：${[...cycle, current].join(' -> ')}`)
+            reportedCycles.add(key)
+          }
+        }
+        break
+      }
+      positions.set(current, path.length)
+      path.push(current)
+      current = replacementById.get(current)
     }
   }
 

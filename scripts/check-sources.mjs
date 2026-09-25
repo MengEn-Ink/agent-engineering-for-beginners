@@ -21,7 +21,7 @@ async function fetchWithRetry(url, init, {
   timeoutMs,
   retryAttempts,
   retryDelayMs,
-}) {
+}, parseResponse = null) {
   let lastError = null
   for (let attempt = 1; attempt <= retryAttempts; attempt += 1) {
     try {
@@ -29,16 +29,30 @@ async function fetchWithRetry(url, init, {
         ...init,
         signal: AbortSignal.timeout(timeoutMs),
       })
-      if (!retryableStatuses.has(response.status) || attempt === retryAttempts) {
-        return { response, error: null }
+      if (retryableStatuses.has(response.status)) {
+        if (attempt === retryAttempts) return { response, data: null, error: null, failure: null }
+      } else if (parseResponse && response.status < 400) {
+        try {
+          const data = await parseResponse(response)
+          return { response, data, error: null, failure: null }
+        } catch (error) {
+          lastError = error
+          if (attempt === retryAttempts) {
+            return { response, data: null, error: lastError, failure: 'parse' }
+          }
+        }
+      } else {
+        return { response, data: null, error: null, failure: null }
       }
     } catch (error) {
       lastError = error
-      if (attempt === retryAttempts) return { response: null, error: lastError }
+      if (attempt === retryAttempts) {
+        return { response: null, data: null, error: lastError, failure: 'request' }
+      }
     }
     await wait(retryDelayMs * attempt)
   }
-  return { response: null, error: lastError }
+  return { response: null, data: null, error: lastError, failure: 'request' }
 }
 
 function addHttpFinding(findings, scope, status) {
@@ -58,17 +72,20 @@ function normalizedVersion(value) {
 }
 
 export function watchedVersionChanged(text, expectedVersion) {
-  const token = '(Development|Draft|Stable|\\d{4}-\\d{2}-\\d{2}|v?\\d+(?:\\.\\d+){0,2})'
-  const patterns = [
-    new RegExp(`(?:current|latest|stable)(?:\\s+[A-Za-z]+){0,4}\\s*[:=-]\\s*${token}`, 'giu'),
-    new RegExp(`(?:current|latest|stable)(?:\\s+[A-Za-z]+){0,3}\\s+${token}`, 'giu'),
-    new RegExp(`status\\s*[:=-]\\s*${token}`, 'giu'),
-  ]
+  const expected = normalizedVersion(expectedVersion)
+  const lifecycle = new Set(['development', 'draft', 'stable'])
+  const numericToken = '(\\d{4}-\\d{2}-\\d{2}|v?\\d+(?:\\.\\d+){0,2})'
+  const lifecycleToken = '(Development|Draft|Stable)'
+  const patterns = lifecycle.has(expected)
+    ? [new RegExp(`status\\s*[:=-]\\s*${lifecycleToken}`, 'giu')]
+    : [
+        new RegExp(`(?:current|latest|stable)(?:\\s+[A-Za-z]+){0,4}\\s*[:=-]\\s*${numericToken}`, 'giu'),
+        new RegExp(`(?:current|latest|stable)(?:\\s+[A-Za-z]+){0,3}\\s+${numericToken}`, 'giu'),
+      ]
   const advertised = []
   for (const pattern of patterns) {
     for (const match of text.matchAll(pattern)) advertised.push(match[1])
   }
-  const expected = normalizedVersion(expectedVersion)
   if (advertised.length > 0) {
     return advertised.some((candidate) => normalizedVersion(candidate) !== expected)
   }
@@ -77,6 +94,7 @@ export function watchedVersionChanged(text, expectedVersion) {
 
 export async function checkSource(source, {
   fetchImpl = fetch,
+  githubToken = process.env.GITHUB_TOKEN,
   now = new Date(),
   timeoutMs = 12_000,
   retryAttempts = 3,
@@ -96,10 +114,8 @@ export async function checkSource(source, {
     const response = sourceRequest.response
     httpStatus = response.status
     finalUrl = response.url || source.url
-    if (httpStatus >= 400) {
-      findings.push('broken_link')
-      if (retryableStatuses.has(httpStatus)) findings.push('source_transient_error')
-    }
+    if (retryableStatuses.has(httpStatus)) findings.push('source_transient_error')
+    else if (httpStatus >= 400) findings.push('broken_link')
     if (finalUrl !== source.url) findings.push('redirected')
   } else {
     findings.push('unreachable')
@@ -111,14 +127,15 @@ export async function checkSource(source, {
     const watchRequest = await fetchWithRetry(source.watch_url, {
       redirect: 'follow',
       headers: { 'user-agent': 'agent-engineering-handbook-source-check/1.0' },
-    }, requestOptions)
-    if (!watchRequest.response) {
+    }, requestOptions, async (response) => (await response.text()).slice(0, 256_000))
+    if (watchRequest.failure === 'parse') {
+      findings.push('watch_parse_error')
+    } else if (!watchRequest.response) {
       findings.push('watch_unreachable')
     } else if (watchRequest.response.status >= 400) {
       addHttpFinding(findings, 'watch', watchRequest.response.status)
     } else {
-      const watchText = (await watchRequest.response.text()).slice(0, 256_000)
-      if (watchedVersionChanged(watchText, source.version)) findings.push('version_watch')
+      if (watchedVersionChanged(watchRequest.data, source.version)) findings.push('version_watch')
     }
   }
 
@@ -128,18 +145,22 @@ export async function checkSource(source, {
     const githubHeaders = {
       accept: 'application/vnd.github+json',
       'user-agent': 'agent-engineering-handbook-source-check/1.0',
+      ...(githubToken ? { authorization: `Bearer ${githubToken}` } : {}),
     }
     const metadataRequest = await fetchWithRetry(
       `https://api.github.com/repos/${owner}/${repositoryName}`,
       { headers: githubHeaders },
       requestOptions,
+      (response) => response.json(),
     )
-    if (!metadataRequest.response) {
+    if (metadataRequest.failure === 'parse') {
+      findings.push('repository_metadata_parse_error')
+    } else if (!metadataRequest.response) {
       findings.push('repository_metadata_unreachable')
     } else if (metadataRequest.response.status >= 400) {
       addApiFinding(findings, 'repository_api', metadataRequest.response.status)
     } else {
-      const metadata = await metadataRequest.response.json()
+      const metadata = metadataRequest.data
       repository = {
         archived: Boolean(metadata.archived),
         pushed_at: metadata.pushed_at ?? null,
@@ -156,15 +177,18 @@ export async function checkSource(source, {
       `https://api.github.com/repos/${owner}/${repositoryName}/releases/latest`,
       { headers: githubHeaders },
       requestOptions,
+      (response) => response.json(),
     )
-    if (!releaseRequest.response) {
+    if (releaseRequest.failure === 'parse') {
+      findings.push('repository_release_parse_error')
+    } else if (!releaseRequest.response) {
       findings.push('repository_release_unreachable')
     } else if (releaseRequest.response.status === 404) {
       // A repository can legitimately have no releases.
     } else if (releaseRequest.response.status >= 400) {
       addApiFinding(findings, 'repository_release_api', releaseRequest.response.status)
     } else {
-      const release = await releaseRequest.response.json()
+      const release = releaseRequest.data
       if (!repository) {
         repository = { archived: null, pushed_at: null, latest_release: null, release_published_at: null }
       }
@@ -254,6 +278,7 @@ export async function runSourceCheck({
   outputMarkdown = resolve('reports/source-freshness.md'),
   strict = false,
   fetchImpl = fetch,
+  githubToken = process.env.GITHUB_TOKEN,
   now = new Date(),
 } = {}) {
   const schemaErrors = validateSourceRegistry(sourcePath)
@@ -288,7 +313,7 @@ export async function runSourceCheck({
   const results = await mapWithConcurrency(
     sources,
     6,
-    (source) => checkSource(source, { fetchImpl, now }),
+    (source) => checkSource(source, { fetchImpl, githubToken, now }),
   )
   const report = buildFreshnessReport(results, now.toISOString())
   mkdirSync(dirname(outputJson), { recursive: true })

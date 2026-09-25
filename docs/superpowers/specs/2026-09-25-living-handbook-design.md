@@ -53,11 +53,12 @@
 - 对 URL 发起带超时的 GET，记录最终 URL、HTTP 状态和重定向；
 - 对 GitHub 仓库读取公开 API 的 `archived`、`pushed_at` 和 latest release；
 - 比较固定版本与 watch 页面可发现的版本提示；
-- 标记 `broken_link`、`redirected`、`review_due`、`repository_archived`、`version_watch`；
+- 标记永久失效、瞬时 HTTP/网络/解析失败、重定向、复核到期、仓库归档或更新、latest release 与 `version_watch`；数字版本与 `Draft / Development / Stable` 生命周期状态分型比较；
 - 生成 `reports/source-freshness.json` 和 `.md`；
+- 对瞬时故障做有限重试，所有未完成的检查都必须成为待审项，不能计入 healthy；
 - 默认始终以 0 退出，让 workflow 能创建 Issue；`--strict` 用于本地/发布门禁，只对 schema 和确定失效返回非零。
 
-每周 workflow 使用 `actions/github-script` 查找标题固定的开放 Issue：有问题则创建或更新，无问题则关闭旧 Issue。权限只有 `contents: read`、`issues: write`，不写源码。
+每周 workflow 使用 `actions/github-script` 查找标题固定的开放 Issue：有问题则创建或更新，无问题则关闭旧 Issue。扫描 job 只有 `contents: read`，checkout 不持久化凭证；报告经 artifact 交给仅在默认分支运行的 Issue job，只有后者拥有 `issues: write`，两者都不写源码。
 
 ## 前沿雷达
 

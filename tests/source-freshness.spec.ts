@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { stringify } from 'yaml'
 import { buildFreshnessReport, checkSource, runSourceCheck } from '../scripts/check-sources.mjs'
 import { validateSourceRegistry } from '../scripts/validate-content.mjs'
 
@@ -44,6 +45,17 @@ describe('source freshness checker', () => {
     expect(JSON.stringify(broken)).not.toContain('not found body')
   })
 
+  it('keeps exhausted transient source failures separate from permanent broken links', async () => {
+    const result = await checkSource(baseSource, {
+      fetchImpl: async () => ({ status: 503, url: baseSource.url, text: async () => '' }),
+      now: new Date('2026-09-25'),
+      retryAttempts: 2,
+      retryDelayMs: 0,
+    })
+    expect(result.findings).toContain('source_transient_error')
+    expect(result.findings).not.toContain('broken_link')
+  })
+
   it('reports review dates and watched versions', async () => {
     const result = await checkSource(
       { ...baseSource, review_by: '2026-09-24', watch_url: 'https://example.com/spec/' },
@@ -72,6 +84,23 @@ describe('source freshness checker', () => {
       },
     )
     expect(result.findings).toContain('version_watch')
+  })
+
+  it('does not compare a lifecycle status with a numeric version', async () => {
+    const result = await checkSource(
+      { ...baseSource, watch_url: 'https://example.com/spec/' },
+      {
+        fetchImpl: async (url: string) => ({
+          status: 200,
+          url,
+          text: async () => (url.endsWith('/spec/')
+            ? 'Current version: v1. Status: Stable'
+            : 'spec v1'),
+        }),
+        now: new Date('2026-09-25'),
+      },
+    )
+    expect(result.findings).not.toContain('version_watch')
   })
 
   it('retries transient watch failures and reports non-success statuses', async () => {
@@ -121,6 +150,65 @@ describe('source freshness checker', () => {
       },
     )
     expect(missing.findings).toContain('watch_http_error')
+  })
+
+  it('retries response parsing and reports exhausted body or JSON failures', async () => {
+    let watchParses = 0
+    const recovered = await checkSource(
+      { ...baseSource, watch_url: 'https://example.com/spec/' },
+      {
+        fetchImpl: async (url: string) => ({
+          status: 200,
+          url,
+          text: async () => {
+            if (!url.endsWith('/spec/')) return 'spec v1'
+            watchParses += 1
+            if (watchParses === 1) throw new Error('truncated body')
+            return 'Current version: v1'
+          },
+        }),
+        now: new Date('2026-09-25'),
+        retryAttempts: 2,
+        retryDelayMs: 0,
+      },
+    )
+    expect(watchParses).toBe(2)
+    expect(recovered.findings).not.toContain('watch_parse_error')
+
+    const invalidJson = await checkSource(
+      { ...baseSource, url: 'https://github.com/example/agent' },
+      {
+        fetchImpl: async (url: string) => {
+          if (url.endsWith('/releases/latest')) return { status: 404, url }
+          if (url.startsWith('https://api.github.com/')) {
+            return { status: 200, url, json: async () => { throw new Error('invalid json') } }
+          }
+          return { status: 200, url }
+        },
+        now: new Date('2026-09-25'),
+        retryAttempts: 2,
+        retryDelayMs: 0,
+      },
+    )
+    expect(invalidJson.findings).toContain('repository_metadata_parse_error')
+
+    const invalidWatchBody = await checkSource(
+      { ...baseSource, watch_url: 'https://example.com/spec/' },
+      {
+        fetchImpl: async (url: string) => ({
+          status: 200,
+          url,
+          text: async () => {
+            if (url.endsWith('/spec/')) throw new Error('truncated body')
+            return 'spec v1'
+          },
+        }),
+        now: new Date('2026-09-25'),
+        retryAttempts: 2,
+        retryDelayMs: 0,
+      },
+    )
+    expect(invalidWatchBody.findings).toContain('watch_parse_error')
   })
 
   it('detects archived GitHub repositories', async () => {
@@ -175,6 +263,29 @@ describe('source freshness checker', () => {
       retryAttempts: 1,
     })
     expect(denied.findings).toContain('repository_api_error')
+  })
+
+  it('sends a read token only to GitHub API requests', async () => {
+    const seen = new Map<string, string | undefined>()
+    await checkSource({ ...baseSource, url: 'https://github.com/example/agent' }, {
+      githubToken: 'read-only-token',
+      fetchImpl: async (url: string, init?: { headers?: Record<string, string> }) => {
+        seen.set(url, init?.headers?.authorization)
+        if (url.endsWith('/releases/latest')) return { status: 404, url }
+        if (url.startsWith('https://api.github.com/')) {
+          return {
+            status: 200,
+            url,
+            json: async () => ({ archived: false, pushed_at: '2026-09-20T00:00:00Z' }),
+          }
+        }
+        return { status: 200, url }
+      },
+      now: new Date('2026-09-25'),
+    })
+    expect(seen.get('https://github.com/example/agent')).toBeUndefined()
+    expect(seen.get('https://api.github.com/repos/example/agent')).toBe('Bearer read-only-token')
+    expect(seen.get('https://api.github.com/repos/example/agent/releases/latest')).toBe('Bearer read-only-token')
   })
 
   it('builds a stable summary for issue automation', () => {
@@ -250,6 +361,47 @@ sources:
       rmSync(fixtureDir, { recursive: true, force: true })
     }
   })
+
+  it('rejects null required scalars and cycles across replacement chains', () => {
+    const fixtureDir = mkdtempSync(join(tmpdir(), 'source-freshness-cycle-'))
+    const sourcePath = join(fixtureDir, 'source-index.yml')
+    const sources = Array.from({ length: 15 }, (_, index) => ({
+      id: `source-${index + 1}`,
+      title: `Source ${index + 1}`,
+      publisher: 'Example',
+      url: `https://example.com/${index + 1}`,
+      grade: 'A',
+      accessed: '2026-09-25',
+      impact_chapters: ['01'],
+      note: 'Fixture',
+    }))
+    sources[0].title = null as unknown as string
+    ;(sources[0] as Record<string, unknown>).version = null
+    ;(sources[0] as Record<string, unknown>).replaced_by = 'source-2'
+    ;(sources[1] as Record<string, unknown>).replaced_by = 'source-1'
+    writeFileSync(sourcePath, stringify({
+      schema_version: 2,
+      source_defaults: {
+        version: 'rolling',
+        last_verified: '2026-09-25',
+        review_by: '2026-10-25',
+        status: 'active',
+        replaced_by: null,
+      },
+      sources,
+    }), 'utf8')
+
+    try {
+      const errors = validateSourceRegistry(sourcePath)
+      expect(errors).toEqual(expect.arrayContaining([
+        expect.stringContaining('title'),
+        expect.stringContaining('version'),
+        expect.stringContaining('replaced_by 形成循环'),
+      ]))
+    } finally {
+      rmSync(fixtureDir, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('source freshness automation', () => {
@@ -267,6 +419,7 @@ describe('source freshness automation', () => {
     expect(workflow).toContain('download-artifact@v4')
     expect(workflow).toContain('concurrency:')
     expect(workflow).toContain('github.event.repository.default_branch')
+    expect(workflow).toContain('GITHUB_TOKEN: ${{ github.token }}')
     expect(workflow).not.toContain('contents: write')
     expect(workflow).not.toContain('git push')
   })

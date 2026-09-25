@@ -39,6 +39,8 @@ jobs:
 
       - name: Check sources
         run: pnpm sources:check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Upload freshness report
         uses: actions/upload-artifact@v4
