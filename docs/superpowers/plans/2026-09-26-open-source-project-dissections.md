@@ -3467,13 +3467,3 @@ Send the final branch HEAD, commit list, test counts, real project freshness sum
 ## Delivery handoff
 
 After the plan passes review, execute it from a fresh implementation worktree based on `main@815d761`. Use a fresh implementation agent for each task, then run both a specification review and a code-quality review before moving to the next task. Do not merge or deploy until the final acceptance task and reviewer approval are complete.
-
-
-
-
-
-
-
-
-
-
