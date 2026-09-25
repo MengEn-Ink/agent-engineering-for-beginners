@@ -86,6 +86,35 @@
 
 阶段 05 只链接已经存在的交付型案例，并明确它是模式推演。阶段 06 只在课程关系图中说明后续方向，不渲染“开始实验”按钮，也不计入总进度。这样既呈现完整课堂体系，又不制造“已经有 Lab”的错觉。
 
+### 5.3 二十个课程 item 权威表
+
+下表是第一阶段实现的唯一课程集合。`prerequisites` 表示理解依赖，不表示读者必须按线性顺序解锁；页面始终允许直接访问。
+
+| # | 稳定 ID | 规范路由 | 阶段 | prerequisites |
+| ---: | --- | --- | --- | --- |
+| 1 | `preface` | `/preface` | `foundation` | 无 |
+| 2 | `chapter-01-ai-native` | `/chapters/01-ai-native` | `foundation` | `preface` |
+| 3 | `chapter-02-workflow-agent` | `/chapters/02-workflow-agent` | `foundation` | `chapter-01-ai-native` |
+| 4 | `chapter-03-react` | `/chapters/03-react` | `foundation` | `chapter-02-workflow-agent` |
+| 5 | `chapter-04-tools-mcp` | `/chapters/04-tools-mcp` | `mechanisms` | `chapter-03-react` |
+| 6 | `frontier-context-engineering` | `/frontier/context-engineering` | `mechanisms` | `chapter-03-react` |
+| 7 | `chapter-05-state-memory` | `/chapters/05-state-memory` | `mechanisms` | `chapter-03-react` |
+| 8 | `chapter-06-loop-graph` | `/chapters/06-loop-graph` | `mechanisms` | `chapter-05-state-memory` |
+| 9 | `chapter-07-multi-agent` | `/chapters/07-multi-agent` | `mechanisms` | `chapter-06-loop-graph` |
+| 10 | `frontier-interoperability-identity` | `/frontier/interoperability-identity` | `mechanisms` | `chapter-04-tools-mcp`, `chapter-07-multi-agent` |
+| 11 | `chapter-08-evaluation` | `/chapters/08-evaluation` | `engineering` | `chapter-03-react` |
+| 12 | `chapter-09-safety-recovery` | `/chapters/09-safety-recovery` | `engineering` | `chapter-04-tools-mcp`, `chapter-08-evaluation` |
+| 13 | `chapter-10-production` | `/chapters/10-production` | `engineering` | `chapter-08-evaluation`, `chapter-09-safety-recovery` |
+| 14 | `frontier-durable-execution` | `/frontier/durable-execution` | `engineering` | `chapter-05-state-memory`, `chapter-06-loop-graph`, `chapter-09-safety-recovery` |
+| 15 | `frontier-agent-security-evaluation` | `/frontier/agent-security-evaluation` | `engineering` | `chapter-08-evaluation`, `chapter-09-safety-recovery` |
+| 16 | `chapter-11-research-agent` | `/chapters/11-research-agent` | `applications` | `chapter-07-multi-agent`, `chapter-08-evaluation` |
+| 17 | `chapter-12-service-operations-agent` | `/chapters/12-service-operations-agent` | `applications` | `chapter-04-tools-mcp`, `chapter-09-safety-recovery` |
+| 18 | `chapter-13-coding-agent` | `/chapters/13-coding-agent` | `applications` | `chapter-04-tools-mcp`, `chapter-08-evaluation`, `chapter-09-safety-recovery` |
+| 19 | `chapter-14-computer-use` | `/chapters/14-computer-use` | `applications` | `chapter-04-tools-mcp`, `chapter-09-safety-recovery` |
+| 20 | `case-delivery-agent` | `/case-study/delivery-agent` | `projects` | `chapter-08-evaluation`, `chapter-09-safety-recovery`, `chapter-10-production` |
+
+表中 20 条全部计入当前公开课程完成度。`capstone` 是 `relationship-only` 阶段，当前没有 item，不进入分母。前沿专题是已发布的深化内容，因此进入相应阶段和总分母；它们的成熟度仍由 `chapterMeta` 单独展示，课程地图不会把“已阅读”解释成“技术已稳定”。
+
 ## 6. `/course/` 与 `/paths/` 的职责边界
 
 | 维度 | `/course/` 课程地图 | `/paths/` 阅读路径 |
@@ -94,14 +123,16 @@
 | 顺序 | 稳定的依赖顺序 | 小白 / 工程 / 面试三种子序列 |
 | 内容来源 | 引用现有页面 | 引用同一批现有页面 |
 | 个性化 | 只叠加完成状态，不改变课程结构 | 保存用户选择的路径并推荐下一站 |
-| 状态写入 | 不新增键；可调用现有“标记已读”动作 | 继续拥有路径选择、已读和书签交互 |
+| 状态写入 | 只读展示，不提供标记、书签或清除动作 | 继续拥有路径选择、已读和书签交互 |
 | 未上线模块 | 只描述依赖关系，不产生链接和进度 | 不出现 |
 
 课程地图不会复制章节摘要、面试答案或项目说明。每个课程项只有一句学习目的、先修关系、完成证据和原页面链接。
 
 ## 7. 数据边界与稳定接口
 
-新增一个只包含已发布资源的课程目录，例如：
+新增一个全站共享的 `contentRegistry`，作为稳定 `id + route + title` 的唯一数据源。`courseMap`、`readingPaths`、`chapterMeta`、面试题章节链接和 VitePress 导航都只保存或引用 item ID，不再各自硬编码同一路由和标题。
+
+设计接口如下：
 
 ```ts
 type CourseStageId =
@@ -112,12 +143,16 @@ type CourseStageId =
   | 'projects'
   | 'capstone'
 
-type CourseItem = {
+type ContentItem = {
   id: string
-  stageId: CourseStageId
   kind: 'chapter' | 'frontier' | 'case-study' | 'project' | 'lab' | 'capstone'
   title: string
   route: string
+}
+
+type CourseItem = {
+  itemId: ContentItem['id']
+  stageId: CourseStageId
   prerequisites: string[]
   outcome: string
   evidence: string
@@ -129,16 +164,25 @@ type CourseStage = {
   title: string
   purpose: string
   availability: 'published' | 'relationship-only'
-  itemIds: string[]
+  itemIds: ContentItem['id'][]
+}
+
+type ReadingPathStep = {
+  itemId: ContentItem['id']
+  why: string
 }
 ```
 
 约束如下：
 
-- `route` 必须对应构建产物中的公开页面；不存在的路由不能进入数据。
-- `id` 稳定且唯一，显示名称可以调整；阶段只能引用已登记的 item。
+- `contentRegistry` 至少登记本设计 20 个课程 item，以及阅读路径会使用的术语表、面试索引和面试训练页；所有导航目标也必须先登记。
+- `route` 必须对应构建产物中的公开页面；不存在的路由不能进入 registry。
+- `id` 和规范化后的 `route` 都必须唯一，显示名称可以调整；其他数据文件只能引用已登记 ID。
 - `prerequisites` 必须无环，且只能引用已登记 item。
-- 同一路由只登记一次；多个阅读路径通过 ID 引用，不复制描述。
+- `readingPaths` 从当前 `{ path, title, why }` 迁移为 `{ itemId, why }`；运行时从 registry 派生 path 与 title。
+- `chapterMeta` 以 `itemId` 为键；`InterviewQuestion` 保留 chapter 编号，但通过对应 chapter item ID 派生 path。
+- `config.mts` 的顶栏、侧栏和页脚目标通过 registry 查询；配置中不再重复章节 route 与 title 字面量。
+- localStorage 继续保存规范化 route 字符串，而不是 item ID，确保现有用户数据无需迁移。
 - `relationship-only` 阶段可以说明依赖与未来验收条件，但 `itemIds` 必须为空，不计入进度，也不能渲染链接或动作。
 - 后续项目页只有在页面、来源、固定 commit、许可证和验收同时就绪后，才作为 `project` 类型扩展进入目录。
 - 后续 Lab 需要独立的运行元数据；课程目录不预先定义依赖、命令或“可运行”状态。
@@ -152,7 +196,37 @@ type CourseStage = {
 - `agent-handbook:bookmarks`
 - `agent-handbook:interview-mastery`
 
-课程地图通过 `CourseItem.route` 与 `progress` 中的路由字符串求交集，计算阶段完成数。它不迁移、不重写、不清空现有数据。localStorage 不可用或数据损坏时，课程链接仍完整可用，只隐藏个性化完成状态并显示本地存储不可用提示。
+课程地图通过 `CourseItem.itemId → contentRegistry.route` 与 `progress` 中的规范化路由求交集，计算阶段完成数。它不迁移、不重写、不清空现有数据。`/course/` 本身没有“标记已读”按钮；标记动作仍只存在于内容页底部和 `/paths/`。
+
+新增一个不破坏现有调用方的状态读取接口：
+
+```ts
+type LearningStateRead =
+  | { status: 'available'; state: LearningState }
+  | { status: 'corrupt'; state: null }
+  | { status: 'blocked'; state: null }
+```
+
+- 键不存在或合法空数组属于 `available`，显示 `0 / 20`；
+- `getItem` 抛错属于 `blocked`，显示“本地进度不可用”；
+- JSON 无法解析、不是数组或含非字符串元素属于 `corrupt`，显示“本地进度数据损坏”；
+- `corrupt` 与 `blocked` 都不回退成“0 项完成”，也不覆盖、删除或修复原值；
+- 现有 `loadLearningState()` 可以保留兼容包装，但 `/course/` 必须使用带状态结果的接口。
+
+### 路由规范化算法
+
+读取完成记录时，对 registry route 和 localStorage route 使用同一个纯函数：
+
+1. 以站点 origin 为基准解析绝对或相对 URL；解析失败则视为未知项；
+2. 只取 pathname，移除 query 与 hash；
+3. 仅在路径等于 base 或以 `${base}/` 开头时移除 `/agent-engineering-for-beginners`；
+4. 解码合法的百分号编码；解码失败则视为未知项；
+5. 把重复斜杠折叠为一个；
+6. 把末尾 `/index.html` 或 `/index` 归一到父目录；
+7. 移除末尾 `.html`；
+8. 除根路径外移除尾斜杠。
+
+未知旧路由不参与课程分子或分母，但必须原样保留在 localStorage；课程页是只读投影，不触发清理。
 
 ## 8. 导航设计
 
@@ -208,11 +282,22 @@ localStorage progress（可选、浏览器本地）
 /paths/ selectedPath ── 只影响下一站推荐，不改变课程地图顺序
 ```
 
-课程页不发网络请求，不记录访问，不上传进度。页面首次静态渲染时展示完整课程内容和中性进度文案；hydration 后如本地状态可用，再显示具体完成数，避免无 JavaScript 用户看到错误状态。
+课程页不发网络请求，不记录访问，不上传进度。页面首次静态渲染时展示完整课程内容和“本地进度将在页面加载后显示”的中性文案；hydration 后按带状态读取结果显示完成数或错误提示，避免无 JavaScript 用户看到错误状态。
+
+### 完成度与当前阶段算法
+
+- **阶段分母：** 该 `published` 阶段 `itemIds` 的数量；阶段 1–5 分母之和固定为 20。
+- **阶段分子：** 对完成记录规范化、去重后，与该阶段已发布 item route 的交集数量。
+- **总完成度：** 五个 `published` 阶段的分子之和除以 20；`relationship-only` 阶段完全排除。
+- **当前阶段：** 从顺序 1–5 找到第一个“分子 < 分母”的阶段；不使用“最近访问”推断。
+- **全部完成：** 显示“当前公开课程已完成 · 20 / 20”，不把尚未交付的综合实战标成待完成，也不生成下一站链接。
+- **状态不可读：** `corrupt` 或 `blocked` 时不计算当前阶段和完成度，只展示完整课程结构与对应错误提示。
+- **同步来源：** 用户在内容页或 `/paths/` 标记后，`/course/` 通过既有同页事件和 `storage` 事件重新读取；课程页自己不写状态。
 
 ## 11. 失败与降级
 
-- **localStorage 禁用、满额或损坏：** 不阻断课程地图和跳转；显示“本地进度不可用”，不宣称保存成功。
+- **localStorage 禁用或读取抛错：** 返回 `blocked`；不阻断课程地图和跳转，显示“本地进度不可用”。
+- **localStorage JSON 损坏或类型错误：** 返回 `corrupt`；显示“本地进度数据损坏”，不把它静默解释成全新用户，也不覆盖原值。
 - **课程数据引用不存在的页面：** 测试和构建失败，不发布死链接。
 - **先修关系成环：** 数据校验失败，并打印涉及的 item ID。
 - **后续阶段未交付：** 不生成链接、按钮、完成度或“即将上线”卡片；只保留课程关系说明。
@@ -224,12 +309,16 @@ localStorage progress（可选、浏览器本地）
 
 ### 自动化
 
-- 课程目录包含序章、14 章、4 个前沿专题和已发布案例，共 20 个可达 item，ID 与 route 唯一；
+- 权威表的 20 个 item 与实现数据逐行一致；序章、14 章、4 个前沿专题和案例均且仅出现一次；
+- `contentRegistry` 中 ID 与规范化 route 唯一，course、paths、chapterMeta、interview 和 VitePress config 不再重复声明 route/title；
 - 每个 route 对应真实 Markdown 或构建产物；没有 `/projects/*`、`/labs/*` 死链接；
 - 先修关系存在且无环；阶段引用只指向已登记 item；
 - `/course/` 与顶栏、侧栏入口存在；所有旧 URL 保持不变；
 - `/course/` 不复制章节长段落，不包含面试答案数据；
-- 课程完成度只读取现有 progress key，不新增账号、网络请求或云存储；
+- 完成度分母固定为 20，`relationship-only` 排除，当前阶段与全部完成状态符合定义；
+- 路由规范化覆盖 base、query、hash、`.html`、`/index.html`、重复斜杠、尾斜杠、非法编码和未知旧路由；
+- `available / corrupt / blocked` 三类读取状态有独立测试，损坏数据不会被覆盖或清除；
+- 课程完成度只读取现有 progress key，不新增账号、网络请求或云存储，也不在 `/course/` 提供写按钮；
 - 无 JavaScript 静态 HTML 包含全部课程链接与中性状态；
 - process docs 继续不进入 dist。
 
@@ -239,7 +328,7 @@ localStorage progress（可选、浏览器本地）
 - 键盘可按视觉顺序访问课程入口，焦点清晰；
 - 读屏能读出“课程阶段列表、阶段标题、完成数、课程项和先修说明”；
 - localStorage 正常、禁用、损坏三种状态均可使用页面；
-- 在 `/course/` 标记现有章节完成后，`/paths/` 和章节末尾状态同步；
+- 在内容页或 `/paths/` 标记现有章节完成后，`/course/` 同步显示；
 - 页面宽度等于视口宽度，不发生整页横向溢出；
 - 已有章节、路径、Radar、面试和案例路由抽检均为 HTTP 200。
 
