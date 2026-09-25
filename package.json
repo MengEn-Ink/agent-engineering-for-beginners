@@ -5,16 +5,20 @@
   "type": "module",
   "scripts": {
     "dev": "vitepress dev docs",
-    "build": "pnpm validate && vitepress build docs && node scripts/check-dist.mjs",
+    "build": "pnpm validate && pnpm typecheck:projects && vitepress build docs && node scripts/check-dist.mjs",
     "preview": "node scripts/serve-preview.mjs",
     "sources:check": "node scripts/check-sources.mjs",
     "test": "vitest run",
+    "typecheck:projects": "vue-tsc --noEmit -p tsconfig.projects.json",
     "validate": "node scripts/validate-content.mjs"
   },
   "devDependencies": {
+    "@types/node": "^24.10.0",
+    "typescript": "^5.9.3",
     "vitepress": "^1.6.4",
     "vitest": "^3.2.4",
     "vue": "^3.5.22",
+    "vue-tsc": "^3.3.11",
     "yaml": "^2.8.1"
   },
   "packageManager": "pnpm@9.15.9"

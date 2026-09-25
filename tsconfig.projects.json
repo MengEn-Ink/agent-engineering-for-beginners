@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "allowJs": true,
+    "checkJs": false,
+    "resolveJsonModule": true,
+    "types": ["vitepress/client", "node"]
+  },
+  "include": [
+    "docs/.vitepress/env.d.ts",
+    "docs/.vitepress/theme/data/projectCatalog*.ts",
+    "docs/.vitepress/theme/components/Project*.vue",
+    "scripts/project-catalog.d.mts"
+  ]
+}

@@ -2062,6 +2062,165 @@ summary {
   }
 }
 
+.project-meta,
+.project-chain-section,
+.project-overview section {
+  margin: 1.5rem 0;
+  border: 1px solid var(--reading-rule);
+  border-radius: 12px;
+  background: var(--reading-bg);
+}
+
+.project-meta,
+.project-chain-section,
+.project-overview section {
+  padding: 1rem 1.1rem;
+}
+
+.project-meta > ul,
+.project-overview ol,
+.project-overview ul,
+.project-call-chain,
+.project-source-links {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.project-meta > ul > li,
+.project-source-links > li {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.85rem 0;
+  border-top: 1px solid var(--reading-rule);
+}
+
+.project-architecture {
+  margin: 1rem 0;
+}
+
+.project-architecture figcaption {
+  color: var(--reading-text);
+  font-weight: 750;
+  font-size: 1.05rem;
+}
+
+.project-architecture-tracks {
+  display: grid;
+  gap: 1rem;
+}
+
+.project-architecture-nodes,
+.project-call-chain {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.project-architecture-nodes span {
+  position: relative;
+  padding: 0.7rem;
+  border: 1px solid var(--reading-rule);
+  border-radius: 8px;
+  background: var(--reading-bg-soft);
+  text-align: center;
+}
+
+.project-architecture-nodes span:not(:last-child)::after {
+  position: absolute;
+  inset-inline-end: -0.65rem;
+  content: '→';
+  color: var(--reading-link);
+}
+
+.project-call-chain li {
+  display: grid;
+  gap: 0.4rem;
+  min-width: 0;
+  padding: 0.85rem;
+  border-left: 3px solid var(--reading-link);
+  background: var(--reading-bg-soft);
+}
+
+.project-meta code,
+.project-call-chain code,
+.project-source-links code {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.project-chain-track-group h4,
+.project-meta small,
+.project-source-links small {
+  color: var(--reading-text-soft);
+  font-size: 0.8rem;
+}
+
+.project-chain-warning {
+  padding-left: 0.8rem;
+  border-left: 3px solid var(--reading-risk);
+}
+
+.project-risk-tag {
+  display: inline-block;
+  margin: 0.25rem 0.25rem 0 0;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid var(--reading-risk);
+  border-radius: 999px;
+  color: var(--reading-risk);
+}
+
+.project-safety-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.project-license-print {
+  display: none;
+}
+
+.project-meta summary {
+  min-height: 44px;
+  touch-action: manipulation;
+}
+
+.project-overview a,
+.project-source-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  touch-action: manipulation;
+}
+
+.project-meta :focus-visible,
+.project-overview :focus-visible,
+.project-source-links :focus-visible {
+  outline: 3px solid var(--reading-link);
+  outline-offset: 3px;
+}
+
+@media (max-width: 700px) {
+  .project-architecture-nodes,
+  .project-call-chain {
+    grid-template-columns: 1fr;
+  }
+
+  .project-architecture-nodes span:not(:last-child)::after {
+    inset-inline-end: auto;
+    inset-block-end: -0.8rem;
+    inset-inline-start: 50%;
+    content: '↓';
+  }
+
+  .project-meta,
+  .project-chain-section,
+  .project-overview section {
+    padding: 0.9rem;
+  }
+}
+
 @media print {
   .course-stage-more,
   .course-stage-more > summary,
@@ -2089,5 +2248,26 @@ summary {
   .course-stage,
   .course-item {
     break-inside: avoid;
+  }
+
+  .project-meta details {
+    display: none !important;
+  }
+
+  .project-license-print {
+    display: block !important;
+  }
+
+  .project-architecture {
+    display: none !important;
+  }
+
+  .project-call-chain {
+    grid-template-columns: 1fr;
+  }
+
+  .project-source-links a[href]::after {
+    overflow-wrap: anywhere;
+    content: " (" attr(href) ")";
   }
 }

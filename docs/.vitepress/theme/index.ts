@@ -27,6 +27,10 @@ import ReadingPaths from './components/ReadingPaths.vue'
 import ReadingProgress from './components/ReadingProgress.vue'
 import InterviewTrainer from './components/InterviewTrainer.vue'
 import CourseMap from './components/CourseMap.vue'
+import ProjectOverview from './components/ProjectOverview.vue'
+import ProjectMeta from './components/ProjectMeta.vue'
+import ProjectCallChain from './components/ProjectCallChain.vue'
+import ProjectSourceLinks from './components/ProjectSourceLinks.vue'
 import './style.css'
 
 export default {
@@ -61,5 +65,9 @@ export default {
     app.component('ReadingProgress', ReadingProgress)
     app.component('InterviewTrainer', InterviewTrainer)
     app.component('CourseMap', CourseMap)
+    app.component('ProjectOverview', ProjectOverview)
+    app.component('ProjectMeta', ProjectMeta)
+    app.component('ProjectCallChain', ProjectCallChain)
+    app.component('ProjectSourceLinks', ProjectSourceLinks)
   },
 } satisfies Theme
