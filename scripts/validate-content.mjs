@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { basename, extname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parse } from 'yaml'
+import { validateProjectCatalogFile } from './project-catalog.mjs'
 
 const forbiddenRules = [
   { label: '本机绝对路径', pattern: /\/Users\//g },
@@ -195,9 +196,14 @@ export function validateSourceRegistry(sourcePath) {
   return errors
 }
 
-export function validateBook(root = process.cwd()) {
+export function validateBook(root = process.cwd(), options = {}) {
   const sourcePath = join(root, 'sources/source-index.yml')
-  return [...validateSourceRegistry(sourcePath), ...validatePublishedFiles(root)]
+  const projectCatalogPath = resolve(root, options.projectCatalogPath ?? 'sources/project-index.yml')
+  return [
+    ...validateSourceRegistry(sourcePath),
+    ...validateProjectCatalogFile(projectCatalogPath),
+    ...validatePublishedFiles(root),
+  ]
 }
 
 const invokedPath = process.argv[1] ? resolve(process.argv[1]) : ''
