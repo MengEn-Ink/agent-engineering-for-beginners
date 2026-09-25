@@ -177,6 +177,19 @@ describe('reading theme', () => {
     expect(style).toContain(':focus-visible')
     expect(style).not.toContain('.VPDoc > div > * {')
   })
+
+  it('handles touch, safe areas and light/dark browser chrome', () => {
+    const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
+    const config = readFileSync('docs/.vitepress/config.mts', 'utf8')
+    expect(style).toContain('touch-action: manipulation')
+    expect(style).toContain('-webkit-tap-highlight-color:')
+    expect(style).toContain('env(safe-area-inset-left)')
+    expect(style).toContain('env(safe-area-inset-right)')
+    expect(config).toContain("media: '(prefers-color-scheme: light)'")
+    expect(config).toContain("media: '(prefers-color-scheme: dark)'")
+    expect(config).toContain("content: '#fcfcfa'")
+    expect(config).toContain("content: '#17191d'")
+  })
 })
 
 describe('learning components', () => {

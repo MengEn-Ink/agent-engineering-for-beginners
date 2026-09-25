@@ -39,7 +39,8 @@ export default defineConfig({
   lastUpdated: true,
   head: [
     ['link', { rel: 'icon', type: 'image/svg+xml', href: `${base}mark.svg` }],
-    ['meta', { name: 'theme-color', content: '#101e3a' }],
+    ['meta', { name: 'theme-color', content: '#fcfcfa', media: '(prefers-color-scheme: light)' }],
+    ['meta', { name: 'theme-color', content: '#17191d', media: '(prefers-color-scheme: dark)' }],
     ['meta', { property: 'og:title', content: '别只会和 AI 聊天' }],
     ['meta', { property: 'og:description', content: '从会写 Prompt，到能交付一个可靠的 Agent 系统。' }],
   ],

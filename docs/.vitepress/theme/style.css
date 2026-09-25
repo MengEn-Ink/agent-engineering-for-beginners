@@ -64,6 +64,13 @@ body {
   background-color: var(--reading-bg);
 }
 
+a,
+button,
+summary {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: color-mix(in srgb, var(--reading-link) 22%, transparent);
+}
+
 ::selection {
   color: #101e3a;
   background: var(--book-lime);
@@ -185,6 +192,8 @@ body {
   gap: 2rem 5vw;
   min-height: calc(100svh - var(--vp-nav-height));
   padding: clamp(3.5rem, 8vw, 8rem) max(5vw, calc((100vw - 1280px) / 2));
+  padding-left: max(5vw, calc((100vw - 1280px) / 2), env(safe-area-inset-left));
+  padding-right: max(5vw, calc((100vw - 1280px) / 2), env(safe-area-inset-right));
   overflow: hidden;
   border-bottom: 2px solid var(--book-ink);
   background: var(--reading-bg);
@@ -345,6 +354,8 @@ body {
 
 .home-section {
   padding: clamp(4.5rem, 9vw, 9rem) max(5vw, calc((100vw - 1280px) / 2));
+  padding-left: max(5vw, calc((100vw - 1280px) / 2), env(safe-area-inset-left));
+  padding-right: max(5vw, calc((100vw - 1280px) / 2), env(safe-area-inset-right));
   border-bottom: 2px solid var(--book-ink);
 }
 
@@ -946,7 +957,8 @@ body {
 
   .book-hero,
   .home-section {
-    padding-inline: 1.25rem;
+    padding-left: max(1.25rem, env(safe-area-inset-left));
+    padding-right: max(1.25rem, env(safe-area-inset-right));
   }
 
   .book-hero h1 {
