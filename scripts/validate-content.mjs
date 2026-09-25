@@ -82,11 +82,29 @@ export function validateSourceRegistry(sourcePath) {
   if (!existsSync(sourcePath)) return ['缺少 sources/source-index.yml']
 
   const data = parse(readFileSync(sourcePath, 'utf8'))
-  const sources = Array.isArray(data?.sources) ? data.sources : []
-  const required = ['id', 'title', 'publisher', 'url', 'grade', 'accessed', 'chapters', 'note']
+  const defaults = data?.source_defaults ?? {}
+  const sources = Array.isArray(data?.sources)
+    ? data.sources.map((source) => ({ ...defaults, ...source }))
+    : []
+  const required = [
+    'id',
+    'title',
+    'publisher',
+    'url',
+    'grade',
+    'accessed',
+    'version',
+    'last_verified',
+    'review_by',
+    'status',
+    'replaced_by',
+    'impact_chapters',
+    'note',
+  ]
   const errors = []
   const ids = new Set()
 
+  if (data?.schema_version !== 2) errors.push('来源索引 schema_version 必须为 2')
   if (sources.length < 15) errors.push('来源索引至少需要 15 条记录')
 
   for (const [index, source] of sources.entries()) {
@@ -100,7 +118,24 @@ export function validateSourceRegistry(sourcePath) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(source?.accessed ?? '')) {
       errors.push(`来源 ${source?.id} 的 accessed 无效`)
     }
-    if (!Array.isArray(source?.chapters)) errors.push(`来源 ${source?.id} 的 chapters 必须为数组`)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(source?.last_verified ?? '')) {
+      errors.push(`来源 ${source?.id} 的 last_verified 无效`)
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(source?.review_by ?? '')) {
+      errors.push(`来源 ${source?.id} 的 review_by 无效`)
+    }
+    if (!['active', 'watch', 'deprecated', 'broken'].includes(source?.status)) {
+      errors.push(`来源 ${source?.id} 的 status 无效`)
+    }
+    if (!Array.isArray(source?.impact_chapters)) {
+      errors.push(`来源 ${source?.id} 的 impact_chapters 必须为数组`)
+    }
+    if (source?.replaced_by !== null && typeof source?.replaced_by !== 'string') {
+      errors.push(`来源 ${source?.id} 的 replaced_by 必须为字符串或 null`)
+    }
+    if (source?.watch_url && !/^https:\/\//.test(source.watch_url)) {
+      errors.push(`来源 ${source?.id} 的 watch_url 不是 HTTPS URL`)
+    }
     if (ids.has(source?.id)) errors.push(`来源 ID 重复：${source?.id}`)
     ids.add(source?.id)
   }

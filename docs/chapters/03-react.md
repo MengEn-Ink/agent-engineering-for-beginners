@@ -176,4 +176,4 @@ ReAct 的价值不在“想得更多”，而在让环境反馈持续修正行�
 
 把这些数据按任务类型、工具和版本切开看，才能知道问题来自模型、接口还是流程，而不是笼统归因于“AI 不稳定”。
 
-来源：[source:anthropic-agent-sdk] [Anthropic · Building agents with the Claude Agent SDK](https://www.anthropic.com/engineering/building-agents-with-the-claude-agent-sdk)；[source:anthropic-effective-agents] [Anthropic · Building effective agents](https://www.anthropic.com/research/building-effective-agents)。
+来源：[source:anthropic-agent-sdk] [Anthropic · Building agents with the Claude Agent SDK](https://claude.com/blog/building-agents-with-the-claude-agent-sdk)；[source:anthropic-effective-agents] [Anthropic · Building effective agents](https://www.anthropic.com/engineering/building-effective-agents)。

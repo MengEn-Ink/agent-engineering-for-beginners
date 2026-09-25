@@ -7,6 +7,7 @@
     "dev": "vitepress dev docs",
     "build": "pnpm validate && vitepress build docs && node scripts/check-dist.mjs",
     "preview": "node scripts/serve-preview.mjs",
+    "sources:check": "node scripts/check-sources.mjs",
     "test": "vitest run",
     "validate": "node scripts/validate-content.mjs"
   },

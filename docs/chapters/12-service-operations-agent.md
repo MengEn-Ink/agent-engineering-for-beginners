@@ -174,4 +174,4 @@ description: 在政策、情绪、业务动作和人工队列之间，设计可�
 
 <InterviewQuestion id="iq-12-c" />
 
-来源：[source:openai-practical-agents-guide] [OpenAI · A practical guide to building agents](https://cdn.openai.com/business-guides-and-resources/a-practical-guide-to-building-agents.pdf)；[source:openai-agents-sdk] [OpenAI Agents SDK](https://openai.github.io/openai-agents-python/)；[source:anthropic-effective-agents] [Anthropic · Building effective agents](https://www.anthropic.com/research/building-effective-agents)。
+来源：[source:openai-practical-agents-guide] [OpenAI · A practical guide to building agents](https://cdn.openai.com/business-guides-and-resources/a-practical-guide-to-building-agents.pdf)；[source:openai-agents-sdk] [OpenAI Agents SDK](https://openai.github.io/openai-agents-python/)；[source:anthropic-effective-agents] [Anthropic · Building effective agents](https://www.anthropic.com/engineering/building-effective-agents)。

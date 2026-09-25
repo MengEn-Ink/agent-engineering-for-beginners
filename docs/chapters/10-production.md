@@ -198,4 +198,4 @@ Agent 执行权限：read-only / draft / approval-required / limited-auto
 
 把退役也写进生命周期，可以避免一次成功的试验变成多年无人负责的影子服务。
 
-来源：[source:anthropic-effective-agents] [Anthropic · Building effective agents](https://www.anthropic.com/research/building-effective-agents)；[source:anthropic-agent-sdk] [Anthropic · Building agents with the Claude Agent SDK](https://www.anthropic.com/engineering/building-agents-with-the-claude-agent-sdk)；[source:google-adk-evaluation] [Google ADK · Evaluate agents](https://google.github.io/adk-docs/evaluate/)；[source:delivery-patterns] 交付型案例推演依据。
+来源：[source:anthropic-effective-agents] [Anthropic · Building effective agents](https://www.anthropic.com/engineering/building-effective-agents)；[source:anthropic-agent-sdk] [Anthropic · Building agents with the Claude Agent SDK](https://claude.com/blog/building-agents-with-the-claude-agent-sdk)；[source:google-adk-evaluation] [Google ADK · Evaluate agents](https://adk.dev/evaluate/)；[source:delivery-patterns] 交付型案例推演依据。

@@ -182,4 +182,4 @@ Coding Agent 是 Graph 价值很直观的场景。一个可靠修复流程可能
 
 Loop 适合单线反馈，Graph 适合显式分支、并行、等待和恢复。选择 Graph 不是为了更酷，而是为了让复杂控制流能被人看见、被测试覆盖、在失败后从正确位置继续。
 
-来源：[source:langgraph-repository] [LangGraph](https://github.com/langchain-ai/langgraph)；[source:anthropic-effective-agents] [Anthropic · Building effective agents](https://www.anthropic.com/research/building-effective-agents)；[source:semantic-kernel-repository] [Semantic Kernel](https://github.com/microsoft/semantic-kernel)。
+来源：[source:langgraph-repository] [LangGraph](https://github.com/langchain-ai/langgraph)；[source:anthropic-effective-agents] [Anthropic · Building effective agents](https://www.anthropic.com/engineering/building-effective-agents)；[source:semantic-kernel-repository] [Semantic Kernel](https://github.com/microsoft/semantic-kernel)。

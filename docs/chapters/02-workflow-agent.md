@@ -168,4 +168,4 @@ Prompt、Workflow、Agent 是控制方式，不是段位。先用最简单、最
 
 当简单方案达到目标，就停止升级。能用 4 个清楚节点解决的问题，不必为了画出一张漂亮的多 Agent 架构图而变成 12 个角色。克制本身就是工程能力。
 
-来源：[source:anthropic-effective-agents] [Anthropic · Building effective agents](https://www.anthropic.com/research/building-effective-agents)；[source:chip-huyen-agents] [Chip Huyen · Agents](https://huyenchip.com/2025/01/07/agents.html)。
+来源：[source:anthropic-effective-agents] [Anthropic · Building effective agents](https://www.anthropic.com/engineering/building-effective-agents)；[source:chip-huyen-agents] [Chip Huyen · Agents](https://huyenchip.com/2025/01/07/agents.html)。

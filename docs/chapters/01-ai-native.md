@@ -164,4 +164,4 @@ AI Native 不是“多用一点 AI”，而是把模型当作不确定性组件�
 
 因此，AI Native 的终点也不是“彻底无人”。优秀系统会重新安排人的位置：人不再重复搬运信息，而是在定义目标、批准高风险动作、处理真正模糊的例外和改进规则上发挥作用。自动化减少的是机械劳动，不是责任。
 
-来源：[source:anthropic-effective-agents] [Anthropic · Building effective agents](https://www.anthropic.com/research/building-effective-agents)；[source:wechat-agent-engineering] 微信公众号「Agent 工程实践」合集（仅作选题线索）。
+来源：[source:anthropic-effective-agents] [Anthropic · Building effective agents](https://www.anthropic.com/engineering/building-effective-agents)；[source:wechat-agent-engineering] 微信公众号「Agent 工程实践」合集（仅作选题线索）。

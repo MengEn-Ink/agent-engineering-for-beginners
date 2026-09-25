@@ -177,4 +177,4 @@ Agent 生成的设计文档同样需要事实边界。描述当前能力时核�
 
 <InterviewQuestion id="iq-13-c" />
 
-来源：[source:anthropic-claude-code-best-practices] [Anthropic · Claude Code best practices](https://code.claude.com/docs/en/best-practices)；[source:github-copilot-cloud-agent] [GitHub Docs · Copilot cloud agent](https://docs.github.com/en/copilot/concepts/agents/cloud-agent/about-cloud-agent)；[source:anthropic-agent-sdk] [Anthropic · Building agents with the Claude Agent SDK](https://www.anthropic.com/engineering/building-agents-with-the-claude-agent-sdk)。
+来源：[source:anthropic-claude-code-best-practices] [Anthropic · Claude Code best practices](https://code.claude.com/docs/en/best-practices)；[source:github-copilot-cloud-agent] [GitHub Docs · Copilot cloud agent](https://docs.github.com/en/copilot/concepts/agents/cloud-agent/about-cloud-agent)；[source:anthropic-agent-sdk] [Anthropic · Building agents with the Claude Agent SDK](https://claude.com/blog/building-agents-with-the-claude-agent-sdk)。

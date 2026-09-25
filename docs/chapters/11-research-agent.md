@@ -179,4 +179,4 @@ Anthropic 公布的多 Agent 研究系统强调并行搜索和协调，同时也
 
 <InterviewQuestion id="iq-11-c" />
 
-来源：[source:anthropic-multi-agent-research] [Anthropic · Multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system)；[source:google-adk-evaluation] [Google ADK · Evaluate agents](https://google.github.io/adk-docs/evaluate/)；[source:anthropic-effective-agents] [Anthropic · Building effective agents](https://www.anthropic.com/research/building-effective-agents)。
+来源：[source:anthropic-multi-agent-research] [Anthropic · Multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system)；[source:google-adk-evaluation] [Google ADK · Evaluate agents](https://adk.dev/evaluate/)；[source:anthropic-effective-agents] [Anthropic · Building effective agents](https://www.anthropic.com/engineering/building-effective-agents)。

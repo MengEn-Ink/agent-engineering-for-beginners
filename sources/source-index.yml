@@ -1,35 +1,47 @@
+schema_version: 2
+source_defaults:
+  version: rolling
+  last_verified: '2026-09-25'
+  review_by: '2026-10-25'
+  status: active
+  replaced_by: null
+
 sources:
   - id: anthropic-effective-agents
     title: Building effective agents
     publisher: Anthropic
-    url: https://www.anthropic.com/research/building-effective-agents
+    url: https://www.anthropic.com/engineering/building-effective-agents
     grade: A
     accessed: '2026-09-25'
-    chapters: ['01', '02', '03', '06', '07', '10', '11', '12']
+    impact_chapters: ['01', '02', '03', '06', '07', '10', '11', '12']
     note: 区分预定义 workflow 与模型动态决策的 agent，并强调简单优先、环境反馈和停止条件。
   - id: anthropic-agent-sdk
     title: Building agents with the Claude Agent SDK
     publisher: Anthropic Engineering
-    url: https://www.anthropic.com/engineering/building-agents-with-the-claude-agent-sdk
+    url: https://claude.com/blog/building-agents-with-the-claude-agent-sdk
     grade: A
     accessed: '2026-09-25'
-    chapters: ['03', '04', '08', '10']
+    impact_chapters: ['03', '04', '08', '10']
     note: 用“收集上下文、行动、验证、重复”描述可执行 agent 循环。
   - id: mcp-spec
     title: Model Context Protocol Specification
     publisher: Model Context Protocol
-    url: https://modelcontextprotocol.io/specification/2025-03-26
+    url: https://modelcontextprotocol.io/specification/2026-07-28
     grade: A
     accessed: '2026-09-25'
-    chapters: ['04', '09']
-    note: 核对 Host、Client、Server 以及 Tools、Resources、Prompts 的协议边界。
+    version: '2026-07-28'
+    watch_url: https://modelcontextprotocol.io/specification/
+    review_by: '2026-10-25'
+    status: watch
+    impact_chapters: ['04', '09', '/frontier/interoperability-identity']
+    note: 核对 Host、Client、Server 及 Tools、Resources、Prompts；新版本变化进入 Radar，人工确认后回写正文。
   - id: openai-agents-sdk
     title: OpenAI Agents SDK for Python
     publisher: OpenAI
     url: https://openai.github.io/openai-agents-python/
     grade: A
     accessed: '2026-09-25'
-    chapters: ['04', '07', '08', '09', '12']
+    impact_chapters: ['04', '07', '08', '09', '12']
     note: 核对 agent、handoff、guardrail、session 与 tracing 等最小原语。
   - id: openai-agents-sessions
     title: Sessions
@@ -37,15 +49,15 @@ sources:
     url: https://openai.github.io/openai-agents-python/sessions/
     grade: A
     accessed: '2026-09-25'
-    chapters: ['05']
+    impact_chapters: ['05']
     note: 核对 SDK 会话历史的持久化与自定义存储接口；只支撑会话状态实现，不单独支撑长期记忆或数据治理结论。
   - id: google-adk-evaluation
     title: Why Evaluate Agents
     publisher: Google Agent Development Kit
-    url: https://google.github.io/adk-docs/evaluate/
+    url: https://adk.dev/evaluate/
     grade: A
     accessed: '2026-09-25'
-    chapters: ['08', '10', '11']
+    impact_chapters: ['08', '10', '11']
     note: 核对工具轨迹、响应质量、安全与多轮评测的系统化方法。
   - id: microsoft-autogen-architecture
     title: AutoGen v0.4 architecture
@@ -53,7 +65,7 @@ sources:
     url: https://www.microsoft.com/en-us/research/blog/autogen-v0-4-reimagining-the-foundation-of-agentic-ai-for-scale-extensibility-and-robustness/
     grade: A
     accessed: '2026-09-25'
-    chapters: ['06', '07']
+    impact_chapters: ['06', '07']
     note: 用 Core、AgentChat、Extensions 的分层理解多 agent 框架的抽象边界。
   - id: langgraph-repository
     title: LangGraph
@@ -61,7 +73,7 @@ sources:
     url: https://github.com/langchain-ai/langgraph
     grade: A
     accessed: '2026-09-25'
-    chapters: ['05', '06', '09']
+    impact_chapters: ['05', '06', '09']
     note: 学习状态图、持久化、恢复和人工介入，不据此断言所有任务都需要 graph。
   - id: autogen-repository
     title: AutoGen
@@ -69,7 +81,7 @@ sources:
     url: https://github.com/microsoft/autogen
     grade: A
     accessed: '2026-09-25'
-    chapters: ['07']
+    impact_chapters: ['07']
     note: 学习消息、事件驱动与多 agent 协作的工程组织方式。
   - id: crewai-repository
     title: CrewAI
@@ -77,7 +89,7 @@ sources:
     url: https://github.com/crewAIInc/crewAI
     grade: A
     accessed: '2026-09-25'
-    chapters: ['07']
+    impact_chapters: ['07']
     note: 观察角色、任务和协作编排，同时单独讨论协调成本。
   - id: pydantic-ai-repository
     title: Pydantic AI
@@ -85,7 +97,7 @@ sources:
     url: https://github.com/pydantic/pydantic-ai
     grade: A
     accessed: '2026-09-25'
-    chapters: ['04', '09']
+    impact_chapters: ['04', '09']
     note: 学习类型约束、结构化结果和依赖注入，不把类型安全等同于事实正确。
   - id: google-adk-repository
     title: Agent Development Kit for Python
@@ -93,7 +105,7 @@ sources:
     url: https://github.com/google/adk-python
     grade: A
     accessed: '2026-09-25'
-    chapters: ['07', '08']
+    impact_chapters: ['07', '08']
     note: 学习代码优先的 agent 组合、评测与部署接口。
   - id: semantic-kernel-repository
     title: Semantic Kernel
@@ -101,7 +113,7 @@ sources:
     url: https://github.com/microsoft/semantic-kernel
     grade: A
     accessed: '2026-09-25'
-    chapters: ['04', '06', '10']
+    impact_chapters: ['04', '06', '10']
     note: 学习插件、流程与企业系统集成，不把抽象层数量当作成熟度。
   - id: langfuse-repository
     title: Langfuse
@@ -109,7 +121,7 @@ sources:
     url: https://github.com/langfuse/langfuse
     grade: A
     accessed: '2026-09-25'
-    chapters: ['08']
+    impact_chapters: ['08']
     note: 学习 agent 轨迹、评测和可观测性平台的能力边界。
   - id: phoenix-repository
     title: Arize Phoenix
@@ -117,7 +129,7 @@ sources:
     url: https://github.com/Arize-ai/phoenix
     grade: A
     accessed: '2026-09-25'
-    chapters: ['08']
+    impact_chapters: ['08']
     note: 交叉核对 tracing、evaluation 和 observability 的工程接口。
   - id: chip-huyen-agents
     title: Agents
@@ -125,7 +137,7 @@ sources:
     url: https://huyenchip.com/2025/01/07/agents.html
     grade: B
     accessed: '2026-09-25'
-    chapters: ['02', '03', '07', '08']
+    impact_chapters: ['02', '03', '07', '08']
     note: 补充 agent 规划、工具、效率、步骤数、成本与延迟的实践视角。
   - id: wechat-agent-engineering
     title: Agent 工程实践
@@ -133,7 +145,7 @@ sources:
     url: https://mp.weixin.qq.com/mp/appmsgalbum?__biz=MzY4OTMxODkyNQ==&action=getalbum&album_id=4633251924958658565
     grade: B
     accessed: '2026-09-25'
-    chapters: ['01', '02', '03', '04', '05', '06', '08', '09']
+    impact_chapters: ['01', '02', '03', '04', '05', '06', '08', '09']
     note: 作为选题和观点线索；不复制原图或大段原文，关键事实回到 A 级来源核验。
   - id: vitepress-deploy
     title: Deploy Your VitePress Site
@@ -141,7 +153,7 @@ sources:
     url: https://vitepress.dev/guide/deploy
     grade: A
     accessed: '2026-09-25'
-    chapters: ['10']
+    impact_chapters: ['10']
     note: 核对 GitHub Pages 的 base path、构建目录与 Actions 部署方式。
   - id: delivery-patterns
     title: Agent engineering book design - delivery patterns
@@ -149,7 +161,7 @@ sources:
     url: https://github.com/MengEn-Ink/agent-engineering-for-beginners/blob/main/docs/superpowers/specs/2026-09-24-agent-engineering-book-design.md
     grade: B
     accessed: '2026-09-25'
-    chapters: ['05', '06', '08', '09', '10']
+    impact_chapters: ['05', '06', '08', '09', '10']
     note: 仅作为经过脱敏的交付型 agent 案例推演依据；不能单独支撑外部事实，也不是对私有系统能力的公开证明。
   - id: anthropic-multi-agent-research
     title: How we built our multi-agent research system
@@ -157,7 +169,7 @@ sources:
     url: https://www.anthropic.com/engineering/multi-agent-research-system
     grade: A
     accessed: '2026-09-25'
-    chapters: ['11']
+    impact_chapters: ['11']
     note: 核对研究型多 Agent 的编排、并行搜索、评估与工程权衡；不把单一实现当通用最佳架构。
   - id: openai-practical-agents-guide
     title: A practical guide to building agents
@@ -165,7 +177,7 @@ sources:
     url: https://cdn.openai.com/business-guides-and-resources/a-practical-guide-to-building-agents.pdf
     grade: A
     accessed: '2026-09-25'
-    chapters: ['12']
+    impact_chapters: ['12']
     note: 核对工具、指令、guardrail、人类介入与逐步增加复杂度的官方工程建议。
   - id: anthropic-claude-code-best-practices
     title: Claude Code best practices
@@ -173,7 +185,7 @@ sources:
     url: https://code.claude.com/docs/en/best-practices
     grade: A
     accessed: '2026-09-25'
-    chapters: ['13']
+    impact_chapters: ['13']
     note: 核对 Coding Agent 的仓库上下文、计划、验证、权限与工作方式。
   - id: github-copilot-cloud-agent
     title: About GitHub Copilot cloud agent
@@ -181,7 +193,7 @@ sources:
     url: https://docs.github.com/en/copilot/concepts/agents/cloud-agent/about-cloud-agent
     grade: A
     accessed: '2026-09-25'
-    chapters: ['13']
+    impact_chapters: ['13']
     note: 核对云端 Coding Agent 的仓库任务、计划、修改、测试和 PR 工作流边界。
   - id: anthropic-computer-use
     title: Computer use tool
@@ -189,7 +201,7 @@ sources:
     url: https://platform.claude.com/docs/en/agents-and-tools/tool-use/computer-use-tool
     grade: A
     accessed: '2026-09-25'
-    chapters: ['14']
+    impact_chapters: ['14']
     note: 核对截图、鼠标、键盘与桌面自动化能力，并保留其安全限制。
   - id: openai-computer-use
     title: Computer use
@@ -197,5 +209,5 @@ sources:
     url: https://developers.openai.com/api/docs/guides/tools-computer-use
     grade: A
     accessed: '2026-09-25'
-    chapters: ['14']
+    impact_chapters: ['14']
     note: 核对浏览器/计算机操作循环、环境观察和高影响动作确认边界。

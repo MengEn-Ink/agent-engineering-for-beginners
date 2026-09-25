@@ -127,12 +127,12 @@ describe('application chapters', () => {
   it('gives each application chapter two first-party sources', () => {
     const sources = parse(readFileSync('sources/source-index.yml', 'utf8')).sources as Array<{
       grade: string
-      chapters: string[]
+      impact_chapters: string[]
     }>
 
     for (const chapter of ['11', '12', '13', '14']) {
       const firstParty = sources.filter(
-        (source) => source.grade === 'A' && source.chapters.includes(chapter),
+        (source) => source.grade === 'A' && source.impact_chapters.includes(chapter),
       )
       expect(firstParty.length, `chapter ${chapter}`).toBeGreaterThanOrEqual(2)
     }
@@ -264,7 +264,11 @@ describe('source registry', () => {
 
     expect(existsSync(sourcePath)).toBe(true)
 
-    const sources = parse(readFileSync(sourcePath, 'utf8')).sources as Array<Record<string, unknown>>
+    const data = parse(readFileSync(sourcePath, 'utf8')) as {
+      source_defaults: Record<string, unknown>
+      sources: Array<Record<string, unknown>>
+    }
+    const sources = data.sources.map((source) => ({ ...data.source_defaults, ...source }))
     expect(sources.length).toBeGreaterThanOrEqual(15)
 
     for (const source of sources) {
@@ -276,7 +280,7 @@ describe('source registry', () => {
           url: expect.stringMatching(/^https:\/\//),
           grade: expect.stringMatching(/^[ABC]$/),
           accessed: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
-          chapters: expect.any(Array),
+          impact_chapters: expect.any(Array),
           note: expect.any(String),
         }),
       )
@@ -287,6 +291,47 @@ describe('source registry', () => {
     expect(ids).toEqual(
       expect.arrayContaining(['anthropic-effective-agents', 'mcp-spec', 'delivery-patterns']),
     )
+  })
+})
+
+describe('source freshness schema', () => {
+  it('normalizes every source with review and lifecycle metadata', () => {
+    const data = parse(readFileSync('sources/source-index.yml', 'utf8')) as {
+      schema_version?: number
+      source_defaults?: Record<string, unknown>
+      sources: Array<Record<string, unknown>>
+    }
+    expect(data.schema_version).toBe(2)
+    expect(data.source_defaults).toEqual(
+      expect.objectContaining({
+        last_verified: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        review_by: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        status: expect.stringMatching(/^(active|watch|deprecated|broken)$/),
+        replaced_by: null,
+      }),
+    )
+
+    for (const raw of data.sources) {
+      const source = { ...data.source_defaults, ...raw }
+      expect(source.version).toEqual(expect.any(String))
+      expect(source.last_verified).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+      expect(source.review_by).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+      expect(['active', 'watch', 'deprecated', 'broken']).toContain(source.status)
+      expect(source).toHaveProperty('replaced_by')
+      expect(source.impact_chapters).toEqual(expect.any(Array))
+    }
+  })
+
+  it('tracks the current MCP specification and its version watch page', () => {
+    const data = parse(readFileSync('sources/source-index.yml', 'utf8')) as {
+      source_defaults: Record<string, unknown>
+      sources: Array<Record<string, unknown>>
+    }
+    const raw = data.sources.find((source) => source.id === 'mcp-spec')
+    const source = { ...data.source_defaults, ...raw }
+    expect(source.version).toBe('2026-07-28')
+    expect(source.url).toBe('https://modelcontextprotocol.io/specification/2026-07-28')
+    expect(source.watch_url).toBe('https://modelcontextprotocol.io/specification/')
   })
 })
 

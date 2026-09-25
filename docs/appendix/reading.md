@@ -11,11 +11,11 @@ description: 本书如何选择、分级和交叉核对 Agent 工程资料。
 
 用于概念定义、协议能力和工程边界。
 
-- [Anthropic · Building effective agents](https://www.anthropic.com/research/building-effective-agents)：workflow 与 agent 的区分、简单优先、常见组合模式。
-- [Anthropic · Building agents with the Claude Agent SDK](https://www.anthropic.com/engineering/building-agents-with-the-claude-agent-sdk)：上下文、行动、验证与循环。
+- [Anthropic · Building effective agents](https://www.anthropic.com/engineering/building-effective-agents)：workflow 与 agent 的区分、简单优先、常见组合模式。
+- [Anthropic · Building agents with the Claude Agent SDK](https://claude.com/blog/building-agents-with-the-claude-agent-sdk)：上下文、行动、验证与循环。
 - [Model Context Protocol Specification](https://modelcontextprotocol.io/specification/2025-03-26)：协议角色和核心原语。
 - [OpenAI Agents SDK](https://openai.github.io/openai-agents-python/)：agent、handoff、guardrail、session 与 tracing。
-- [Google ADK · Evaluate agents](https://google.github.io/adk-docs/evaluate/)：轨迹、响应、安全与多轮评测。
+- [Google ADK · Evaluate agents](https://adk.dev/evaluate/)：轨迹、响应、安全与多轮评测。
 - [Microsoft Research · AutoGen v0.4](https://www.microsoft.com/en-us/research/blog/autogen-v0-4-reimagining-the-foundation-of-agentic-ai-for-scale-extensibility-and-robustness/)：Core、AgentChat、Extensions 分层。
 
 ## B级：可信工程实践

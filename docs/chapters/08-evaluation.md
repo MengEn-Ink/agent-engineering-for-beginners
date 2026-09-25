@@ -179,4 +179,4 @@ review: deterministic | model_judge | human_sample
 
 最有价值的评测文化，是允许红灯存在。红灯说明系统诚实地暴露边界；为了发布而修改分母、删除难例或放宽判定，只会把问题推迟到用户现场。
 
-来源：[source:google-adk-evaluation] [Google ADK · Evaluate agents](https://google.github.io/adk-docs/evaluate/)；[source:langfuse-repository] [Langfuse](https://github.com/langfuse/langfuse)；[source:phoenix-repository] [Arize Phoenix](https://github.com/Arize-ai/phoenix)；[source:chip-huyen-agents] [Chip Huyen · Agents](https://huyenchip.com/2025/01/07/agents.html)。
+来源：[source:google-adk-evaluation] [Google ADK · Evaluate agents](https://adk.dev/evaluate/)；[source:langfuse-repository] [Langfuse](https://github.com/langfuse/langfuse)；[source:phoenix-repository] [Arize Phoenix](https://github.com/Arize-ai/phoenix)；[source:chip-huyen-agents] [Chip Huyen · Agents](https://huyenchip.com/2025/01/07/agents.html)。
