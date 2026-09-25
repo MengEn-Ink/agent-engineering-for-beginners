@@ -1312,7 +1312,7 @@ describe('project presentation primitives', () => {
       '/blob/a4be6ccd87ebaa59b361f3f028d116ce1761b626/LICENSE.txt',
     )
     expect(() => projectSourceUrl('aider', 'README.md')).toThrow(
-      'Undeclared project entrypoint: aider/README.md',
+      'Undeclared project source: aider/README.md',
     )
   })
 
@@ -1501,7 +1501,7 @@ export function createProjectCatalogLookup(data: ProjectCatalog) {
       ...subject.license_sources.map((license) => license.path),
     ])
     if (!allowedPaths.has(sourcePath)) {
-      throw new Error(`Undeclared project entrypoint: ${subjectId}/${sourcePath}`)
+      throw new Error(`Undeclared project source: ${subjectId}/${sourcePath}`)
     }
     return `${subject.canonical_url}/blob/${subject.pinned_commit}/${sourcePath}`
   }
