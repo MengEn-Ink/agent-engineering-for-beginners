@@ -6,6 +6,15 @@
 
 在线阅读：<https://mengen-ink.github.io/agent-engineering-for-beginners/>
 
+完整课程地图：<https://mengen-ink.github.io/agent-engineering-for-beginners/course/>
+
+## 学习入口
+
+- 课程地图 `/course/` 展示完整课程与建议学习顺序；
+- 阅读路线 `/paths/` 是按目标挑选的课程子集，不代替完整课程；
+- 学习进度完全可选，只保存在当前浏览器本地，不需要账号或后端；
+- 独立项目页与 Python 实验是后续阶段交付，本阶段尚未提供。
+
 ## 本地开发
 
 需要 Node.js 22+ 与 pnpm 9+。

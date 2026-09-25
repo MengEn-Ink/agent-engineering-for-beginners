@@ -1908,3 +1908,161 @@ summary {
     box-shadow: none;
   }
 }
+
+.course-map {
+  margin: 2.5rem 0;
+  color: var(--reading-text);
+}
+
+.course-progress {
+  display: grid;
+  gap: 0.55rem;
+  margin-bottom: 2rem;
+  padding: 1rem 0;
+  border-block: 1px solid var(--reading-rule);
+}
+
+.course-progress p,
+.course-progress strong {
+  margin: 0;
+}
+
+.course-progress progress,
+.course-stage progress {
+  width: 100%;
+  height: 0.42rem;
+  accent-color: var(--reading-success);
+}
+
+.course-stage-list,
+.course-item-list,
+.course-stage-more ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.course-stage-list {
+  border-top: 1px solid var(--reading-rule);
+}
+
+.course-stage {
+  display: grid;
+  grid-template-columns: minmax(11rem, 0.42fr) 1fr;
+  gap: 1.25rem 2rem;
+  padding: 2rem 0;
+  border-bottom: 1px solid var(--reading-rule);
+}
+
+.course-stage.is-current {
+  box-shadow: inset 4px 0 0 var(--reading-link);
+  padding-left: 1rem;
+}
+
+.course-stage > header {
+  display: grid;
+  gap: 0.45rem;
+  align-content: start;
+}
+
+.course-stage > header > span,
+.course-stage > header > small,
+.course-item small {
+  color: var(--reading-text-soft);
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.72rem;
+}
+
+.course-stage h2 {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-size: 1.55rem;
+}
+
+.course-stage header p,
+.course-item p,
+.course-stage-boundary {
+  margin: 0;
+  color: var(--reading-text-soft);
+  font-size: 0.9rem;
+  line-height: 1.65;
+}
+
+.course-item-list,
+.course-stage-more ol {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.course-item {
+  display: grid;
+  gap: 0.3rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--reading-rule);
+}
+
+.course-item a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--reading-text);
+  font-weight: 800;
+}
+
+.course-item a:hover,
+.course-item a:focus-visible {
+  color: var(--reading-link);
+}
+
+.course-stage-more {
+  grid-column: 2;
+}
+
+.course-stage-more summary {
+  min-height: 44px;
+  cursor: pointer;
+  color: var(--reading-link);
+  font-weight: 750;
+}
+
+.course-stage-more summary:focus-visible,
+.course-item a:focus-visible {
+  border-radius: 2px;
+  outline: 3px solid var(--reading-link);
+  outline-offset: 3px;
+}
+
+.course-stage-boundary {
+  padding: 1rem;
+  border: 1px dashed var(--reading-rule);
+  background: var(--reading-bg-soft);
+}
+
+@media (max-width: 700px) {
+  .course-stage {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .course-stage-more {
+    grid-column: 1;
+  }
+}
+
+@media print {
+  .course-stage-more > summary,
+  .course-progress progress,
+  .course-stage progress {
+    display: none;
+  }
+
+  .course-stage-more:not([open]) > *:not(summary) {
+    display: block !important;
+  }
+
+  .course-stage,
+  .course-item {
+    break-inside: avoid;
+  }
+}
