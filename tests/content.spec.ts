@@ -946,6 +946,53 @@ describe('publish boundary', () => {
     }
   })
 
+  it('requires every published course target and rejects unpublished route artifacts', async () => {
+    const { validateDist } = await import(
+      pathToFileURL(join(process.cwd(), 'scripts/check-dist.mjs')).href
+    )
+    const fixtureDir = mkdtempSync(join(tmpdir(), 'agent-book-course-targets-'))
+    const stages = ['基础认知', '核心机制', '生产工程', '应用模式', '项目拆解', '综合实战']
+    const links = publishedCourseItems.map(({ itemId }) => {
+      const route = getContentItem(itemId).route
+      return `<a href="/agent-engineering-for-beginners${route}">${itemId}</a>`
+    })
+    const targetPath = (route: string) => route.endsWith('/')
+      ? join(fixtureDir, route, 'index.html')
+      : join(fixtureDir, `${route}.html`)
+
+    writeFileSync(join(fixtureDir, 'index.html'), '<h1>public book</h1>')
+    mkdirSync(join(fixtureDir, 'course'), { recursive: true })
+    writeFileSync(
+      join(fixtureDir, 'course/index.html'),
+      `<nav class="course-map">${stages.join('')}本地进度将在页面加载后显示${links.join('')}</nav>`,
+    )
+    for (const { itemId } of publishedCourseItems) {
+      if (itemId === 'chapter-14-computer-use') continue
+      const path = targetPath(getContentItem(itemId).route)
+      mkdirSync(join(path, '..'), { recursive: true })
+      writeFileSync(path, `<h1>${itemId}</h1>`)
+    }
+    for (const path of [
+      'projects/index.html', 'projects/example.html', 'labs/index.html', 'labs/example.html',
+      'projects.html', 'labs.html',
+    ]) {
+      const target = join(fixtureDir, path)
+      mkdirSync(join(target, '..'), { recursive: true })
+      writeFileSync(target, '<h1>not published</h1>')
+    }
+
+    try {
+      const errors = validateDist(fixtureDir)
+      expect(errors).toContain('构建产物缺少公开课程目标：chapters/14-computer-use.html')
+      expect(errors).toContainEqual(expect.stringContaining('projects/index.html'))
+      expect(errors).toContainEqual(expect.stringContaining('labs/index.html'))
+      expect(errors).toContainEqual(expect.stringContaining('projects.html'))
+      expect(errors).toContainEqual(expect.stringContaining('labs.html'))
+    } finally {
+      rmSync(fixtureDir, { recursive: true, force: true })
+    }
+  })
+
   it('labels the local delivery source as case reasoning only', () => {
     const sources = parse(readFileSync('sources/source-index.yml', 'utf8')).sources as Array<{
       id: string

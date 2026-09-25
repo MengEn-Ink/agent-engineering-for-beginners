@@ -3,7 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, withBase } from 'vitepress'
 import { publishedCourseItems } from '../data/courseMap'
 import { getContentItem } from '../data/contentRegistry'
-import { findNextReadingStep, readingPathById } from '../data/readingPaths'
+import { findNextReadingStep, readingPathById, readingPaths } from '../data/readingPaths'
 import {
   announceLearningState,
   emptyLearningState,
@@ -19,8 +19,11 @@ const state = ref<LearningState>(emptyLearningState())
 const storageAvailable = ref(true)
 const currentPath = computed(() => normalizeCourseRoute(route.path))
 const trackedRoutes = new Set(
-  publishedCourseItems
-    .map((item) => normalizeCourseRoute(getContentItem(item.itemId).route))
+  [
+    ...publishedCourseItems.map((item) => getContentItem(item.itemId).route),
+    ...readingPaths.flatMap((path) => path.steps.map((step) => step.path)),
+  ]
+    .map((path) => normalizeCourseRoute(path))
     .filter((path): path is string => path !== null),
 )
 const activePath = computed(() => readingPathById[state.value.selectedPath])

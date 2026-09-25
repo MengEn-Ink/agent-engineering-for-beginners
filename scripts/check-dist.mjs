@@ -96,6 +96,10 @@ export function validateDist(distPath) {
   const relativeFiles = listFiles(distPath).map((file) => relative(distPath, file))
   const leaked = relativeFiles.filter((file) => file.split(/[\\/]/).includes('superpowers'))
   if (leaked.length > 0) errors.push(`构建产物泄露 superpowers 页面：${leaked.join(', ')}`)
+  const unpublished = relativeFiles.filter((file) => /^(?:projects|labs)(?:\.html|[\\/])/u.test(file))
+  if (unpublished.length > 0) {
+    errors.push(`构建产物包含未发布项目或实验页面：${unpublished.join(', ')}`)
+  }
   if (!relativeFiles.includes('index.html')) errors.push('构建产物缺少 index.html')
 
   const coursePath = join(distPath, 'course', 'index.html')
@@ -103,6 +107,15 @@ export function validateDist(distPath) {
     errors.push('构建产物缺少 course/index.html')
   } else {
     errors.push(...validateCourseDist(readFileSync(coursePath, 'utf8')))
+  }
+
+  for (const route of publishedCourseRoutes) {
+    const relativeTarget = route.endsWith('/')
+      ? join(route.slice(1), 'index.html')
+      : `${route.slice(1)}.html`
+    if (!relativeFiles.includes(relativeTarget)) {
+      errors.push(`构建产物缺少公开课程目标：${relativeTarget}`)
+    }
   }
 
   return errors

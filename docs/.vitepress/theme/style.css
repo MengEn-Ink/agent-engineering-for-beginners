@@ -1959,6 +1959,11 @@ summary {
   padding-left: 1rem;
 }
 
+.course-stage > header > .course-stage-current {
+  color: var(--reading-link);
+  font-weight: 800;
+}
+
 .course-stage > header {
   display: grid;
   gap: 0.45rem;

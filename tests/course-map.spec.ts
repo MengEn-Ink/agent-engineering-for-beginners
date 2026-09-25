@@ -19,6 +19,7 @@ import {
   normalizeCourseRoute,
   readCourseProgress,
 } from '../docs/.vitepress/theme/data/learningState'
+import { readingPaths } from '../docs/.vitepress/theme/data/readingPaths'
 
 const expectedIds = [
   'course', 'paths', 'preface',
@@ -55,6 +56,13 @@ describe('content registry', () => {
 
   it('fails loudly for an unknown ID', () => {
     expect(() => getContentItem('missing')).toThrow('Unknown content item: missing')
+  })
+
+  it('fails closed for inherited Object prototype IDs', () => {
+    for (const id of ['toString', 'constructor', '__proto__']) {
+      expect(() => getContentItem(id)).toThrow(`Unknown content item: ${id}`)
+      expect(() => navigationItem(id)).toThrow(`Unknown content item: ${id}`)
+    }
   })
 
   it('uses the controlled navigation title variant', () => {
@@ -228,6 +236,24 @@ describe('course navigation integration', () => {
     expect(progress).toContain("withBase('/paths/')")
   })
 
+  it('keeps every reading-path-only appendix page tracked without duplicates', () => {
+    const progress = readFileSync('docs/.vitepress/theme/components/ReadingProgress.vue', 'utf8')
+    const publishedRoutes = publishedCourseItems.map(({ itemId }) => getContentItem(itemId).route)
+    const pathRoutes = readingPaths.flatMap((path) => path.steps.map((step) => step.path))
+    const expectedTrackedRoutes = new Set([...publishedRoutes, ...pathRoutes])
+
+    expect(progress).toContain('readingPaths.flatMap')
+    expect(progress).toContain('const trackedRoutes = new Set')
+    expect(expectedTrackedRoutes.size).toBe(23)
+    expect(expectedTrackedRoutes.size).toBeLessThan(publishedRoutes.length + pathRoutes.length)
+    for (const id of ['appendix-glossary', 'appendix-interview', 'appendix-interview-training']) {
+      const route = getContentItem(id).route
+      expect(publishedRoutes).not.toContain(route)
+      expect(pathRoutes).toContain(route)
+      expect(expectedTrackedRoutes.has(route)).toBe(true)
+    }
+  })
+
   it('derives grouped navigation from registry items', () => {
     const config = readFileSync('docs/.vitepress/config.mts', 'utf8')
     const themeConfig = siteConfig.themeConfig as {
@@ -314,6 +340,8 @@ describe('course page', () => {
     expect(component).toContain('aria-label="课程阶段"')
     expect(component).toContain('role="list"')
     expect(component).toContain('aria-label="课程总进度"')
+    expect(component).toContain(":aria-current=\"currentStageId === stage.id ? 'step' : undefined\"")
+    expect(component).toContain('当前阶段')
     expect(style).toContain('.course-map')
     expect(style).toContain('.course-stage')
     expect(style).toContain('.course-item')

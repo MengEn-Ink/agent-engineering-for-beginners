@@ -57,9 +57,8 @@ export const contentById = Object.fromEntries(
 ) as Record<string, ContentItem>
 
 export function getContentItem(id: string): ContentItem {
-  const item = contentById[id]
-  if (!item) throw new Error(`Unknown content item: ${id}`)
-  return item
+  if (!Object.hasOwn(contentById, id)) throw new Error(`Unknown content item: ${id}`)
+  return contentById[id]
 }
 
 export function navigationItem(id: string, variant: 'title' | 'nav' = 'title') {

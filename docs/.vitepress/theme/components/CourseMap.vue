@@ -75,11 +75,13 @@ onUnmounted(() => {
         :key="stage.id"
         class="course-stage"
         :class="{ 'is-current': currentStageId === stage.id }"
+        :aria-current="currentStageId === stage.id ? 'step' : undefined"
       >
         <header>
           <span>{{ String(stage.order).padStart(2, '0') }}</span>
           <h2>{{ stage.title }}</h2>
           <p>{{ stage.purpose }}</p>
+          <span v-if="currentStageId === stage.id" class="course-stage-current">当前阶段</span>
           <template v-if="stage.availability === 'published' && progressByStage.get(stage.id)">
             <small>
               {{ progressByStage.get(stage.id)?.completed }} /
