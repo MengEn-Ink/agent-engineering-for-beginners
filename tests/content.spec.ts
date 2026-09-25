@@ -636,3 +636,44 @@ describe('release configuration', () => {
     expect(readFileSync('LICENSE-CONTENT', 'utf8')).toContain('Creative Commons Attribution-ShareAlike 4.0')
   })
 })
+
+describe('interview registry', () => {
+  it('contains forty-two structured and uniquely identified questions', async () => {
+    const registryPath = 'docs/.vitepress/theme/data/interviewQuestions.ts'
+    expect(existsSync(registryPath)).toBe(true)
+    const { interviewQuestions } = await import(
+      pathToFileURL(join(process.cwd(), registryPath)).href
+    )
+
+    expect(interviewQuestions).toHaveLength(42)
+    expect(new Set(interviewQuestions.map((item: { id: string }) => item.id)).size).toBe(42)
+
+    for (const item of interviewQuestions) {
+      expect(item.id).toMatch(/^iq-(0[1-9]|1[0-4])-[abc]$/)
+      expect(item.chapter).toBeGreaterThanOrEqual(1)
+      expect(item.chapter).toBeLessThanOrEqual(14)
+      expect(['工程', '产品']).toContain(item.role)
+      expect(['基础', '进阶', '系统设计']).toContain(item.difficulty)
+      expect(item.question.length).toBeGreaterThan(8)
+      expect(item.shortAnswer.length).toBeGreaterThan(35)
+      expect(item.followUps.length).toBeGreaterThanOrEqual(2)
+      expect(item.followUps.length).toBeLessThanOrEqual(3)
+      expect(item.strongSignals.length).toBeGreaterThanOrEqual(3)
+      expect(item.pitfall.length).toBeGreaterThan(15)
+    }
+  })
+
+  it('keeps three questions per chapter and the approved role mix', async () => {
+    const registryPath = 'docs/.vitepress/theme/data/interviewQuestions.ts'
+    expect(existsSync(registryPath)).toBe(true)
+    const { interviewQuestions } = await import(
+      pathToFileURL(join(process.cwd(), registryPath)).href
+    )
+
+    for (let chapter = 1; chapter <= 14; chapter += 1) {
+      expect(interviewQuestions.filter((item: { chapter: number }) => item.chapter === chapter)).toHaveLength(3)
+    }
+    expect(interviewQuestions.filter((item: { role: string }) => item.role === '工程')).toHaveLength(30)
+    expect(interviewQuestions.filter((item: { role: string }) => item.role === '产品')).toHaveLength(12)
+  })
+})
