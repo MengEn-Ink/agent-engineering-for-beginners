@@ -7,9 +7,9 @@ defineProps<{
 </script>
 
 <template>
-  <section class="chapter-lead" aria-labelledby="chapter-lead-title">
+  <section class="chapter-lead" aria-label="本章导航">
     <div class="chapter-lead-meta">
-      <span id="chapter-lead-title">本章导航</span>
+      <span>本章导航</span>
       <span>预计 {{ minutes }} 分钟</span>
     </div>
     <div class="chapter-lead-grid">

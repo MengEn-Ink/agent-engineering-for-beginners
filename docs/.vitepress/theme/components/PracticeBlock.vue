@@ -8,9 +8,9 @@ defineProps<{
 </script>
 
 <template>
-  <section class="practice-block" aria-labelledby="practice-title">
+  <section class="practice-block" :aria-label="`动手练习：${title}`">
     <p class="practice-kicker">动手练习</p>
-    <h3 id="practice-title">{{ title }}</h3>
+    <h3>{{ title }}</h3>
     <p>{{ prompt }}</p>
     <details>
       <summary>先看提示</summary>

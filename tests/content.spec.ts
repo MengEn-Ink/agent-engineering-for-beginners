@@ -167,9 +167,42 @@ describe('learning components', () => {
     expect(readFileSync('docs/.vitepress/theme/components/PracticeBlock.vue', 'utf8')).toContain(
       '<details',
     )
-    for (const component of ['DecisionLadder', 'MemoryLayers', 'EvidencePyramid', 'RiskMatrix']) {
+    for (const component of ['DecisionLadder', 'MemoryLayers', 'EvidencePyramid']) {
       const source = readFileSync(`docs/.vitepress/theme/components/${component}.vue`, 'utf8')
       expect(source).toContain('role="img"')
+      expect(source).toContain('aria-label=')
+    }
+
+    const riskMatrix = readFileSync(
+      'docs/.vitepress/theme/components/RiskMatrix.vue',
+      'utf8',
+    )
+    expect(riskMatrix).toContain('<figcaption>')
+    expect(riskMatrix).toContain('<table>')
+    expect(riskMatrix).not.toContain('role="img"')
+  })
+
+  it('styles learning blocks and preserves mobile table scrolling', () => {
+    const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
+    for (const selector of [
+      '.chapter-lead',
+      '.case-thread',
+      '.practice-block',
+      '.checklist-block',
+      '.learning-diagram',
+    ]) {
+      expect(style).toContain(selector)
+    }
+    const tableRule = style.match(/\.VPDoc table\s*\{([\s\S]*?)\}/u)?.[1] ?? ''
+    expect(tableRule).toContain('display: block')
+    expect(tableRule).toContain('overflow-x: auto')
+    expect(tableRule).not.toContain('display: table')
+  })
+
+  it('avoids fixed IDs in reusable learning blocks', () => {
+    for (const component of ['ChapterLead', 'CaseThread', 'PracticeBlock', 'ChecklistBlock']) {
+      const source = readFileSync(`docs/.vitepress/theme/components/${component}.vue`, 'utf8')
+      expect(source).not.toMatch(/\sid="[^"]+"/)
       expect(source).toContain('aria-label=')
     }
   })

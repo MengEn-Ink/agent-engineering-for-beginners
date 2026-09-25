@@ -6,8 +6,8 @@ defineProps<{
 </script>
 
 <template>
-  <section class="checklist-block" aria-labelledby="checklist-title">
-    <h3 id="checklist-title">{{ title }}</h3>
+  <section class="checklist-block" :aria-label="title">
+    <h3>{{ title }}</h3>
     <ul>
       <li v-for="item in items" :key="item">{{ item }}</li>
     </ul>

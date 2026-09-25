@@ -1,7 +1,6 @@
 <template>
   <figure
     class="learning-diagram risk-matrix"
-    role="img"
     aria-label="按动作影响和可逆性决定自动执行、事后抽检、执行前批准或禁止的风险矩阵"
   >
     <figcaption><b>动作风险矩阵</b><span>权限来自可承受损失，不来自模型自信。</span></figcaption>

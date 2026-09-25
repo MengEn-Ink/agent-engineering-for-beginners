@@ -8,9 +8,9 @@ defineProps<{
 </script>
 
 <template>
-  <aside class="case-thread" aria-labelledby="case-thread-title">
+  <aside class="case-thread" :aria-label="`贯穿案例：${title}`">
     <p class="case-thread-kicker">贯穿案例 · {{ chapter }}</p>
-    <h3 id="case-thread-title">{{ title }}</h3>
+    <h3>{{ title }}</h3>
     <dl>
       <div>
         <dt>本章问题</dt>

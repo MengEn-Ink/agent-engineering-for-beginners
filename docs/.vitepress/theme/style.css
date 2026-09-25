@@ -144,8 +144,11 @@ body {
 }
 
 .VPDoc table {
-  display: table;
-  width: 100%;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
   border-collapse: collapse;
 }
 
@@ -468,6 +471,209 @@ body {
   box-shadow: 5px 5px 0 var(--book-coral);
 }
 
+.chapter-lead,
+.case-thread,
+.practice-block,
+.checklist-block,
+.learning-diagram {
+  margin: 2.25rem 0;
+  color: var(--reading-text);
+}
+
+.chapter-lead {
+  padding-block: 1.25rem;
+  border-block: 1px solid var(--reading-rule);
+}
+
+.chapter-lead-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  color: var(--reading-text-soft);
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.chapter-lead-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.5rem 2.5rem;
+}
+
+.chapter-lead h2,
+.case-thread h3,
+.practice-block h3,
+.checklist-block h3 {
+  margin: 0 0 0.75rem;
+  padding: 0;
+  border: 0;
+  font-size: 1rem;
+  line-height: 1.45;
+  letter-spacing: 0;
+}
+
+.chapter-lead ul,
+.checklist-block ul {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.chapter-lead li,
+.checklist-block li {
+  margin: 0.3rem 0;
+  font-size: 0.96rem;
+  line-height: 1.65;
+}
+
+.case-thread {
+  padding: 1.15rem 1.3rem;
+  border-left: 4px solid var(--reading-success);
+  background: var(--reading-bg-soft);
+}
+
+.case-thread-kicker,
+.practice-kicker {
+  margin: 0 0 0.45rem !important;
+  color: var(--reading-success);
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.76rem !important;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.case-thread dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 0;
+}
+
+.case-thread dt {
+  margin-bottom: 0.25rem;
+  color: var(--reading-text-soft);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.case-thread dd {
+  margin: 0;
+  line-height: 1.65;
+}
+
+.practice-block {
+  padding: 1.25rem 1.35rem;
+  border: 1px solid var(--reading-rule);
+  border-left: 4px solid var(--reading-link);
+  background: var(--reading-bg-soft);
+}
+
+.practice-block details {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--reading-rule);
+}
+
+.practice-block summary {
+  cursor: pointer;
+  font-weight: 750;
+}
+
+.practice-block summary:focus-visible {
+  border-radius: 2px;
+  outline: 3px solid var(--reading-link);
+  outline-offset: 3px;
+}
+
+.checklist-block {
+  padding: 1.1rem 1.25rem;
+  border: 1px solid var(--reading-rule);
+  background: var(--reading-bg-soft);
+}
+
+.checklist-block li::marker {
+  color: var(--reading-success);
+}
+
+.learning-diagram {
+  padding: 1.25rem;
+  border-block: 1px solid var(--reading-rule);
+  background: var(--reading-bg-soft);
+}
+
+.learning-diagram figcaption {
+  display: grid;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+}
+
+.learning-diagram figcaption b {
+  font-family: 'Iowan Old Style', 'Noto Serif SC', 'Songti SC', Georgia, serif;
+  font-size: 1.3rem;
+}
+
+.learning-diagram figcaption span {
+  color: var(--reading-text-soft);
+}
+
+.decision-ladder ol,
+.evidence-pyramid ol {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.decision-ladder li,
+.evidence-pyramid li {
+  display: grid;
+  grid-template-columns: 2.5rem minmax(8rem, 0.45fr) 1fr;
+  gap: 0.75rem;
+  align-items: baseline;
+  padding: 0.7rem 0.8rem;
+  border-left: 3px solid var(--reading-link);
+  background: var(--reading-bg);
+}
+
+.decision-ladder li span,
+.evidence-pyramid li span {
+  color: var(--reading-text-soft);
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.76rem;
+}
+
+.memory-layers dl {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  background: var(--reading-rule);
+}
+
+.memory-layers dl div {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.85rem;
+  background: var(--reading-bg);
+}
+
+.memory-layers dd {
+  margin: 0;
+  color: var(--reading-text-soft);
+}
+
+.memory-layers small {
+  color: var(--reading-success);
+}
+
+.risk-matrix table {
+  margin: 0;
+  background: var(--reading-bg);
+}
+
 @media (max-width: 900px) {
   .book-hero {
     grid-template-columns: 1fr;
@@ -706,6 +912,15 @@ body {
     right: 1rem;
     bottom: -0.65rem;
     transform: rotate(90deg);
+  }
+
+  .chapter-lead-grid,
+  .case-thread dl {
+    grid-template-columns: 1fr;
+  }
+
+  .memory-layers dl {
+    grid-template-columns: 1fr;
   }
 }
 
