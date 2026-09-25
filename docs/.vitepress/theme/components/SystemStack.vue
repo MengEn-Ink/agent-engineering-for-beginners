@@ -19,7 +19,7 @@ const layers = [
       <span>ANATOMY / 系统剖面</span>
       <strong>Agent 不是一个模型，而是一摞互相约束的工程层。</strong>
     </figcaption>
-    <ol>
+    <ol role="list">
       <li v-for="(layer, index) in layers" :key="layer.name" :data-tone="layer.tone">
         <span>{{ String(layers.length - index).padStart(2, '0') }}</span>
         <strong>{{ layer.name }}</strong>

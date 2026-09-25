@@ -788,4 +788,27 @@ describe('visual explanations', () => {
     expect(style).toContain('.visual-flow-list')
     expect(style).toContain('grid-template-columns: 1fr')
   })
+
+  it('models graph fan-out, join and recovery as distinct structures', () => {
+    const graph = readFileSync('docs/.vitepress/theme/components/GraphFlow.vue', 'utf8')
+    expect(graph).toContain('class="parallel-branches"')
+    expect(graph).toContain('role="group"')
+    expect(graph).toContain('并行分叉')
+    expect(graph).toContain('全部必需分支完成后汇合')
+    expect(graph).toContain('class="flow-recovery"')
+    expect(graph).toContain('回到失败节点前')
+  })
+
+  it('preserves list semantics after visual markers are removed', () => {
+    for (const component of [
+      'ToolBoundary',
+      'ResearchPipeline',
+      'ServiceEscalation',
+      'CodingLoop',
+      'BrowserEvidence',
+    ]) {
+      const source = readFileSync(`docs/.vitepress/theme/components/${component}.vue`, 'utf8')
+      expect(source).toContain('<ol class="visual-flow-list" role="list">')
+    }
+  })
 })

@@ -18,7 +18,7 @@ const gates = [
       <span>CASE 01 / 交付型 AGENT</span>
       <strong>会跑不算交付，带着证据走完全程才算。</strong>
     </figcaption>
-    <ol>
+    <ol role="list">
       <li v-for="gate in gates" :key="gate.label">
         <span class="gate-status">{{ gate.status }}</span>
         <strong>{{ gate.label }}</strong>

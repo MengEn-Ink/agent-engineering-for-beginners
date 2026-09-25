@@ -17,7 +17,7 @@ const stages = [
       <span>AGENT LOOP / 反馈回路</span>
       <strong>不是一直想，是每一步都向环境要答案。</strong>
     </figcaption>
-    <ol>
+    <ol role="list">
       <li v-for="stage in stages" :key="stage.index">
         <span class="diagram-index">{{ stage.index }}</span>
         <strong>{{ stage.label }}</strong>

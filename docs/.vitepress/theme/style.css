@@ -914,6 +914,80 @@ summary {
   border-left: 4px solid var(--reading-risk) !important;
 }
 
+.graph-flow-canvas {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.7fr) minmax(16rem, 1.6fr) minmax(8rem, 0.8fr);
+  gap: 1.4rem;
+  align-items: center;
+}
+
+.graph-node,
+.parallel-branches section {
+  position: relative;
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+  padding: 0.85rem;
+  border: 1px solid var(--reading-rule);
+  background: var(--reading-bg);
+}
+
+.graph-start::after,
+.parallel-stage::after {
+  position: absolute;
+  top: 50%;
+  right: -1.4rem;
+  width: 1.4rem;
+  content: '→';
+  color: var(--reading-link);
+  text-align: center;
+  transform: translateY(-50%);
+}
+
+.parallel-stage {
+  position: relative;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.parallel-branches {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+  padding-block: 0.25rem;
+  border-block: 1px dashed var(--reading-link);
+}
+
+.branch-label,
+.join-label {
+  color: var(--reading-text-soft);
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.7rem;
+}
+
+.branch-label {
+  text-align: center;
+}
+
+.join-label {
+  justify-self: end;
+}
+
+.flow-recovery {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.8rem;
+  margin-top: 1rem;
+  padding: 0.8rem 1rem;
+  border: 1px dashed var(--reading-risk);
+  color: var(--reading-text-soft);
+  background: var(--reading-bg);
+}
+
+.flow-recovery b {
+  color: var(--reading-risk);
+}
+
 .tool-boundary .visual-flow-list li:nth-child(3),
 .service-escalation .visual-flow-list li:nth-child(4),
 .browser-evidence .visual-flow-list li:nth-child(3) {
@@ -953,7 +1027,9 @@ summary {
 
   .visual-flow-list,
   .visual-compare,
-  .handoff-grid {
+  .handoff-grid,
+  .graph-flow-canvas,
+  .parallel-branches {
     grid-template-columns: 1fr;
   }
 
@@ -967,6 +1043,18 @@ summary {
   .visual-compare > span {
     justify-self: end;
     transform: rotate(90deg);
+  }
+
+  .graph-start::after,
+  .parallel-stage::after {
+    top: auto;
+    right: 0.7rem;
+    bottom: -1.3rem;
+    transform: rotate(90deg);
+  }
+
+  .flow-recovery {
+    grid-template-columns: 1fr;
   }
 }
 
