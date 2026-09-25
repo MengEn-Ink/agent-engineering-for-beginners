@@ -17,17 +17,17 @@ description: 按当前多仓库架构追踪 Canvas、Agent Server、SDK agent、
 
 <ProjectMeta project-id="project-openhands" />
 
-Canvas v1.24.0 依赖 `@openhands/typescript-client@1.49.6`，与本页固定的 software-agent-sdk v1.49.6 对齐。页面只解释一次 conversation 到 workspace event 的路径。
+Canvas v1.24.0 依赖 `@openhands/typescript-client@1.49.6`，与本页固定的 software-agent-sdk v1.49.6 对齐。页面只解释已有会话的 message/action/event 链，不追踪 conversation 创建链。
 
 ## 原创建筑图
 
 <ProjectCallChain project-id="project-openhands" />
 
-图中最重要的边界是：Canvas 选择并连接 backend，Agent Server 承接会话，SDK 决定动作，Workspace 限制动作发生在哪里。
+图中最重要的边界是：Canvas `Message` 是客户端传输消息，SDK `MessageEvent` 才进入持久事件模型。Agent Server 直接调用 `LocalConversation`，SDK 决定动作并调用工具；Workspace 只是工具的 owner 与配置边界，是不在主调用链上的旁路，不是这条链的下一跳。
 
 ## 唯一纵向调用链
 
-从 Canvas conversation service 开始，经过 adapter 和 Agent Server router/service，进入 SDK Conversation 与 Agent，最后由 Tool/Workspace 产生事件回流界面。不要把 UI 中的 backend selector 当作沙箱。
+从 `handleSendMessage` 与 `useSendMessage().send` 进入 WebSocket 后，`events_socket` 把消息交给 `EventService.send_message`，再由 `LocalConversation.send_message` 写入用户 `MessageEvent`。执行侧由 `EventService.run`、`LocalConversation.arun` 和 `Agent.astep` 推进；tool call 被转成 `ActionEvent`，执行结果形成 `Observation`。事件侧的持久化 append 先发生，之后才经 PubSub、`AsyncCallbackWrapper` 和 `_send_event` 回到 Canvas event store。图中的三条 track 不是一条跨异步边界的同步调用栈。
 
 ## 关键源码入口
 
@@ -35,13 +35,13 @@ Canvas v1.24.0 依赖 `@openhands/typescript-client@1.49.6`，与本页固定的
 
 ## 一次请求的数据流
 
-用户消息由 Canvas 发送到选定 Agent Server。服务创建或恢复 conversation，SDK agent 基于已有事件产生动作，工具在 workspace 边界执行，观察与状态事件再通过服务和客户端回到 Canvas。权限、秘密和文件范围必须在服务与 workspace 层实际限制。
+用户消息由 Canvas 发送到已有 conversation 的 Agent Server。Canvas Message 与 SDK event 不能混为一个对象：服务把消息交给 `LocalConversation`，agent 基于持久事件产生 `ActionEvent`，工具返回 `Observation`，`LocalConversation._on_event` 先追加持久事件，再异步发布给客户端。模型生成过程中的 streaming delta 不属于持久事件回流链，而是非持久旁路，也不能被当作已完成动作。权限、秘密和文件范围仍必须由工具及其 Workspace owner 实际限制。
 
 ## 阅读练习
 
-1. 找出 Canvas 如何选择 Agent Server，而不是直接调用 Python agent。
-2. 从 conversation router 追到 SDK Conversation。
-3. 画出宿主机直跑、Docker 和远端 workspace 的信任边界差异。
+1. 从 `handleSendMessage` 追到 `LocalConversation.send_message`，标出 Canvas Message 与 SDK `MessageEvent` 的转换点。
+2. 从 `_ahandle_tool_calls` 追到 `ToolDefinition.__call__`，区分 `ActionEvent` 与 `Observation`。
+3. 从 `LocalConversation._on_event` 追到 Canvas event store，解释为何持久追加与异步推送不能画成一个同步调用栈。
 
 ## 失败边界
 
@@ -59,7 +59,7 @@ Canvas v1.24.0 依赖 `@openhands/typescript-client@1.49.6`，与本页固定的
 
 ## 升级复核
 
-先检查 Canvas README 的 repository boundaries、客户端依赖版本、Agent Server conversation API、SDK Conversation/Agent 和 Workspace 契约。仓库再次拆分或合并时，先改边界图再改调用链。
+先检查 Canvas 的消息 hook 与 WebSocket context、客户端依赖版本、Agent Server event service、SDK `LocalConversation`/Agent 和 Tool 契约。仓库再次拆分或合并时，先改边界图再改调用链。
 
 ## 来源与归因
 

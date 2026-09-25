@@ -23,11 +23,11 @@ SWE-bench 的 v5.0.1 是 tag，不冒充 GitHub Release。页面只拆评测执�
 
 <ProjectCallChain project-id="project-agent-benchmarks" />
 
-两条轨道分别闭合到自己的评分，不在图末尾合成一个“总分”。
+两条受控轨道并列，分别闭合到自己的评分，不在图末尾合成一个“总分”；这不是先运行 SWE-bench 再运行 τ²-bench 的顺序流程。
 
 ## 唯一纵向调用链
 
-本页使用一个“任务到评分”的比较链：左轨是 patch、容器、测试与 report，右轨是 task、双参与者 simulation、环境工具与 reward。比较的是证据结构，不是数值高低。
+本页使用一个“任务到评分”的比较视图：左轨是 patch、容器、测试与 report；右轨从当前 `tau2` CLI 的 `run` 进入 `run_domain`、任务加载、单任务 simulation、orchestrator、环境工具、trajectory、evaluation 与 `reward_info`。两轨只比较证据结构，不暗示调用关系或数值高低。
 
 ## 关键源码入口
 
@@ -35,13 +35,15 @@ SWE-bench 的 v5.0.1 是 tag，不冒充 GitHub Release。页面只拆评测执�
 
 ## 一次请求的数据流
 
-SWE-bench 将实例和预测 patch 放入隔离环境，运行目标测试并由 grading 生成解决状态。τ²-bench 让 agent 与 user simulator 围绕同一任务交互，环境执行工具并维护权威状态，evaluator 根据结果和轨迹给出 reward。
+SWE-bench 将实例和预测 patch 放入隔离环境，运行目标测试并由 grading 生成解决状态。τ²-bench 由当前 CLI 调用 batch runner，构建 agent、user、environment 与 orchestrator；simulation 保留 trajectory，evaluator 让 reward 按 basis 选择后相乘并形成 `reward_info`。ACTION 只有纳入 basis 时才是硬门禁，不能无条件覆盖其他 reward 分量。
 
 ## 阅读练习
 
 1. 找出 SWE-bench 的预测输入、容器执行和最终报告边界。
 2. 找出 τ²-bench 中 user simulator 与 environment 的职责差异。
 3. 列出三个会让两个分数不可比较的契约差异。
+
+兼容层里的 `tau2.run.run_task` 与 `tau2.run.run_tasks` 是旧 flat 参数 API 已 deprecated；这不是说整个 `tau2.run` module 都 deprecated，也不是当前 CLI 主链入口。
 
 ## 失败边界
 
