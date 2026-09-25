@@ -7,14 +7,21 @@ on:
 
 permissions:
   contents: read
-  issues: write
+
+concurrency:
+  group: source-freshness-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  review:
+  scan:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -32,6 +39,28 @@ jobs:
 
       - name: Check sources
         run: pnpm sources:check
+
+      - name: Upload freshness report
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-freshness-report
+          path: reports/source-freshness.*
+          if-no-files-found: error
+          retention-days: 7
+
+  report:
+    needs: scan
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Download freshness report
+        uses: actions/download-artifact@v4
+        with:
+          name: source-freshness-report
+          path: reports
 
       - name: Create, update, or close freshness issue
         uses: actions/github-script@v7

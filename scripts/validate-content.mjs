@@ -81,7 +81,12 @@ export function validatePublishedFiles(root) {
 export function validateSourceRegistry(sourcePath) {
   if (!existsSync(sourcePath)) return ['缺少 sources/source-index.yml']
 
-  const data = parse(readFileSync(sourcePath, 'utf8'))
+  let data
+  try {
+    data = parse(readFileSync(sourcePath, 'utf8'))
+  } catch {
+    return ['来源索引 YAML 无法解析']
+  }
   const defaults = data?.source_defaults ?? {}
   const sources = Array.isArray(data?.sources)
     ? data.sources.map((source) => ({ ...defaults, ...source }))
@@ -103,6 +108,11 @@ export function validateSourceRegistry(sourcePath) {
   ]
   const errors = []
   const ids = new Set()
+  const isValidDate = (value) => {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+    const date = new Date(`${value}T00:00:00Z`)
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+  }
 
   if (data?.schema_version !== 2) errors.push('来源索引 schema_version 必须为 2')
   if (sources.length < 15) errors.push('来源索引至少需要 15 条记录')
@@ -115,14 +125,19 @@ export function validateSourceRegistry(sourcePath) {
     }
     if (!['A', 'B', 'C'].includes(source?.grade)) errors.push(`来源 ${source?.id} 的 grade 无效`)
     if (!/^https:\/\//.test(source?.url ?? '')) errors.push(`来源 ${source?.id} 不是 HTTPS URL`)
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(source?.accessed ?? '')) {
+    if (!isValidDate(source?.accessed)) {
       errors.push(`来源 ${source?.id} 的 accessed 无效`)
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(source?.last_verified ?? '')) {
+    if (!isValidDate(source?.last_verified)) {
       errors.push(`来源 ${source?.id} 的 last_verified 无效`)
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(source?.review_by ?? '')) {
+    if (!isValidDate(source?.review_by)) {
       errors.push(`来源 ${source?.id} 的 review_by 无效`)
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(source?.last_verified ?? '')
+      && /^\d{4}-\d{2}-\d{2}$/.test(source?.review_by ?? '')
+      && source.review_by < source.last_verified) {
+      errors.push(`来源 ${source?.id} 的 review_by 不能早于 last_verified`)
     }
     if (!['active', 'watch', 'deprecated', 'broken'].includes(source?.status)) {
       errors.push(`来源 ${source?.id} 的 status 无效`)
@@ -138,6 +153,15 @@ export function validateSourceRegistry(sourcePath) {
     }
     if (ids.has(source?.id)) errors.push(`来源 ID 重复：${source?.id}`)
     ids.add(source?.id)
+  }
+
+  for (const source of sources) {
+    if (typeof source?.replaced_by === 'string' && !ids.has(source.replaced_by)) {
+      errors.push(`来源 ${source?.id} 的 replaced_by 引用不存在：${source.replaced_by}`)
+    }
+    if (source?.replaced_by === source?.id) {
+      errors.push(`来源 ${source?.id} 不能用自己作为 replaced_by`)
+    }
   }
 
   return errors
