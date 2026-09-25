@@ -13,6 +13,23 @@ const {
   projectSourceUrl,
 } = createProjectCatalogLookup(projectCatalog)
 
+const requiredProjectHeadings = [
+  '30 秒结论', '为什么选', '版本与边界', '原创建筑图', '唯一纵向调用链',
+  '关键源码入口', '一次请求的数据流', '阅读练习', '失败边界', '生产边界',
+  '高频面试点', '升级复核', '来源与归因',
+]
+
+function expectCoreProjectPage(path: string, projectId: string) {
+  const text = readFileSync(path, 'utf8')
+  const h2s = Array.from(text.matchAll(/^## (.+)$/gmu), (match) => match[1])
+  expect(text).toContain(`<ProjectMeta project-id="${projectId}" />`)
+  expect(text).toContain(`<ProjectCallChain project-id="${projectId}" />`)
+  expect(text).toContain(`<ProjectSourceLinks project-id="${projectId}" />`)
+  expect(h2s, path).toEqual(requiredProjectHeadings)
+  expect(text).not.toMatch(/npm install|pip install|docker run|OPENAI_API_KEY|ANTHROPIC_API_KEY/u)
+  expect(text).not.toMatch(/!\[[^\]]*\]\(https?:\/\//u)
+}
+
 describe('project presentation primitives', () => {
   it('loads the validated project catalog and fails closed on inherited IDs', () => {
     expect(getProjectPage('project-aider').subjects).toEqual(['aider'])
@@ -130,5 +147,21 @@ describe('project presentation primitives', () => {
     expect(pkg.devDependencies.typescript).toBe('^5.9.3')
     expect(pkg.devDependencies['@types/node']).toBe('^24.10.0')
     expect(tsconfig.compilerOptions.types).toEqual(['vitepress/client', 'node'])
+  })
+})
+
+describe('MCP and Aider dissections', () => {
+  it('publishes both complete reading-only pages', () => {
+    expectCoreProjectPage('docs/projects/mcp-python-sdk.md', 'project-mcp-python-sdk')
+    expectCoreProjectPage('docs/projects/aider.md', 'project-aider')
+  })
+
+  it('keeps protocol, implementation, patch, and completion claims separate', () => {
+    const mcp = readFileSync('docs/projects/mcp-python-sdk.md', 'utf8')
+    expect(mcp).toContain('规范仓库定义协议，Python SDK 实现协议')
+    expect(mcp).toContain('业务授权')
+    const aider = readFileSync('docs/projects/aider.md', 'utf8')
+    expect(aider).toContain('RepoMap 不是“读完全部仓库”')
+    expect(aider).toContain('生成补丁不等于任务完成')
   })
 })
