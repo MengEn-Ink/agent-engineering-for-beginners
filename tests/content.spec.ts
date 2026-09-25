@@ -879,9 +879,37 @@ describe('publish boundary', () => {
     writeFileSync(join(fixtureDir, 'superpowers/plan.html'), '<h1>private plan</h1>')
 
     try {
-      expect(validateDist(fixtureDir)).toEqual([
-        expect.stringContaining('superpowers'),
-      ])
+      expect(validateDist(fixtureDir)).toContainEqual(expect.stringContaining('superpowers'))
+    } finally {
+      rmSync(fixtureDir, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects missing or incomplete no-JavaScript course output', async () => {
+    const { validateDist } = await import(
+      pathToFileURL(join(process.cwd(), 'scripts/check-dist.mjs')).href
+    )
+    const fixtureDir = mkdtempSync(join(tmpdir(), 'agent-book-course-dist-'))
+    writeFileSync(join(fixtureDir, 'index.html'), '<h1>public book</h1>')
+
+    try {
+      expect(validateDist(fixtureDir)).toContain('构建产物缺少 course/index.html')
+
+      mkdirSync(join(fixtureDir, 'course'), { recursive: true })
+      writeFileSync(
+        join(fixtureDir, 'course/index.html'),
+        '<nav class="course-map"><a href="/preface">重复课程</a><a href="/preface">重复课程</a>/projects/ /labs/ 标记已读 加入书签</nav>',
+      )
+
+      const errors = validateDist(fixtureDir)
+      expect(errors).toContain('课程页必须包含 20 个唯一的公开课程链接')
+      expect(errors).toContain('课程页缺少 SSR 中性进度文案')
+      for (const stage of ['基础认知', '核心机制', '生产工程', '应用模式', '项目拆解', '综合实战']) {
+        expect(errors).toContain(`课程页缺少阶段：${stage}`)
+      }
+      for (const forbidden of ['/projects/', '/labs/', '标记已读', '加入书签']) {
+        expect(errors).toContain(`课程页包含未发布入口或写操作：${forbidden}`)
+      }
     } finally {
       rmSync(fixtureDir, { recursive: true, force: true })
     }

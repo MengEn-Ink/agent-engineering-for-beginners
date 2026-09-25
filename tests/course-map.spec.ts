@@ -241,33 +241,4 @@ describe('course page', () => {
     expect(config).not.toContain('/projects/')
     expect(config).not.toContain('/labs/')
   })
-
-  const courseDistPath = 'docs/.vitepress/dist/course/index.html'
-
-  it.skipIf(!existsSync(courseDistPath))('keeps the complete course useful without JavaScript', () => {
-    const html = readFileSync(courseDistPath, 'utf8')
-    const courseMarkup = html.match(/<nav class="course-map"[\s\S]*?<\/nav>/u)?.[0]
-
-    expect(courseMarkup).toBeDefined()
-    for (const stage of courseStages) expect(courseMarkup).toContain(stage.title)
-    for (const item of publishedCourseItems) {
-      const route = getContentItem(item.itemId).route
-      expect(courseMarkup, item.itemId).toContain(
-        `href="/agent-engineering-for-beginners${route}"`,
-      )
-    }
-    expect(courseMarkup?.match(/<a /gu)).toHaveLength(20)
-    expect(courseMarkup).toContain('本地进度将在页面加载后显示')
-
-    const capstoneMarkup = courseMarkup?.slice(courseMarkup.lastIndexOf('<li class="course-stage">'))
-    expect(capstoneMarkup).toContain('综合实战')
-    expect(capstoneMarkup).toContain('当前不计入进度')
-    expect(capstoneMarkup).not.toContain('<a ')
-    expect(capstoneMarkup).not.toContain('<button')
-    expect(capstoneMarkup).not.toContain('<progress')
-
-    for (const forbidden of ['/projects/', '/labs/', '标记已读', '加入书签']) {
-      expect(html).not.toContain(forbidden)
-    }
-  })
 })
