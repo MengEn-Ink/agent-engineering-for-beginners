@@ -29,18 +29,21 @@ export function resolvePreviewPath(requestPath, distRoot) {
   const relativeTarget = resolve(distPath, relativePath)
   if (!isInsideDist(relativeTarget)) return null
 
-  if (relativePath.endsWith('/') && relativePath !== '') {
-    const directoryIndex = resolve(relativeTarget, 'index.html')
-    if (!isInsideDist(directoryIndex)) return null
-    if (existsSync(directoryIndex)) return directoryIndex
+  const hasExtension = extname(relativePath) !== ''
+  if (relativePath !== '' && !hasExtension) {
+    const cleanPath = relativePath.replace(/\/$/u, '')
+    const cleanUrlFile = resolve(distPath, `${cleanPath}.html`)
+    const directoryIndex = resolve(distPath, cleanPath, 'index.html')
+    const candidates = relativePath.endsWith('/')
+      ? [directoryIndex, cleanUrlFile]
+      : [cleanUrlFile, directoryIndex]
+    if (candidates.some((candidate) => !isInsideDist(candidate))) return null
+    return candidates.find((candidate) => existsSync(candidate)) ?? candidates[0]
   }
 
-  const hasExtension = extname(relativePath) !== ''
   const requestedFile = relativePath === ''
     ? 'index.html'
-    : hasExtension
-      ? relativePath
-      : `${relativePath.replace(/\/$/u, '')}.html`
+    : relativePath
   const candidate = resolve(distPath, requestedFile)
 
   if (!isInsideDist(candidate)) return null

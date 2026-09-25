@@ -977,6 +977,9 @@ describe('release configuration', () => {
       expect(resolvePreviewPath('/agent-engineering-for-beginners/paths/', fixtureDir)).toBe(
         join(fixtureDir, 'paths/index.html'),
       )
+      expect(resolvePreviewPath('/agent-engineering-for-beginners/paths', fixtureDir)).toBe(
+        join(fixtureDir, 'paths/index.html'),
+      )
       expect(resolvePreviewPath('/agent-engineering-for-beginners/chapters/01/', fixtureDir)).toBe(
         join(fixtureDir, 'chapters/01.html'),
       )
