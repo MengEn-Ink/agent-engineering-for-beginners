@@ -4510,6 +4510,7 @@ Run the desktop overview check:
 
 ```bash
 set -e
+agent-browser --session project-catalog-acceptance network har start
 agent-browser --session project-catalog-acceptance set viewport 1440 1000
 agent-browser --session project-catalog-acceptance set media light
 agent-browser --session project-catalog-acceptance open http://127.0.0.1:4175/agent-engineering-for-beginners/projects/
@@ -4600,6 +4601,7 @@ Verify all eight routes without JavaScript:
 
 ```bash
 set -e
+agent-browser --session project-catalog-nojs network har start
 agent-browser --session project-catalog-nojs network route '**/*.js' --abort
 for route in projects/ projects/mcp-python-sdk projects/aider projects/openhands projects/agent-benchmarks projects/dify projects/crewai projects/history-autogpt-flowise; do
   agent-browser --session project-catalog-nojs open "http://127.0.0.1:4175/agent-engineering-for-beginners/$route"
@@ -4636,15 +4638,49 @@ Finally run:
 
 ```bash
 set -e
+agent-browser --session project-catalog-acceptance network har stop /tmp/project-catalog-acceptance.har
+agent-browser --session project-catalog-nojs network har stop /tmp/project-catalog-nojs.har
+node --input-type=module <<'NODE'
+import { readFileSync } from 'node:fs'
+
+const sessions = [
+  { path: '/tmp/project-catalog-acceptance.har', allowAbortedJavaScript: false },
+  { path: '/tmp/project-catalog-nojs.har', allowAbortedJavaScript: true },
+]
+const failures = []
+for (const session of sessions) {
+  const har = JSON.parse(readFileSync(session.path, 'utf8'))
+  const entries = har?.log?.entries
+  if (!Array.isArray(entries) || entries.length === 0) {
+    failures.push(`${session.path}: HAR contains no request entries`)
+    continue
+  }
+  let allowedAbortCount = 0
+  for (const entry of entries) {
+    const url = String(entry?.request?.url ?? '')
+    const status = Number(entry?.response?.status)
+    let isJavaScript = false
+    try { isJavaScript = /\.m?js$/iu.test(new URL(url).pathname) } catch {}
+    const isAllowedAbort = session.allowAbortedJavaScript && status <= 0 && isJavaScript
+    if (isAllowedAbort) allowedAbortCount += 1
+    if (!Number.isFinite(status) || status >= 400 || (status <= 0 && !isAllowedAbort)) {
+      failures.push(`${session.path}: ${status} ${url}`)
+    }
+  }
+  if (session.allowAbortedJavaScript && allowedAbortCount === 0) {
+    failures.push(`${session.path}: no actively aborted JavaScript request was captured`)
+  }
+}
+if (failures.length > 0) throw new Error(`HAR network failures:\n${failures.join('\n')}`)
+console.log('HAR network gate passed')
+NODE
 test -z "$(agent-browser --session project-catalog-acceptance console)"
 test -z "$(agent-browser --session project-catalog-acceptance errors)"
-test -z "$(agent-browser --session project-catalog-acceptance network requests --status 400-599)"
 test -z "$(agent-browser --session project-catalog-nojs console)"
 test -z "$(agent-browser --session project-catalog-nojs errors)"
-test -z "$(agent-browser --session project-catalog-nojs network requests --status 400-599)"
 ```
 
-Expected: no console error, page error, or failed first-party request.
+Expected: both HAR files contain request entries; the normal session has no missing/zero status and no response `>=400`; the no-JavaScript session captures at least one actively aborted `.js`/`.mjs` request and has no other missing/zero status or response `>=400`. Console and page-error outputs remain empty.
 
 Save screenshots:
 
@@ -4884,6 +4920,7 @@ Expected: all 79 positive requests return 200, all five negative requests return
 
 ```bash
 set -e
+agent-browser --session project-catalog-production network har start
 agent-browser --session project-catalog-production set viewport 390 844
 agent-browser --session project-catalog-production set media dark
 agent-browser --session project-catalog-production open https://mengen-ink.github.io/agent-engineering-for-beginners/course/
@@ -4939,6 +4976,7 @@ for label in 'MCP 规范与 Python SDK' 'Aider 源码拆解' 'OpenHands 源码�
   rg -Fq "$label" "$focus_log"
 done
 
+agent-browser --session project-catalog-production-nojs network har start
 agent-browser --session project-catalog-production-nojs network route '**/*.js' --abort
 for route in projects/ projects/mcp-python-sdk projects/aider projects/openhands projects/agent-benchmarks projects/dify projects/crewai projects/history-autogpt-flowise; do
   agent-browser --session project-catalog-production-nojs open "https://mengen-ink.github.io/agent-engineering-for-beginners/$route"
@@ -5010,15 +5048,49 @@ for page_id, required in expected.items():
     assert '许可证边界' not in text, f'{stem} printed the closed disclosure summary'
     Path(f'/tmp/{stem}.txt').write_text(text, encoding='utf-8')
 PY
+agent-browser --session project-catalog-production network har stop /tmp/project-catalog-production.har
+agent-browser --session project-catalog-production-nojs network har stop /tmp/project-catalog-production-nojs.har
+node --input-type=module <<'NODE'
+import { readFileSync } from 'node:fs'
+
+const sessions = [
+  { path: '/tmp/project-catalog-production.har', allowAbortedJavaScript: false },
+  { path: '/tmp/project-catalog-production-nojs.har', allowAbortedJavaScript: true },
+]
+const failures = []
+for (const session of sessions) {
+  const har = JSON.parse(readFileSync(session.path, 'utf8'))
+  const entries = har?.log?.entries
+  if (!Array.isArray(entries) || entries.length === 0) {
+    failures.push(`${session.path}: HAR contains no request entries`)
+    continue
+  }
+  let allowedAbortCount = 0
+  for (const entry of entries) {
+    const url = String(entry?.request?.url ?? '')
+    const status = Number(entry?.response?.status)
+    let isJavaScript = false
+    try { isJavaScript = /\.m?js$/iu.test(new URL(url).pathname) } catch {}
+    const isAllowedAbort = session.allowAbortedJavaScript && status <= 0 && isJavaScript
+    if (isAllowedAbort) allowedAbortCount += 1
+    if (!Number.isFinite(status) || status >= 400 || (status <= 0 && !isAllowedAbort)) {
+      failures.push(`${session.path}: ${status} ${url}`)
+    }
+  }
+  if (session.allowAbortedJavaScript && allowedAbortCount === 0) {
+    failures.push(`${session.path}: no actively aborted JavaScript request was captured`)
+  }
+}
+if (failures.length > 0) throw new Error(`HAR network failures:\n${failures.join('\n')}`)
+console.log('HAR network gate passed')
+NODE
 test -z "$(agent-browser --session project-catalog-production console)"
 test -z "$(agent-browser --session project-catalog-production errors)"
-test -z "$(agent-browser --session project-catalog-production network requests --status 400-599)"
 test -z "$(agent-browser --session project-catalog-production-nojs console)"
 test -z "$(agent-browser --session project-catalog-production-nojs errors)"
-test -z "$(agent-browser --session project-catalog-production-nojs network requests --status 400-599)"
 ```
 
-Expected: course map reports 26 links and 7 project items with zero overflow; engineering path reports 17 steps; project index reports 6 core, 1 history, 2 watch links; the no-JS overview meets its taxonomy contract and the other seven no-JS pages retain metadata, full SHA, licenses, chain, source entries, and failure boundary; the inline Python block validates both PDFs; console, page error, and failed network lists are empty.
+Expected: course map reports 26 links and 7 project items with zero overflow; engineering path reports 17 steps; project index reports 6 core, 1 history, 2 watch links; the no-JS overview meets its taxonomy contract and the other seven no-JS pages retain metadata, full SHA, licenses, chain, source entries, and failure boundary; the inline Python block validates both PDFs. Both production HAR files are non-empty; the normal session has no missing/zero status or response `>=400`, and the no-JS session contains at least one actively aborted JavaScript request but no other missing/zero status or response `>=400`; console and page-error outputs are empty.
 
 - [ ] **Step 6: Report final evidence and close sessions**
 
