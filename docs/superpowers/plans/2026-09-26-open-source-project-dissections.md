@@ -16,10 +16,13 @@
 
 - `sources/project-index.yml` — canonical project-page mapping, 13 pinned subjects, license scopes, 49 source entrypoints, and seven primary chains.
 - `scripts/project-catalog.mjs` — schema parser, discriminated license validation, cross-reference validation, and build-time loader.
+- `scripts/project-catalog.d.mts` — TypeScript declaration for the Node catalog loader.
 - `scripts/check-projects.mjs` — bounded GitHub freshness scan that writes project review reports without editing content.
 - `scripts/validate-provenance.mjs` — allowlist gate for any future file in `docs/public/project-assets/`.
 - `assets/provenance.yml` — empty versioned registry; no external asset is added in this phase.
 - `docs/.vitepress/theme/data/projectCatalog.data.ts` — VitePress build-time loader for the validated YAML catalog.
+- `docs/.vitepress/theme/data/projectCatalogTypes.ts` — serializable catalog types shared by the loader, pure lookup, and components.
+- `docs/.vitepress/theme/data/projectCatalogCore.ts` — pure injectable lookup factory used by Vitest without VitePress virtual data.
 - `docs/.vitepress/theme/data/projectCatalog.ts` — typed, fail-closed page/subject/chain lookup helpers.
 - `docs/.vitepress/theme/components/ProjectOverview.vue` — SSR index for core, historical, and watch-only entries.
 - `docs/.vitepress/theme/components/ProjectMeta.vue` — fixed pin, repository status, catalog tier, and license summary.
@@ -35,6 +38,8 @@
 - `docs/projects/history-autogpt-flowise.md` — historical counterexample page.
 - `tests/project-catalog.spec.ts` — project schema, exact inventory, licenses, pins, chain, and freshness tests.
 - `tests/project-pages.spec.ts` — page template, source link, navigation, course, provenance, and dist tests.
+- `docs/.vitepress/env.d.ts` — Vue/Vite module types for the scoped component check.
+- `tsconfig.projects.json` — strict type-check boundary for the new data and Vue files.
 
 **Modify:**
 
@@ -50,7 +55,8 @@
 - `tests/content.spec.ts` — project page template, public boundary, route, and component registration assertions.
 - `tests/source-freshness.spec.ts` — project freshness failure classification and token-scope regressions.
 - `.github/workflows/source-freshness.yml` — run the project scan in the read-only job and report from the token-isolated job.
-- `package.json` — add `projects:check`; keep existing scripts unchanged.
+- `package.json` — add scoped Vue type checking, make build invoke it, and add `projects:check`.
+- `pnpm-lock.yaml` — lock `vue-tsc@3.3.11` added by the package manager.
 - `README.md` — add project-reading entry and preserve the no-backend/no-Lab boundary.
 
 **Verify without editing:**
@@ -95,11 +101,41 @@ The existing `case-delivery-agent` follows those six. `projects-index` and `proj
 - No task may create a Python environment, run an upstream project, call a model, execute a benchmark, or add `/labs/` content.
 - Every `git diff` release check uses the explicit range `git diff origin/main...HEAD --check`; a clean working tree alone is not evidence.
 
+## Implementation worktree setup
+
+After this plan is approved and before Task 1, create the isolated implementation branch from the approved baseline:
+
+```bash
+git fetch origin --prune
+git worktree add /Users/bytedance/work/agent-engineering-for-beginners/.trae/worktrees/open-source-project-dissections -b feat/open-source-project-dissections 815d7613ca639d462979b1e57024eafd897e176b
+git -C /Users/bytedance/work/agent-engineering-for-beginners/.trae/worktrees/open-source-project-dissections status --short --branch
+```
+
+Expected: branch `feat/open-source-project-dissections`, clean worktree, HEAD `815d7613ca639d462979b1e57024eafd897e176b`. All Task 1–13 commands run in that worktree; Task 14 runs there only after final reviewer approval.
+
+## Specification coverage
+
+| Approved requirement | Implemented and proved by |
+| --- | --- |
+| Project schema, dual status axes, mixed-license model | Tasks 1–2 |
+| 8 page mappings, 13 exact subjects, 49 exact source entries, 7 chains | Task 2 |
+| VitePress loader, pure Vitest lookup, Vue type gate | Task 3 |
+| Separate architecture graph, text call chain, source facts, print fallback | Task 3 |
+| Intermediate commits remain buildable while pages arrive | Task 4 and every task-level full gate |
+| Six core narratives, history page, watch-only safety zone | Tasks 5–8 |
+| 26-item course, 29 tracked routes, 17-step engineering path, full nav | Task 9 |
+| Strict host/repo/ref/path/license provenance | Task 10 |
+| Default-branch HEAD, release, pin, path, license digest, permissions | Task 11 |
+| Exact eight-page dist allowlist and complete SSR contract | Task 12 |
+| Local mobile, keyboard, screen reader, no-JS, print and route evidence | Task 13 |
+| Approved merge, Pages run, production HTTP and browser evidence | Task 14 |
+
 ### Task 1: Add the project catalog parser and schema validator
 
 **Files:**
 
 - Create: `scripts/project-catalog.mjs`
+- Create: `scripts/project-catalog.d.mts`
 - Create: `tests/project-catalog.spec.ts`
 
 - [ ] **Step 1: Write failing parser and schema tests**
@@ -141,9 +177,9 @@ const validCatalog = {
       basis: 'path', expression: 'Apache-2.0', path_or_glob: '**',
       scope: 'repository', note: 'File-level exceptions still win.',
     }],
-    license_source_paths: ['LICENSE.txt'],
+    license_sources: [{ path: 'LICENSE.txt', sha256: 'b'.repeat(64) }],
     watch_url: 'https://github.com/Aider-AI/aider/releases/latest',
-    entrypoints: ['aider/main.py'],
+    entrypoints: [{ path: 'aider/main.py', symbol: 'main', responsibility: 'Validate repository arguments.' }],
   }],
   chains: [{
     id: 'aider-chain',
@@ -197,6 +233,9 @@ describe('project catalog schema', () => {
     historical.subjects[0].archived = false
     historical.subjects[0].catalog_tier = 'historical'
     expect(validateProjectCatalog(historical)).toEqual([])
+    const missingArchived = structuredClone(validCatalog)
+    delete missingArchived.subjects[0].archived
+    expect(validateProjectCatalog(missingArchived)).toContain('Subject aider archived must be boolean')
   })
 
   it('fails closed for unknown page, subject, chain, and source-path references', () => {
@@ -209,6 +248,18 @@ describe('project catalog schema', () => {
       'Page project-aider references unknown chain: missing-chain',
       'Chain aider-chain step entry references an undeclared entrypoint: aider/missing.py',
     ]))
+  })
+
+  it('requires complete chains, unique steps, and page-owned subjects', () => {
+    const broken = structuredClone(validCatalog)
+    broken.pages[0].subjects = []
+    broken.chains[0].steps.push({ ...broken.chains[0].steps[0] })
+    expect(validateProjectCatalog(broken)).toEqual(expect.arrayContaining([
+      'Chain aider-chain has duplicate step ID: entry',
+      'Chain aider-chain step entry subject is not owned by page: aider',
+    ]))
+    broken.chains[0].steps = []
+    expect(validateProjectCatalog(broken)).toContain('Chain aider-chain requires non-empty steps')
   })
 
   it('parses YAML without accepting an empty or malformed registry', () => {
@@ -274,6 +325,7 @@ export function validateProjectCatalog(data) {
     ? data.subjects.map((subject) => ({ ...data?.defaults, ...subject }))
     : []
   const chains = Array.isArray(data?.chains) ? data.chains : []
+  const pageById = new Map(pages.map((page) => [page.page_item_id, page]))
   const subjectById = new Map(subjects.map((subject) => [subject.id, subject]))
   const chainById = new Map(chains.map((chain) => [chain.id, chain]))
 
@@ -327,6 +379,7 @@ export function validateProjectCatalog(data) {
     if (!shaPattern.test(subject.pinned_commit ?? '')) errors.push(`Subject ${subject.id} has invalid pinned_commit`)
     if (!repositoryStatuses.has(subject.repository_status)) errors.push(`Subject ${subject.id} has invalid repository_status`)
     if (!subjectTiers.has(subject.catalog_tier)) errors.push(`Subject ${subject.id} has invalid catalog_tier`)
+    if (typeof subject.archived !== 'boolean') errors.push(`Subject ${subject.id} archived must be boolean`)
     if (!validDate(subject.verified_at) || !validDate(subject.review_by)
       || subject.review_by < subject.verified_at) {
       errors.push(`Subject ${subject.id} has invalid review dates`)
@@ -341,8 +394,21 @@ export function validateProjectCatalog(data) {
       errors.push(`Subject ${subject.id} requires license_summary and license_scopes`)
     }
     if (!/^https:\/\//u.test(subject.watch_url ?? '') || !Array.isArray(subject.entrypoints)
-      || !Array.isArray(subject.license_source_paths) || subject.license_source_paths.length === 0) {
-      errors.push(`Subject ${subject.id} requires HTTPS watch_url, entrypoints, and license_source_paths`)
+      || !Array.isArray(subject.license_sources) || subject.license_sources.length === 0) {
+      errors.push(`Subject ${subject.id} requires HTTPS watch_url, entrypoints, and license_sources`)
+    }
+    const entryPaths = new Set()
+    for (const entry of subject.entrypoints ?? []) {
+      if (!nonEmpty(entry.path) || !nonEmpty(entry.symbol) || !nonEmpty(entry.responsibility)) {
+        errors.push(`Subject ${subject.id} has an incomplete entrypoint`)
+      }
+      if (entryPaths.has(entry.path)) errors.push(`Subject ${subject.id} has duplicate entrypoint: ${entry.path}`)
+      entryPaths.add(entry.path)
+    }
+    for (const license of subject.license_sources ?? []) {
+      if (!nonEmpty(license.path) || !/^[0-9a-f]{64}$/u.test(license.sha256 ?? '')) {
+        errors.push(`Subject ${subject.id} has an invalid license source`)
+      }
     }
 
     const pathExpressions = new Map()
@@ -371,11 +437,25 @@ export function validateProjectCatalog(data) {
   }
 
   for (const chain of chains) {
+    for (const field of ['id', 'page_item_id', 'label', 'reading_hint', 'misconception', 'steps']) {
+      if (!Object.hasOwn(chain, field)) errors.push(`Chain ${chain?.id ?? '<unknown>'} is missing ${field}`)
+    }
+    const page = pageById.get(chain.page_item_id)
+    if (!page) errors.push(`Chain ${chain.id} references unknown page: ${chain.page_item_id}`)
+    if (!Array.isArray(chain.steps) || chain.steps.length === 0) errors.push(`Chain ${chain.id} requires non-empty steps`)
+    const stepIds = new Set()
     for (const step of chain.steps ?? []) {
+      for (const field of ['id', 'label', 'subject_id', 'source_path', 'symbol', 'responsibility']) {
+        if (!nonEmpty(step[field])) errors.push(`Chain ${chain.id} step ${step?.id ?? '<unknown>'} is missing ${field}`)
+      }
+      if (stepIds.has(step.id)) errors.push(`Chain ${chain.id} has duplicate step ID: ${step.id}`)
+      stepIds.add(step.id)
       const subject = subjectById.get(step.subject_id)
       if (!subject) {
         errors.push(`Chain ${chain.id} step ${step.id} references unknown subject: ${step.subject_id}`)
-      } else if (!(subject.entrypoints ?? []).includes(step.source_path)) {
+      } else if (!page?.subjects?.includes(step.subject_id)) {
+        errors.push(`Chain ${chain.id} step ${step.id} subject is not owned by page: ${step.subject_id}`)
+      } else if (!(subject.entrypoints ?? []).some((entry) => entry.path === step.source_path)) {
         errors.push(`Chain ${chain.id} step ${step.id} references an undeclared entrypoint: ${step.subject_id}/${step.source_path}`)
       }
     }
@@ -389,6 +469,9 @@ export function validateProjectCatalog(data) {
     const owners = pages.filter((page) => page.subjects?.includes(subject.id)).map((page) => page.page_item_id)
     if (owners.length !== 1 || owners[0] !== 'projects-index') {
       errors.push(`Watch-only subject ${subject.id} must belong only to projects-index`)
+    }
+    if (!Array.isArray(subject.risk_tags) || subject.risk_tags.length === 0) {
+      errors.push(`Watch-only subject ${subject.id} requires risk_tags`)
     }
   }
   return errors
@@ -415,18 +498,32 @@ export function loadProjectCatalog(path) {
 }
 ```
 
+Create `scripts/project-catalog.d.mts` so later TypeScript modules do not import an untyped JavaScript boundary:
+
+```ts
+export function parseProjectCatalog(text: string): unknown
+export function validateProjectCatalog(data: unknown): string[]
+export function validateProjectCatalogFile(path: string): string[]
+export function loadProjectCatalog(path: string): unknown
+```
+
 The accepted path-scope grammar is deliberately small: `**`, one exact repository-relative file, or one repository-relative `prefix/**`. This makes “most specific wins” deterministic; equal-specificity overlaps reduce to identical selectors and are rejected when their expressions differ.
 
 - [ ] **Step 4: Run focused tests and verify GREEN**
 
-Run: `pnpm vitest run tests/project-catalog.spec.ts -t 'project catalog schema'`
+Run:
 
-Expected: 5 tests pass.
+```bash
+pnpm vitest run tests/project-catalog.spec.ts -t 'project catalog schema'
+pnpm test && pnpm validate && pnpm build
+```
+
+Expected: 6 focused tests pass, followed by a green full suite, validation, and production build.
 
 - [ ] **Step 5: Commit the parser**
 
 ```bash
-git add scripts/project-catalog.mjs tests/project-catalog.spec.ts
+git add scripts/project-catalog.mjs scripts/project-catalog.d.mts tests/project-catalog.spec.ts
 git commit -m "feat: validate project catalog contracts"
 ```
 
@@ -438,12 +535,12 @@ git commit -m "feat: validate project catalog contracts"
 - Modify: `scripts/validate-content.mjs`
 - Modify: `tests/project-catalog.spec.ts`
 
-- [ ] **Step 1: Add failing exact-inventory and cross-reference tests**
+- [ ] **Step 1: Add a failing file-existence test without reading a missing file**
 
-Append tests that load the real file and assert the approved inventory:
+Start the real-catalog section with a guarded load. This makes the first RED an assertion failure rather than a top-level `ENOENT` suite error:
 
 ```ts
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { parse } from 'yaml'
 import { validateBook } from '../scripts/validate-content.mjs'
 
@@ -467,15 +564,75 @@ const expectedPageMappings = {
   'project-crewai': { catalog_tier: 'core', subjects: ['crewai'], interview_question_ids: ['iq-07-a', 'iq-07-b', 'iq-07-c'], counted_in_course: true, primary_chain_id: 'crewai-kickoff-to-task-output' },
   'project-history-autogpt-flowise': { catalog_tier: 'historical', subjects: ['autogpt', 'flowise'], interview_question_ids: ['iq-02-b', 'iq-07-c', 'iq-10-a'], counted_in_course: false, primary_chain_id: 'autogpt-flowise-evolution' },
 }
+const expectedEntrypoints = {
+  'mcp-spec': ['schema/2026-07-28/schema.json', 'docs/docs/2026-07-28/learn/architecture.mdx'],
+  'mcp-python-sdk': ['examples/snippets/servers/basic_tool.py', 'src/mcp/server/mcpserver/server.py', 'src/mcp/server/mcpserver/tools/tool_manager.py', 'src/mcp/server/lowlevel/server.py', 'src/mcp/server/session.py', 'src/mcp/server/stdio.py'],
+  aider: ['aider/main.py', 'aider/coders/base_coder.py', 'aider/repomap.py', 'aider/coders/editblock_coder.py', 'aider/repo.py', 'aider/run_cmd.py'],
+  'openhands-canvas': ['src/api/conversation-service/agent-server-conversation-service.api.ts', 'src/api/agent-server-adapter.ts'],
+  'openhands-sdk': ['openhands-agent-server/openhands/agent_server/conversation_router.py', 'openhands-agent-server/openhands/agent_server/conversation_service.py', 'openhands-sdk/openhands/sdk/conversation/conversation.py', 'openhands-sdk/openhands/sdk/agent/agent.py', 'openhands-sdk/openhands/sdk/tool/tool.py', 'openhands-sdk/openhands/sdk/workspace/workspace.py'],
+  'swe-bench': ['swebench/harness/run_evaluation.py', 'swebench/harness/docker_utils.py', 'swebench/harness/grading.py', 'swebench/harness/reporting.py'],
+  'tau2-bench': ['src/tau2/run.py', 'src/tau2/runner/simulation.py', 'src/tau2/environment/environment.py', 'src/tau2/evaluator/evaluator.py'],
+  dify: ['api/controllers/service_api/app/workflow.py', 'api/core/app/apps/workflow/app_generator.py', 'api/core/app/apps/workflow/app_runner.py', 'api/core/workflow/workflow_entry.py', 'api/core/workflow/node_factory.py', 'api/core/workflow/nodes/agent_v2/agent_node.py', 'api/core/app/apps/common/workflow_response_converter.py'],
+  crewai: ['lib/crewai/src/crewai/crew.py', 'lib/crewai/src/crewai/process.py', 'lib/crewai/src/crewai/execution.py', 'lib/crewai/src/crewai/task.py', 'lib/crewai/src/crewai/agent/core.py', 'lib/crewai/src/crewai/agents/crew_agent_executor.py', 'lib/crewai/src/crewai/agents/step_executor.py', 'lib/crewai/src/crewai/tools/tool_usage.py'],
+  autogpt: ['classic/original_autogpt/autogpt/app/main.py', 'classic/original_autogpt/autogpt/agents/agent.py'],
+  flowise: ['packages/server/src/controllers/predictions/index.ts', 'packages/server/src/services/predictions/index.ts'],
+  'hermes-agent': [],
+  openclaw: [],
+}
+const expectedChains = {
+  'mcp-tool-call': ['schema:mcp-spec:schema/2026-07-28/schema.json:CallToolRequest', 'decorator:mcp-python-sdk:examples/snippets/servers/basic_tool.py:mcp.tool', 'registry:mcp-python-sdk:src/mcp/server/mcpserver/tools/tool_manager.py:ToolManager', 'handler:mcp-python-sdk:src/mcp/server/lowlevel/server.py:Server', 'session:mcp-python-sdk:src/mcp/server/session.py:ServerSession', 'transport:mcp-python-sdk:src/mcp/server/stdio.py:stdio_server'],
+  'aider-repo-to-verified-edit': ['cli:aider:aider/main.py:main', 'coder:aider:aider/coders/base_coder.py:Coder.run', 'map:aider:aider/repomap.py:RepoMap.get_repo_map', 'edit:aider:aider/coders/editblock_coder.py:EditBlockCoder', 'apply:aider:aider/coders/base_coder.py:Coder.apply_updates', 'git:aider:aider/repo.py:GitRepo.commit'],
+  'openhands-canvas-to-workspace-event': ['canvas:openhands-canvas:src/api/conversation-service/agent-server-conversation-service.api.ts:AgentServerConversationService', 'router:openhands-sdk:openhands-agent-server/openhands/agent_server/conversation_router.py:start_conversation', 'service:openhands-sdk:openhands-agent-server/openhands/agent_server/conversation_service.py:ConversationService', 'conversation:openhands-sdk:openhands-sdk/openhands/sdk/conversation/conversation.py:Conversation', 'agent:openhands-sdk:openhands-sdk/openhands/sdk/agent/agent.py:Agent.step', 'tool:openhands-sdk:openhands-sdk/openhands/sdk/tool/tool.py:ToolDefinition.__call__', 'workspace:openhands-sdk:openhands-sdk/openhands/sdk/workspace/workspace.py:Workspace', 'event-return:openhands-canvas:src/api/agent-server-adapter.ts:toAppConversation'],
+  'benchmark-task-to-score': ['swe-input:swe-bench:swebench/harness/run_evaluation.py:main', 'swe-env:swe-bench:swebench/harness/docker_utils.py:exec_run_with_timeout', 'swe-grade:swe-bench:swebench/harness/grading.py:get_eval_report', 'swe-report:swe-bench:swebench/harness/reporting.py:make_run_report', 'tau-input:tau2-bench:src/tau2/run.py:run_task', 'tau-sim:tau2-bench:src/tau2/runner/simulation.py:run_simulation', 'tau-env:tau2-bench:src/tau2/environment/environment.py:Environment', 'tau-score:tau2-bench:src/tau2/evaluator/evaluator.py:evaluate_simulation'],
+  'dify-request-to-graph-events': ['controller:dify:api/controllers/service_api/app/workflow.py:WorkflowRunApi.post', 'generator:dify:api/core/app/apps/workflow/app_generator.py:WorkflowAppGenerator', 'runner:dify:api/core/app/apps/workflow/app_runner.py:WorkflowAppRunner', 'entry:dify:api/core/workflow/workflow_entry.py:WorkflowEntry', 'factory:dify:api/core/workflow/node_factory.py:DifyNodeFactory', 'agent-node:dify:api/core/workflow/nodes/agent_v2/agent_node.py:DifyAgentNode', 'response:dify:api/core/app/apps/common/workflow_response_converter.py:WorkflowResponseConverter'],
+  'crewai-kickoff-to-task-output': ['kickoff:crewai:lib/crewai/src/crewai/crew.py:Crew.kickoff', 'process:crewai:lib/crewai/src/crewai/process.py:Process', 'execution:crewai:lib/crewai/src/crewai/execution.py:begin_execution', 'task:crewai:lib/crewai/src/crewai/task.py:Task.execute_sync', 'agent:crewai:lib/crewai/src/crewai/agent/core.py:Agent.execute_task', 'executor:crewai:lib/crewai/src/crewai/agents/crew_agent_executor.py:CrewAgentExecutor.invoke', 'step:crewai:lib/crewai/src/crewai/agents/step_executor.py:StepExecutor.execute', 'tool:crewai:lib/crewai/src/crewai/tools/tool_usage.py:ToolUsage.use', 'output:crewai:lib/crewai/src/crewai/task.py:Task._export_output'],
+  'autogpt-flowise-evolution': ['autogpt-entry:autogpt:classic/original_autogpt/autogpt/app/main.py:run_auto_gpt', 'autogpt-agent:autogpt:classic/original_autogpt/autogpt/agents/agent.py:Agent.execute', 'flowise-entry:flowise:packages/server/src/controllers/predictions/index.ts:createPrediction', 'flowise-service:flowise:packages/server/src/services/predictions/index.ts:buildChatflow'],
+}
+const expectedSubjectFacts = {
+  'mcp-spec': ['modelcontextprotocol/modelcontextprotocol', '2026-07-28', '5f5440bb26a62e2cf3440b92da5a667efa03b267', 'active', false, 'core', 'LICENSE:0382b0057770ca05e9c350a50aa3b1c1fea84da0bc81d723bf00b9aa841be58a'],
+  'mcp-python-sdk': ['modelcontextprotocol/python-sdk', 'v2.2.0', '9972c21aa42054fb1450c5fc614761ed11847ec6', 'active', false, 'core', 'LICENSE:5e13dbbc1d120fc2a03cecde7c91424ae2d7de11b63d58ded2f4431e261ee50d'],
+  aider: ['Aider-AI/aider', 'v0.86.0', 'a4be6ccd87ebaa59b361f3f028d116ce1761b626', 'active', false, 'core', 'LICENSE.txt:cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30'],
+  'openhands-canvas': ['OpenHands/OpenHands', 'v1.24.0', '7dc6805406ea3c76cb4a3ce407c3c72d481b0ac6', 'active', false, 'core', 'LICENSE:e1d1fa9f3a8d7bef24449d488fcd8f00f8f272cac297bb9bed161eb6175b876a'],
+  'openhands-sdk': ['OpenHands/software-agent-sdk', 'v1.49.6', 'fcc102a697874d54a357e36004e02c95040dbdc0', 'active', false, 'core', 'LICENSE:14a9b631c658eee682c6c2973525fbdf808c3457176bc47513052c559cc5ce86'],
+  'swe-bench': ['SWE-bench/SWE-bench', 'v5.0.1', '87ab1f6ced28f75ba73ca899dc759b019310944a', 'active', false, 'core', 'LICENSE:2bd2e08df7147f67a69b42c10efae09bd4bf119df397371036187d5dd1b02f57'],
+  'tau2-bench': ['sierra-research/tau2-bench', 'v1.0.1', 'fc0055dc4e0a316c3f83133267fbd6faaa770992', 'active', false, 'core', 'LICENSE:e67c5aa0074dfcaefd3c3a1aedb94cb539234aecd15d5a972574e3200e6252fe'],
+  dify: ['langgenius/dify', '1.17.1', '8387590ace4a094de812b7847fc6a4c3a27cd52b', 'active', false, 'core', 'LICENSE:232cf91474932d5110ed304e53b6b742a58463857c571fae803fdf2ac36d7bb3'],
+  crewai: ['crewAIInc/crewAI', '1.15.22', '7a01af27912c2b142d8bac70d1894343f8b91bd1', 'active', false, 'core', 'LICENSE:28868731966f4aa37f02879839aabc797137e27ddde4e274ef9cf965f9a71774'],
+  autogpt: ['Significant-Gravitas/AutoGPT', 'autogpt-platform-beta-v0.8.1', 'ead8f943f981ea650285eee3020c8ff0e7eda94d', 'active', false, 'historical', 'LICENSE:aafc62ebf01092909ae72131b66f48c89ea7eaf4bd7e916f3f05f7960611799a'],
+  flowise: ['FlowiseAI/Flowise', 'flowise@3.1.4', 'a65f81bb43ef66d3ce734bf0dff4223ae8041c95', 'eol', true, 'historical', 'LICENSE.md:eb8cc244c81eb4a556f9ac22edc3033ac4fa12f7ef7a8899bb5ddc4578c2dd73'],
+  'hermes-agent': ['NousResearch/hermes-agent', 'v2026.9.24', 'f97608f178d1ffeca59860195ab7da295f7c8e5f', 'active', false, 'watch-only', 'LICENSE:821556e6336796450ab852d375117b48a4887e71d255794fd6318d99982a5ab6'],
+  openclaw: ['openclaw/openclaw', 'v2026.9.6', 'eb377ac59e6c9fd6c7705028034812becf00271b', 'active', false, 'watch-only', 'LICENSE:73571b25326281d369087f469842c02444fe39faaecebda4d82ed21ff3a1c29d|THIRD_PARTY_NOTICES.md:c1d1bbc550feee74853eba104e347341569cbbbe37a9f77659993ca0766277d5'],
+}
+
+const projectCatalogPath = 'sources/project-index.yml'
+const catalog = existsSync(projectCatalogPath)
+  ? parse(readFileSync(projectCatalogPath, 'utf8'))
+  : { pages: [], subjects: [], chains: [] }
 
 describe('real project catalog', () => {
-  const catalog = parse(readFileSync('sources/project-index.yml', 'utf8'))
+  it('requires the canonical project catalog file', () => {
+    expect(existsSync(projectCatalogPath)).toBe(true)
+  })
 
   it('contains the exact approved pages, subjects, and source paths', () => {
     expect(catalog.pages.map((page: { page_item_id: string }) => page.page_item_id)).toEqual(pageIds)
     expect(catalog.subjects.map((subject: { id: string }) => subject.id)).toEqual(subjectIds)
-    expect(catalog.subjects.flatMap((subject: { entrypoints: string[] }) => subject.entrypoints)).toHaveLength(49)
-    expect(catalog.chains).toHaveLength(7)
+    expect(Object.fromEntries(catalog.subjects.map((subject: any) => [subject.id, [
+      subject.canonical_repo, subject.pinned_ref, subject.pinned_commit,
+      subject.repository_status, subject.archived, subject.catalog_tier,
+      subject.license_sources.map((source: { path: string; sha256: string }) => `${source.path}:${source.sha256}`).join('|'),
+    ]]))).toEqual(expectedSubjectFacts)
+    expect(Object.fromEntries(catalog.subjects.map((subject: { id: string; entrypoints: Array<{ path: string; symbol: string; responsibility: string }> }) => [subject.id, subject.entrypoints.map((entry) => entry.path)])))
+      .toEqual(expectedEntrypoints)
+    const sourceEntries = catalog.subjects.flatMap((subject: { entrypoints: Array<{ path: string; symbol: string; responsibility: string }> }) => subject.entrypoints)
+    expect(sourceEntries).toHaveLength(49)
+    expect(sourceEntries.every((entry: { path: string; symbol: string; responsibility: string }) =>
+      [entry.path, entry.symbol, entry.responsibility].every((value) => value.trim().length > 0),
+    )).toBe(true)
+    expect(Object.fromEntries(catalog.chains.map((chain: { id: string; steps: Array<{ id: string; subject_id: string; source_path: string; symbol: string }> }) => [
+      chain.id,
+      chain.steps.map((step) => `${step.id}:${step.subject_id}:${step.source_path}:${step.symbol}`),
+    ]))).toEqual(expectedChains)
     expect(Object.fromEntries(catalog.pages.map((page: { page_item_id: string }) => {
       const { page_item_id: id, ...mapping } = page
       return [id, mapping]
@@ -521,13 +678,38 @@ describe('real project catalog', () => {
 })
 ```
 
-- [ ] **Step 2: Run the exact catalog tests and verify RED**
+- [ ] **Step 2: Run only the existence test and verify RED**
 
-Run: `pnpm vitest run tests/project-catalog.spec.ts -t 'real project catalog'`
+Run: `pnpm vitest run tests/project-catalog.spec.ts -t 'requires the canonical project catalog file'`
 
-Expected: FAIL because `sources/project-index.yml` is absent and `validateBook` has no project-catalog option.
+Expected: FAIL with `expected false to be true`; the suite must not terminate with `ENOENT`.
 
-- [ ] **Step 3: Create the canonical catalog data**
+- [ ] **Step 3: Create a parseable empty catalog shell**
+
+Create `sources/project-index.yml`:
+
+```yaml
+schema_version: 1
+defaults:
+  verified_at: '2026-09-26'
+  review_by: '2026-10-26'
+pages: []
+subjects: []
+chains: []
+```
+
+- [ ] **Step 4: Verify the existence test is GREEN and the inventory tests are RED**
+
+Run:
+
+```bash
+pnpm vitest run tests/project-catalog.spec.ts -t 'requires the canonical project catalog file'
+pnpm vitest run tests/project-catalog.spec.ts -t 'contains the exact approved pages'
+```
+
+Expected: the first command passes; the second fails on the empty page/subject/chain inventory rather than file I/O.
+
+- [ ] **Step 5: Replace the shell with catalog defaults and eight exact page records**
 
 Create `sources/project-index.yml`. The complete `pages` block is:
 
@@ -588,7 +770,9 @@ pages:
     primary_chain_id: autogpt-flowise-evolution
 ```
 
-Append the exact 13 subjects. Reuse the YAML anchor only for the repeated standard MIT scope; do not use it for mixed licenses:
+- [ ] **Step 6: Add MCP and Aider subject records**
+
+Append the first three subjects. Define YAML anchors only for the repeated standard MIT and Apache scopes; do not use them for mixed licenses:
 
 ```yaml
 subjects:
@@ -618,11 +802,11 @@ subjects:
         path_or_glob: docs/**
         scope: Ordinary documentation contributions, excluding specifications.
         note: Specification files remain under the contribution-level transition.
-    license_source_paths: [LICENSE]
+    license_sources: [{ path: LICENSE, sha256: 0382b0057770ca05e9c350a50aa3b1c1fea84da0bc81d723bf00b9aa841be58a }]
     watch_url: https://github.com/modelcontextprotocol/modelcontextprotocol/releases/latest
     entrypoints:
-      - schema/2026-07-28/schema.json
-      - docs/docs/2026-07-28/learn/architecture.mdx
+      - { path: schema/2026-07-28/schema.json, symbol: CallToolRequest, responsibility: Define the versioned tools/call request and result contract. }
+      - { path: docs/docs/2026-07-28/learn/architecture.mdx, symbol: Host-Client-Server architecture, responsibility: Define the protocol participants and capability boundaries. }
 
   - id: mcp-python-sdk
     canonical_repo: modelcontextprotocol/python-sdk
@@ -640,15 +824,15 @@ subjects:
         path_or_glob: '**'
         scope: Repository code and documentation unless a file states otherwise.
         note: Logos, trademarks, and third-party files are not granted by the code license.
-    license_source_paths: [LICENSE]
+    license_sources: [{ path: LICENSE, sha256: 5e13dbbc1d120fc2a03cecde7c91424ae2d7de11b63d58ded2f4431e261ee50d }]
     watch_url: https://github.com/modelcontextprotocol/python-sdk/releases/latest
     entrypoints:
-      - examples/snippets/servers/basic_tool.py
-      - src/mcp/server/mcpserver/server.py
-      - src/mcp/server/mcpserver/tools/tool_manager.py
-      - src/mcp/server/lowlevel/server.py
-      - src/mcp/server/session.py
-      - src/mcp/server/stdio.py
+      - { path: examples/snippets/servers/basic_tool.py, symbol: mcp.tool, responsibility: Demonstrate registration of a narrow Python tool. }
+      - { path: src/mcp/server/mcpserver/server.py, symbol: MCPServer.tool, responsibility: Expose the high-level registration and call surface. }
+      - { path: src/mcp/server/mcpserver/tools/tool_manager.py, symbol: ToolManager.call_tool, responsibility: Resolve and invoke a registered tool. }
+      - { path: src/mcp/server/lowlevel/server.py, symbol: Server, responsibility: Dispatch protocol methods to handlers. }
+      - { path: src/mcp/server/session.py, symbol: ServerSession, responsibility: Carry protocol lifecycle and request state. }
+      - { path: src/mcp/server/stdio.py, symbol: stdio_server, responsibility: Transport framed messages over standard I/O. }
 
   - id: aider
     canonical_repo: Aider-AI/aider
@@ -666,15 +850,22 @@ subjects:
         path_or_glob: '**'
         scope: Repository code and documentation unless a file states otherwise.
         note: Preserve notices and separately review logos, trademarks, and third-party files.
-    license_source_paths: [LICENSE.txt]
+    license_sources: [{ path: LICENSE.txt, sha256: cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30 }]
     watch_url: https://github.com/Aider-AI/aider/releases/latest
     entrypoints:
-      - aider/main.py
-      - aider/coders/base_coder.py
-      - aider/repomap.py
-      - aider/coders/editblock_coder.py
-      - aider/repo.py
-      - aider/run_cmd.py
+      - { path: aider/main.py, symbol: main, responsibility: Parse options and establish repository context. }
+      - { path: aider/coders/base_coder.py, symbol: Coder.run, responsibility: Own the request and iterative coding loop. }
+      - { path: aider/repomap.py, symbol: RepoMap.get_repo_map, responsibility: Select a bounded structural repository context. }
+      - { path: aider/coders/editblock_coder.py, symbol: EditBlockCoder.get_edits, responsibility: Parse explicit edit blocks from model output. }
+      - { path: aider/repo.py, symbol: GitRepo.commit, responsibility: Record bounded file changes in Git. }
+      - { path: aider/run_cmd.py, symbol: run_cmd, responsibility: Execute configured verification commands and return evidence. }
+```
+
+- [ ] **Step 7: Add OpenHands and benchmark subject records**
+
+Append the next four subjects:
+
+```yaml
 
   - id: openhands-canvas
     canonical_repo: OpenHands/OpenHands
@@ -687,11 +878,11 @@ subjects:
     catalog_tier: core
     license_summary: MIT; this repository owns Agent Canvas and local orchestration, not the Python agent runtime.
     license_scopes: *mit_scope
-    license_source_paths: [LICENSE]
+    license_sources: [{ path: LICENSE, sha256: e1d1fa9f3a8d7bef24449d488fcd8f00f8f272cac297bb9bed161eb6175b876a }]
     watch_url: https://github.com/OpenHands/OpenHands/releases/latest
     entrypoints:
-      - src/api/conversation-service/agent-server-conversation-service.api.ts
-      - src/api/agent-server-adapter.ts
+      - { path: src/api/conversation-service/agent-server-conversation-service.api.ts, symbol: AgentServerConversationService, responsibility: Translate Canvas actions into Agent Server requests. }
+      - { path: src/api/agent-server-adapter.ts, symbol: toAppConversation, responsibility: Normalize server conversation data for Canvas. }
 
   - id: openhands-sdk
     canonical_repo: OpenHands/software-agent-sdk
@@ -704,15 +895,15 @@ subjects:
     catalog_tier: core
     license_summary: MIT; the pinned Canvas release consumes the matching TypeScript client version 1.49.6.
     license_scopes: *mit_scope
-    license_source_paths: [LICENSE]
+    license_sources: [{ path: LICENSE, sha256: 14a9b631c658eee682c6c2973525fbdf808c3457176bc47513052c559cc5ce86 }]
     watch_url: https://github.com/OpenHands/software-agent-sdk/releases/latest
     entrypoints:
-      - openhands-agent-server/openhands/agent_server/conversation_router.py
-      - openhands-agent-server/openhands/agent_server/conversation_service.py
-      - openhands-sdk/openhands/sdk/conversation/conversation.py
-      - openhands-sdk/openhands/sdk/agent/agent.py
-      - openhands-sdk/openhands/sdk/tool/tool.py
-      - openhands-sdk/openhands/sdk/workspace/workspace.py
+      - { path: openhands-agent-server/openhands/agent_server/conversation_router.py, symbol: start_conversation, responsibility: Admit and route conversation operations. }
+      - { path: openhands-agent-server/openhands/agent_server/conversation_service.py, symbol: ConversationService, responsibility: Create and coordinate SDK conversations. }
+      - { path: openhands-sdk/openhands/sdk/conversation/conversation.py, symbol: Conversation, responsibility: Own conversation state and event progression. }
+      - { path: openhands-sdk/openhands/sdk/agent/agent.py, symbol: Agent.step, responsibility: Produce and evaluate the next agent actions. }
+      - { path: openhands-sdk/openhands/sdk/tool/tool.py, symbol: ToolDefinition.__call__, responsibility: Convert an action into a bounded tool invocation. }
+      - { path: openhands-sdk/openhands/sdk/workspace/workspace.py, symbol: Workspace, responsibility: Define the environment boundary in which tools act. }
 
   - id: swe-bench
     canonical_repo: SWE-bench/SWE-bench
@@ -725,13 +916,13 @@ subjects:
     catalog_tier: core
     license_summary: MIT; benchmark datasets and third-party repositories retain their own terms.
     license_scopes: *mit_scope
-    license_source_paths: [LICENSE]
+    license_sources: [{ path: LICENSE, sha256: 2bd2e08df7147f67a69b42c10efae09bd4bf119df397371036187d5dd1b02f57 }]
     watch_url: https://github.com/SWE-bench/SWE-bench/tags
     entrypoints:
-      - swebench/harness/run_evaluation.py
-      - swebench/harness/docker_utils.py
-      - swebench/harness/grading.py
-      - swebench/harness/reporting.py
+      - { path: swebench/harness/run_evaluation.py, symbol: main, responsibility: Bind predictions to instances and coordinate evaluation. }
+      - { path: swebench/harness/docker_utils.py, symbol: exec_run_with_timeout, responsibility: Execute commands in the evaluation container with a timeout. }
+      - { path: swebench/harness/grading.py, symbol: get_eval_report, responsibility: Convert test evidence into resolution status. }
+      - { path: swebench/harness/reporting.py, symbol: make_run_report, responsibility: Aggregate per-instance evidence without changing the denominator. }
 
   - id: tau2-bench
     canonical_repo: sierra-research/tau2-bench
@@ -744,13 +935,20 @@ subjects:
     catalog_tier: core
     license_summary: MIT; domain data and external services require separate review.
     license_scopes: *mit_scope
-    license_source_paths: [LICENSE]
+    license_sources: [{ path: LICENSE, sha256: e67c5aa0074dfcaefd3c3a1aedb94cb539234aecd15d5a972574e3200e6252fe }]
     watch_url: https://github.com/sierra-research/tau2-bench/releases/latest
     entrypoints:
-      - src/tau2/run.py
-      - src/tau2/runner/simulation.py
-      - src/tau2/environment/environment.py
-      - src/tau2/evaluator/evaluator.py
+      - { path: src/tau2/run.py, symbol: run_task, responsibility: Select the task, participants, and domain. }
+      - { path: src/tau2/runner/simulation.py, symbol: run_simulation, responsibility: Coordinate the multi-turn trajectory. }
+      - { path: src/tau2/environment/environment.py, symbol: Environment, responsibility: Apply tools to authoritative domain state. }
+      - { path: src/tau2/evaluator/evaluator.py, symbol: evaluate_simulation, responsibility: Judge the outcome and produce reward evidence. }
+```
+
+- [ ] **Step 8: Add Dify and CrewAI subject records**
+
+Append:
+
+```yaml
 
   - id: dify
     canonical_repo: langgenius/dify
@@ -768,16 +966,16 @@ subjects:
         path_or_glob: '**'
         scope: Repository code and content.
         note: Read the root LICENSE before commercial, multi-tenant, or frontend reuse.
-    license_source_paths: [LICENSE]
+    license_sources: [{ path: LICENSE, sha256: 232cf91474932d5110ed304e53b6b742a58463857c571fae803fdf2ac36d7bb3 }]
     watch_url: https://github.com/langgenius/dify/releases/latest
     entrypoints:
-      - api/controllers/service_api/app/workflow.py
-      - api/core/app/apps/workflow/app_generator.py
-      - api/core/app/apps/workflow/app_runner.py
-      - api/core/workflow/workflow_entry.py
-      - api/core/workflow/node_factory.py
-      - api/core/workflow/nodes/agent_v2/agent_node.py
-      - api/core/app/apps/common/workflow_response_converter.py
+      - { path: api/controllers/service_api/app/workflow.py, symbol: WorkflowRunApi.post, responsibility: Validate and admit a workflow request. }
+      - { path: api/core/app/apps/workflow/app_generator.py, symbol: WorkflowAppGenerator, responsibility: Build the application execution context. }
+      - { path: api/core/app/apps/workflow/app_runner.py, symbol: WorkflowAppRunner, responsibility: Start and supervise workflow execution. }
+      - { path: api/core/workflow/workflow_entry.py, symbol: WorkflowEntry, responsibility: Configure Graphon and execution layers. }
+      - { path: api/core/workflow/node_factory.py, symbol: DifyNodeFactory, responsibility: Resolve versioned node implementations. }
+      - { path: api/core/workflow/nodes/agent_v2/agent_node.py, symbol: DifyAgentNode, responsibility: Execute the agent-specific node contract. }
+      - { path: api/core/app/apps/common/workflow_response_converter.py, symbol: WorkflowResponseConverter, responsibility: Convert graph events to the public response stream. }
 
   - id: crewai
     canonical_repo: crewAIInc/crewAI
@@ -790,17 +988,24 @@ subjects:
     catalog_tier: core
     license_summary: MIT; current source paths live under the lib/crewai monorepo package.
     license_scopes: *mit_scope
-    license_source_paths: [LICENSE]
+    license_sources: [{ path: LICENSE, sha256: 28868731966f4aa37f02879839aabc797137e27ddde4e274ef9cf965f9a71774 }]
     watch_url: https://github.com/crewAIInc/crewAI/releases/latest
     entrypoints:
-      - lib/crewai/src/crewai/crew.py
-      - lib/crewai/src/crewai/process.py
-      - lib/crewai/src/crewai/execution.py
-      - lib/crewai/src/crewai/task.py
-      - lib/crewai/src/crewai/agent/core.py
-      - lib/crewai/src/crewai/agents/crew_agent_executor.py
-      - lib/crewai/src/crewai/agents/step_executor.py
-      - lib/crewai/src/crewai/tools/tool_usage.py
+      - { path: lib/crewai/src/crewai/crew.py, symbol: Crew.kickoff, responsibility: Initialize crew execution and choose a process. }
+      - { path: lib/crewai/src/crewai/process.py, symbol: Process, responsibility: Define the orchestration mode. }
+      - { path: lib/crewai/src/crewai/execution.py, symbol: begin_execution, responsibility: Establish shared execution and tracing state. }
+      - { path: lib/crewai/src/crewai/task.py, symbol: Task.execute_sync, responsibility: Bind expected output and delegate work to an agent. }
+      - { path: lib/crewai/src/crewai/agent/core.py, symbol: Agent.execute_task, responsibility: Prepare and launch task-specific agent execution. }
+      - { path: lib/crewai/src/crewai/agents/crew_agent_executor.py, symbol: CrewAgentExecutor.invoke, responsibility: Run the reasoning and tool loop. }
+      - { path: lib/crewai/src/crewai/agents/step_executor.py, symbol: StepExecutor.execute, responsibility: Execute one parsed agent step. }
+      - { path: lib/crewai/src/crewai/tools/tool_usage.py, symbol: ToolUsage.use, responsibility: Invoke a selected tool and record its outcome. }
+```
+
+- [ ] **Step 9: Add historical and watch-only subject records**
+
+Append:
+
+```yaml
 
   - id: autogpt
     canonical_repo: Significant-Gravitas/AutoGPT
@@ -823,11 +1028,11 @@ subjects:
         path_or_glob: '**'
         scope: Classic and other areas explicitly listed by the root LICENSE.
         note: The more specific platform scope wins; file notices still override.
-    license_source_paths: [LICENSE]
+    license_sources: [{ path: LICENSE, sha256: aafc62ebf01092909ae72131b66f48c89ea7eaf4bd7e916f3f05f7960611799a }]
     watch_url: https://github.com/Significant-Gravitas/AutoGPT/releases/latest
     entrypoints:
-      - classic/original_autogpt/autogpt/app/main.py
-      - classic/original_autogpt/autogpt/agents/agent.py
+      - { path: classic/original_autogpt/autogpt/app/main.py, symbol: run_auto_gpt, responsibility: Enter the classic autonomous interaction loop. }
+      - { path: classic/original_autogpt/autogpt/agents/agent.py, symbol: Agent.execute, responsibility: Execute a proposed action in the classic agent. }
 
   - id: flowise
     canonical_repo: FlowiseAI/Flowise
@@ -855,11 +1060,11 @@ subjects:
         path_or_glob: '**'
         scope: Remaining content outside more specific commercial scopes.
         note: Third-party components retain their own licenses.
-    license_source_paths: [LICENSE.md]
+    license_sources: [{ path: LICENSE.md, sha256: eb8cc244c81eb4a556f9ac22edc3033ac4fa12f7ef7a8899bb5ddc4578c2dd73 }]
     watch_url: https://github.com/FlowiseAI/Flowise/discussions/6727
     entrypoints:
-      - packages/server/src/controllers/predictions/index.ts
-      - packages/server/src/services/predictions/index.ts
+      - { path: packages/server/src/controllers/predictions/index.ts, symbol: createPrediction, responsibility: Admit a visual-flow prediction request. }
+      - { path: packages/server/src/services/predictions/index.ts, symbol: buildChatflow, responsibility: Execute the configured chatflow service path. }
 
   - id: hermes-agent
     canonical_repo: NousResearch/hermes-agent
@@ -870,9 +1075,10 @@ subjects:
     repository_status: active
     archived: false
     catalog_tier: watch-only
+    risk_tags: [长期自主, 长期记忆, 外部系统]
     license_summary: MIT; high-permission behavior remains outside the beginner execution path.
     license_scopes: *mit_scope
-    license_source_paths: [LICENSE]
+    license_sources: [{ path: LICENSE, sha256: 821556e6336796450ab852d375117b48a4887e71d255794fd6318d99982a5ab6 }]
     watch_url: https://github.com/NousResearch/hermes-agent/releases/latest
     entrypoints: []
 
@@ -885,14 +1091,19 @@ subjects:
     repository_status: active
     archived: false
     catalog_tier: watch-only
+    risk_tags: [长期自主, IM, 桌面控制, 外部系统]
     license_summary: MIT plus THIRD_PARTY_NOTICES.md; high-permission behavior remains watch-only.
     license_scopes: *mit_scope
-    license_source_paths: [LICENSE, THIRD_PARTY_NOTICES.md]
+    license_sources:
+      - { path: LICENSE, sha256: 73571b25326281d369087f469842c02444fe39faaecebda4d82ed21ff3a1c29d }
+      - { path: THIRD_PARTY_NOTICES.md, sha256: c1d1bbc550feee74853eba104e347341569cbbbe37a9f77659993ca0766277d5 }
     watch_url: https://github.com/openclaw/openclaw/releases/latest
     entrypoints: []
 ```
 
-Append the seven exact primary chains:
+- [ ] **Step 10: Append the MCP, Aider, and OpenHands primary chains**
+
+Append:
 
 ```yaml
 chains:
@@ -929,11 +1140,21 @@ chains:
     misconception: A UI backend selector is not the execution sandbox itself.
     steps:
       - { id: canvas, label: Canvas conversation API, subject_id: openhands-canvas, source_path: src/api/conversation-service/agent-server-conversation-service.api.ts, symbol: AgentServerConversationService, responsibility: Translate UI actions into Agent Server requests. }
-      - { id: adapter, label: Server adapter, subject_id: openhands-canvas, source_path: src/api/agent-server-adapter.ts, symbol: toAppConversation, responsibility: Normalize server conversation data for the Canvas. }
-      - { id: router, label: Conversation endpoint, subject_id: openhands-sdk, source_path: openhands-agent-server/openhands/agent_server/conversation_router.py, symbol: router, responsibility: Admit and route conversation operations. }
+      - { id: router, label: Conversation endpoint, subject_id: openhands-sdk, source_path: openhands-agent-server/openhands/agent_server/conversation_router.py, symbol: start_conversation, responsibility: Admit and route conversation operations. }
       - { id: service, label: Conversation service, subject_id: openhands-sdk, source_path: openhands-agent-server/openhands/agent_server/conversation_service.py, symbol: ConversationService, responsibility: Create and coordinate SDK conversations. }
-      - { id: agent, label: Agent decision, subject_id: openhands-sdk, source_path: openhands-sdk/openhands/sdk/agent/agent.py, symbol: Agent, responsibility: Produce actions from conversation state. }
+      - { id: conversation, label: SDK conversation, subject_id: openhands-sdk, source_path: openhands-sdk/openhands/sdk/conversation/conversation.py, symbol: Conversation, responsibility: Own conversation state and event progression. }
+      - { id: agent, label: Agent decision, subject_id: openhands-sdk, source_path: openhands-sdk/openhands/sdk/agent/agent.py, symbol: Agent.step, responsibility: Produce the next actions from conversation state. }
+      - { id: tool, label: Tool execution, subject_id: openhands-sdk, source_path: openhands-sdk/openhands/sdk/tool/tool.py, symbol: ToolDefinition.__call__, responsibility: Convert an action into a bounded tool invocation. }
       - { id: workspace, label: Workspace boundary, subject_id: openhands-sdk, source_path: openhands-sdk/openhands/sdk/workspace/workspace.py, symbol: Workspace, responsibility: Execute bounded environment operations and return events. }
+      - { id: event-return, label: Event return, subject_id: openhands-canvas, source_path: src/api/agent-server-adapter.ts, symbol: toAppConversation, responsibility: Normalize server events and state back into the Canvas. }
+
+```
+
+- [ ] **Step 11: Append benchmark, Dify, CrewAI, and historical chains**
+
+Append:
+
+```yaml
 
   - id: benchmark-task-to-score
     page_item_id: project-agent-benchmarks
@@ -972,11 +1193,12 @@ chains:
     steps:
       - { id: kickoff, label: Crew kickoff, subject_id: crewai, source_path: lib/crewai/src/crewai/crew.py, symbol: Crew.kickoff, responsibility: Initialize crew execution and inputs. }
       - { id: process, label: Process choice, subject_id: crewai, source_path: lib/crewai/src/crewai/process.py, symbol: Process, responsibility: Select the orchestration policy. }
-      - { id: execution, label: Execution state, subject_id: crewai, source_path: lib/crewai/src/crewai/execution.py, symbol: execution helpers, responsibility: Carry shared execution state. }
-      - { id: task, label: Task, subject_id: crewai, source_path: lib/crewai/src/crewai/task.py, symbol: Task, responsibility: Bind description, expected output, and assigned agent. }
-      - { id: agent, label: Agent, subject_id: crewai, source_path: lib/crewai/src/crewai/agent/core.py, symbol: Agent, responsibility: Prepare the task-specific agent context. }
-      - { id: executor, label: Agent executor, subject_id: crewai, source_path: lib/crewai/src/crewai/agents/crew_agent_executor.py, symbol: CrewAgentExecutor, responsibility: Run the reasoning and tool loop. }
-      - { id: tool, label: Tool usage, subject_id: crewai, source_path: lib/crewai/src/crewai/tools/tool_usage.py, symbol: ToolUsage, responsibility: Invoke a tool and record its outcome. }
+      - { id: execution, label: Execution state, subject_id: crewai, source_path: lib/crewai/src/crewai/execution.py, symbol: begin_execution, responsibility: Carry shared execution and tracing state. }
+      - { id: task, label: Task, subject_id: crewai, source_path: lib/crewai/src/crewai/task.py, symbol: Task.execute_sync, responsibility: Bind expected output and delegate work to an agent. }
+      - { id: agent, label: Agent, subject_id: crewai, source_path: lib/crewai/src/crewai/agent/core.py, symbol: Agent.execute_task, responsibility: Prepare and launch task-specific execution. }
+      - { id: executor, label: Agent executor, subject_id: crewai, source_path: lib/crewai/src/crewai/agents/crew_agent_executor.py, symbol: CrewAgentExecutor.invoke, responsibility: Run the reasoning and tool loop. }
+      - { id: step, label: Step executor, subject_id: crewai, source_path: lib/crewai/src/crewai/agents/step_executor.py, symbol: StepExecutor.execute, responsibility: Execute one parsed agent step. }
+      - { id: tool, label: Tool usage, subject_id: crewai, source_path: lib/crewai/src/crewai/tools/tool_usage.py, symbol: ToolUsage.use, responsibility: Invoke a tool and record its outcome. }
       - { id: output, label: Task output, subject_id: crewai, source_path: lib/crewai/src/crewai/task.py, symbol: Task._export_output, responsibility: Return the normalized task result to crew orchestration. }
 
   - id: autogpt-flowise-evolution
@@ -986,12 +1208,12 @@ chains:
     misconception: An active repository or a visible canvas does not prove that an older architecture is maintained or suitable.
     steps:
       - { id: autogpt-entry, track: autogpt, label: Classic entry, subject_id: autogpt, source_path: classic/original_autogpt/autogpt/app/main.py, symbol: run_auto_gpt, responsibility: Show the original autonomous-loop product boundary. }
-      - { id: autogpt-agent, track: autogpt, label: Classic agent, subject_id: autogpt, source_path: classic/original_autogpt/autogpt/agents/agent.py, symbol: Agent, responsibility: Expose the loop and prompt-strategy assumptions. }
+      - { id: autogpt-agent, track: autogpt, label: Classic agent, subject_id: autogpt, source_path: classic/original_autogpt/autogpt/agents/agent.py, symbol: Agent.execute, responsibility: Expose the loop and prompt-strategy assumptions. }
       - { id: flowise-entry, track: flowise, label: Prediction controller, subject_id: flowise, source_path: packages/server/src/controllers/predictions/index.ts, symbol: createPrediction, responsibility: Admit a visual-flow prediction request. }
-      - { id: flowise-service, track: flowise, label: Prediction service, subject_id: flowise, source_path: packages/server/src/services/predictions/index.ts, symbol: prediction service, responsibility: Execute the configured flow before the archived EOL boundary. }
+      - { id: flowise-service, track: flowise, label: Prediction service, subject_id: flowise, source_path: packages/server/src/services/predictions/index.ts, symbol: buildChatflow, responsibility: Execute the configured flow before the archived EOL boundary. }
 ```
 
-- [ ] **Step 4: Wire the project catalog into content validation**
+- [ ] **Step 12: Wire the project catalog into content validation**
 
 Change `validateBook` to accept optional paths while preserving current callers:
 
@@ -1009,21 +1231,20 @@ export function validateBook(root = process.cwd(), options = {}) {
 }
 ```
 
-Task 9 adds provenance validation after its module and registry exist.
+Task 10 adds provenance validation after its module and registry exist.
 
-- [ ] **Step 5: Run exact inventory tests and full validation**
+- [ ] **Step 13: Run exact inventory tests and full validation**
 
 Run:
 
 ```bash
 pnpm vitest run tests/project-catalog.spec.ts
-pnpm validate
-pnpm test
+pnpm test && pnpm validate && pnpm build
 ```
 
 Expected: project catalog tests pass, content validation passes, and the full suite remains green.
 
-- [ ] **Step 6: Commit the canonical project data**
+- [ ] **Step 14: Commit the canonical project data**
 
 ```bash
 git add sources/project-index.yml scripts/validate-content.mjs tests/project-catalog.spec.ts
@@ -1035,13 +1256,19 @@ git commit -m "feat: add pinned project source catalog"
 **Files:**
 
 - Create: `docs/.vitepress/theme/data/projectCatalog.data.ts`
+- Create: `docs/.vitepress/theme/data/projectCatalogTypes.ts`
+- Create: `docs/.vitepress/theme/data/projectCatalogCore.ts`
 - Create: `docs/.vitepress/theme/data/projectCatalog.ts`
+- Create: `docs/.vitepress/env.d.ts`
+- Create: `tsconfig.projects.json`
 - Create: `docs/.vitepress/theme/components/ProjectOverview.vue`
 - Create: `docs/.vitepress/theme/components/ProjectMeta.vue`
 - Create: `docs/.vitepress/theme/components/ProjectCallChain.vue`
 - Create: `docs/.vitepress/theme/components/ProjectSourceLinks.vue`
 - Modify: `docs/.vitepress/theme/index.ts`
 - Modify: `docs/.vitepress/theme/style.css`
+- Modify: `package.json`
+- Modify: `pnpm-lock.yaml`
 - Create: `tests/project-pages.spec.ts`
 
 - [ ] **Step 1: Write failing loader, lookup, SSR, and semantic tests**
@@ -1051,18 +1278,24 @@ Create `tests/project-pages.spec.ts` with these first contracts:
 ```ts
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { loadProjectCatalog } from '../scripts/project-catalog.mjs'
+import { createProjectCatalogLookup } from '../docs/.vitepress/theme/data/projectCatalogCore'
 import {
-  getProjectChain,
-  getProjectPage,
-  getProjectSubject,
-  projectCatalog,
-  projectSourceUrl,
-} from '../docs/.vitepress/theme/data/projectCatalog'
+  type ProjectCatalog,
+} from '../docs/.vitepress/theme/data/projectCatalogTypes'
+
+const projectCatalog = loadProjectCatalog(resolve('sources/project-index.yml')) as ProjectCatalog
+const {
+  getProjectChain, getProjectPage, getProjectSubject, projectSourceUrl,
+} = createProjectCatalogLookup(projectCatalog)
 
 describe('project presentation primitives', () => {
   it('loads the validated project catalog and fails closed on inherited IDs', () => {
     expect(getProjectPage('project-aider').subjects).toEqual(['aider'])
     expect(getProjectSubject('aider').pinned_ref).toBe('v0.86.0')
+    expect(getProjectSubject('hermes-agent').risk_tags).toEqual(['长期自主', '长期记忆', '外部系统'])
+    expect(getProjectSubject('openclaw').risk_tags).toEqual(['长期自主', 'IM', '桌面控制', '外部系统'])
     expect(getProjectChain('aider-repo-to-verified-edit').steps).toHaveLength(6)
     for (const id of ['missing', 'toString', 'constructor', '__proto__']) {
       expect(() => getProjectPage(id)).toThrow(`Unknown project page: ${id}`)
@@ -1084,14 +1317,24 @@ describe('project presentation primitives', () => {
   })
 
   it('registers four components with native list and disclosure semantics', () => {
+    const loader = readFileSync('docs/.vitepress/theme/data/projectCatalog.data.ts', 'utf8')
+    expect(loader).toContain("import { defineLoader } from 'vitepress'")
+    expect(loader).not.toContain('type { Loader }')
+    const core = readFileSync('docs/.vitepress/theme/data/projectCatalogCore.ts', 'utf8')
+    expect(core).not.toContain('projectCatalog.data')
     const theme = readFileSync('docs/.vitepress/theme/index.ts', 'utf8')
     for (const name of ['ProjectOverview', 'ProjectMeta', 'ProjectCallChain', 'ProjectSourceLinks']) {
       expect(theme).toContain(`'${name}'`)
     }
     const chain = readFileSync('docs/.vitepress/theme/components/ProjectCallChain.vue', 'utf8')
     expect(chain).toContain('<figure')
+    expect(chain).toContain('class="project-architecture"')
+    expect(chain).toContain('本书归纳 · 原创建筑关系图')
     expect(chain).toContain('<ol')
     expect(chain).toContain('role="list"')
+    expect(chain).toContain('role="listitem"')
+    expect(chain).toContain('源码事实：')
+    expect(chain).toContain('本书归纳：')
     expect(chain).toContain('不要误解')
     const meta = readFileSync('docs/.vitepress/theme/components/ProjectMeta.vue', 'utf8')
     expect(meta).toContain('仓库状态')
@@ -1099,6 +1342,16 @@ describe('project presentation primitives', () => {
     expect(meta).toContain('<details')
     expect(meta).toContain('project-license-print')
     expect(meta).not.toContain('pinned_commit.slice')
+    expect(meta).toContain('scope.basis')
+    expect(meta).toContain('scope.path_or_glob ?? scope.selector')
+    expect(meta).toContain('projectSourceUrl(subject.id, source.path)')
+    const sources = readFileSync('docs/.vitepress/theme/components/ProjectSourceLinks.vue', 'utf8')
+    for (const field of ['row.path', 'row.symbol', 'row.responsibility']) expect(sources).toContain(field)
+    const overview = readFileSync('docs/.vitepress/theme/components/ProjectOverview.vue', 'utf8')
+    expect(overview).toContain('subject.risk_tags')
+    for (const id of ['frontier-agent-security-evaluation', 'chapter-09-safety-recovery', 'radar']) {
+      expect(overview).toContain(id)
+    }
   })
 
   it('uses only local theme tokens and includes mobile, focus, dark, and print rules', () => {
@@ -1111,6 +1364,13 @@ describe('project presentation primitives', () => {
     expect(style).toContain(':focus-visible')
     expect(style).not.toMatch(/project-[^{]+\{[^}]*#[0-9a-f]{6}/isu)
   })
+
+  it('enforces the scoped Vue and TypeScript check during production builds', () => {
+    const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
+    expect(pkg.scripts['typecheck:projects']).toBe('vue-tsc --noEmit -p tsconfig.projects.json')
+    expect(pkg.scripts.build).toContain('pnpm typecheck:projects')
+    expect(pkg.devDependencies['vue-tsc']).toBe('^3.3.11')
+  })
 })
 ```
 
@@ -1122,13 +1382,9 @@ Expected: FAIL because the loader, lookup module, and components do not exist.
 
 - [ ] **Step 3: Add the VitePress data loader and fail-closed lookups**
 
-Create `docs/.vitepress/theme/data/projectCatalog.data.ts`:
+Create `docs/.vitepress/theme/data/projectCatalogTypes.ts` with the following interfaces:
 
 ```ts
-import { resolve } from 'node:path'
-import type { Loader } from 'vitepress'
-import { loadProjectCatalog } from '../../../../scripts/project-catalog.mjs'
-
 export interface LicenseScope {
   basis: 'path' | 'contribution'
   expression: string
@@ -1136,6 +1392,12 @@ export interface LicenseScope {
   selector?: string
   scope: string
   note: string
+}
+
+export interface ProjectSourceEntrypoint {
+  path: string
+  symbol: string
+  responsibility: string
 }
 
 export interface ProjectSubject {
@@ -1148,11 +1410,12 @@ export interface ProjectSubject {
   repository_status: 'active' | 'archived' | 'eol'
   archived: boolean
   catalog_tier: 'core' | 'historical' | 'watch-only'
+  risk_tags?: string[]
   license_summary: string
   license_scopes: LicenseScope[]
-  license_source_paths: string[]
+  license_sources: Array<{ path: string; sha256: string }>
   watch_url: string
-  entrypoints: string[]
+  entrypoints: ProjectSourceEntrypoint[]
   verified_at: string
   review_by: string
 }
@@ -1191,44 +1454,112 @@ export interface ProjectCatalog {
   subjects: ProjectSubject[]
   chains: ProjectChain[]
 }
+```
+
+Create `docs/.vitepress/theme/data/projectCatalog.data.ts`:
+
+```ts
+import { resolve } from 'node:path'
+import { defineLoader } from 'vitepress'
+import { loadProjectCatalog } from '../../../../scripts/project-catalog.mjs'
+import type { ProjectCatalog } from './projectCatalogTypes'
 
 declare const data: ProjectCatalog
 export { data }
 
-export default {
+export default defineLoader({
   watch: ['../../../../sources/project-index.yml'],
   load() {
-    return loadProjectCatalog(resolve(process.cwd(), 'sources/project-index.yml'))
+    return loadProjectCatalog(resolve(process.cwd(), 'sources/project-index.yml')) as ProjectCatalog
   },
-} satisfies Loader
+})
 ```
 
-Create `docs/.vitepress/theme/data/projectCatalog.ts`:
+Create `docs/.vitepress/theme/data/projectCatalogCore.ts`. It is a pure module: it receives an ordinary catalog and never imports `.data.ts`.
+
+```ts
+import type { ProjectCatalog } from './projectCatalogTypes'
+
+export function createProjectCatalogLookup(data: ProjectCatalog) {
+  const pageById = Object.fromEntries(data.pages.map((page) => [page.page_item_id, page]))
+  const subjectById = Object.fromEntries(data.subjects.map((subject) => [subject.id, subject]))
+  const chainById = Object.fromEntries(data.chains.map((chain) => [chain.id, chain]))
+
+  function own<T>(record: Record<string, T>, id: string, label: string): T {
+    if (!Object.hasOwn(record, id)) throw new Error(`Unknown ${label}: ${id}`)
+    return record[id]
+  }
+
+  const getProjectPage = (id: string) => own(pageById, id, 'project page')
+  const getProjectSubject = (id: string) => own(subjectById, id, 'project subject')
+  const getProjectChain = (id: string) => own(chainById, id, 'project chain')
+
+  function projectSourceUrl(subjectId: string, sourcePath: string): string {
+    const subject = getProjectSubject(subjectId)
+    const allowedPaths = new Set([
+      ...subject.entrypoints.map((entry) => entry.path),
+      ...subject.license_sources.map((license) => license.path),
+    ])
+    if (!allowedPaths.has(sourcePath)) {
+      throw new Error(`Undeclared project entrypoint: ${subjectId}/${sourcePath}`)
+    }
+    return `${subject.canonical_url}/blob/${subject.pinned_commit}/${sourcePath}`
+  }
+
+  return { projectCatalog: data, getProjectPage, getProjectSubject, getProjectChain, projectSourceUrl }
+}
+```
+
+Create the VitePress-only wrapper `docs/.vitepress/theme/data/projectCatalog.ts`:
 
 ```ts
 import { data } from './projectCatalog.data'
+import { createProjectCatalogLookup } from './projectCatalogCore'
 
-const pageById = Object.fromEntries(data.pages.map((page) => [page.page_item_id, page]))
-const subjectById = Object.fromEntries(data.subjects.map((subject) => [subject.id, subject]))
-const chainById = Object.fromEntries(data.chains.map((chain) => [chain.id, chain]))
+export const {
+  projectCatalog,
+  getProjectPage,
+  getProjectSubject,
+  getProjectChain,
+  projectSourceUrl,
+} = createProjectCatalogLookup(data)
+```
 
-function own<T>(record: Record<string, T>, id: string, label: string): T {
-  if (!Object.hasOwn(record, id)) throw new Error(`Unknown ${label}: ${id}`)
-  return record[id]
+Create `docs/.vitepress/env.d.ts`:
+
+```ts
+/// <reference types="vite/client" />
+```
+
+Create `tsconfig.projects.json`:
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "allowJs": true,
+    "checkJs": false,
+    "resolveJsonModule": true,
+    "types": ["vitepress/client"]
+  },
+  "include": [
+    "docs/.vitepress/env.d.ts",
+    "docs/.vitepress/theme/data/projectCatalog*.ts",
+    "docs/.vitepress/theme/components/Project*.vue",
+    "scripts/project-catalog.d.mts"
+  ]
 }
+```
 
-export const projectCatalog = data
-export const getProjectPage = (id: string) => own(pageById, id, 'project page')
-export const getProjectSubject = (id: string) => own(subjectById, id, 'project subject')
-export const getProjectChain = (id: string) => own(chainById, id, 'project chain')
+Run `pnpm add -D vue-tsc@3.3.11`. Add these scripts:
 
-export function projectSourceUrl(subjectId: string, sourcePath: string): string {
-  const subject = getProjectSubject(subjectId)
-  if (![...subject.entrypoints, ...subject.license_source_paths].includes(sourcePath)) {
-    throw new Error(`Undeclared project entrypoint: ${subjectId}/${sourcePath}`)
-  }
-  return `${subject.canonical_url}/blob/${subject.pinned_commit}/${sourcePath}`
-}
+```json
+"typecheck:projects": "vue-tsc --noEmit -p tsconfig.projects.json",
+"build": "pnpm validate && pnpm typecheck:projects && vitepress build docs && node scripts/check-dist.mjs"
 ```
 
 - [ ] **Step 4: Implement the four components**
@@ -1252,7 +1583,7 @@ const statusLabel = (status: string) => statusLabels[status] ?? status
   <aside class="project-meta" aria-label="项目版本与许可边界">
     <p><strong>教学层级：</strong>{{ tierLabel }}</p>
     <ul role="list">
-      <li v-for="subject in subjects" :key="subject.id">
+      <li v-for="subject in subjects" :key="subject.id" role="listitem">
         <a :href="subject.canonical_url">{{ subject.canonical_repo }}</a>
         <span><strong>固定版本：</strong>{{ subject.pinned_ref }} · <code>{{ subject.pinned_commit }}</code></span>
         <span><strong>仓库状态：</strong>{{ statusLabel(subject.repository_status) }}<template v-if="subject.archived"> · GitHub 已归档</template></span>
@@ -1262,23 +1593,26 @@ const statusLabel = (status: string) => statusLabels[status] ?? status
           <summary>许可证边界</summary>
           <p>{{ subject.license_summary }}</p>
           <ul role="list">
-            <li v-for="scope in subject.license_scopes" :key="`${scope.expression}-${scope.path_or_glob ?? scope.selector}`">
-              <code>{{ scope.expression }}</code> · {{ scope.scope }} — {{ scope.note }}
+            <li v-for="scope in subject.license_scopes" :key="`${scope.expression}-${scope.path_or_glob ?? scope.selector}`" role="listitem">
+              <code>{{ scope.basis }}</code> · <code>{{ scope.expression }}</code> ·
+              <code>{{ scope.path_or_glob ?? scope.selector }}</code> · {{ scope.scope }} — {{ scope.note }}
             </li>
           </ul>
           <p>
             许可证原文：
-            <a v-for="path in subject.license_source_paths" :key="path" :href="projectSourceUrl(subject.id, path)"><code>{{ path }}</code></a>
+            <a v-for="source in subject.license_sources" :key="source.path" :href="projectSourceUrl(subject.id, source.path)"><code>{{ source.path }}</code></a>
           </p>
         </details>
         <div class="project-license-print" aria-hidden="true">
           <p><strong>许可证摘要：</strong>{{ subject.license_summary }}</p>
           <ul>
             <li v-for="scope in subject.license_scopes" :key="`print-${scope.expression}-${scope.path_or_glob ?? scope.selector}`">
-              {{ scope.expression }} · {{ scope.scope }} — {{ scope.note }}
+              {{ scope.basis }} · {{ scope.expression }} · {{ scope.path_or_glob ?? scope.selector }} · {{ scope.scope }} — {{ scope.note }}
             </li>
           </ul>
-          <p>许可证原文：{{ subject.license_source_paths.join('、') }} · {{ subject.pinned_commit }}</p>
+          <p v-for="source in subject.license_sources" :key="`print-license-${source.path}`">
+            许可证原文：{{ projectSourceUrl(subject.id, source.path) }}
+          </p>
         </div>
       </li>
     </ul>
@@ -1292,26 +1626,55 @@ Create `ProjectCallChain.vue`:
 <script setup lang="ts">
 import { computed } from 'vue'
 import { getProjectChain, getProjectPage } from '../data/projectCatalog'
+import type { ProjectChainStep } from '../data/projectCatalogTypes'
 
 const props = defineProps<{ projectId: string }>()
 const page = computed(() => getProjectPage(props.projectId))
 const chain = computed(() => getProjectChain(page.value.primary_chain_id!))
+const tracks = computed(() => {
+  const grouped = new Map<string, ProjectChainStep[]>()
+  for (const step of chain.value.steps) {
+    const key = step.track ?? 'main'
+    grouped.set(key, [...(grouped.get(key) ?? []), step])
+  }
+  return [...grouped].map(([id, steps]) => ({ id, label: id === 'main' ? '主链' : id, steps }))
+})
+const architectureLabel = computed(() => tracks.value
+  .map((track) => `${track.label}：${track.steps.map((step) => step.label).join('，然后')}`)
+  .join('；'))
 </script>
 
 <template>
-  <figure class="project-call-chain" :aria-labelledby="`${projectId}-chain-title`">
-    <figcaption :id="`${projectId}-chain-title`">{{ chain.label }}</figcaption>
+  <section class="project-chain-section" :aria-labelledby="`${projectId}-chain-title`">
+    <h3 :id="`${projectId}-chain-title`">{{ chain.label }}</h3>
+    <figure
+      class="project-architecture"
+      role="img"
+      :aria-label="`本书原创架构关系图：${chain.label}。${architectureLabel}。`"
+    >
+      <figcaption>本书归纳 · 原创建筑关系图</figcaption>
+      <div class="project-architecture-tracks" aria-hidden="true">
+        <div v-for="track in tracks" :key="`visual-${track.id}`" class="project-architecture-track">
+          <strong v-if="track.id !== 'main'">{{ track.label }}</strong>
+          <div class="project-architecture-nodes">
+            <span v-for="step in track.steps" :key="`visual-${step.id}`">{{ step.label }}</span>
+          </div>
+        </div>
+      </div>
+    </figure>
     <p class="project-chain-reading"><strong>怎么看：</strong>{{ chain.reading_hint }}</p>
-    <ol role="list">
-      <li v-for="step in chain.steps" :key="step.id" role="listitem">
-        <span v-if="step.track" class="project-chain-track">{{ step.track }}</span>
-        <strong>{{ step.label }}</strong>
-        <span>{{ step.responsibility }}</span>
-        <code>{{ step.source_path }} · {{ step.symbol }}</code>
-      </li>
-    </ol>
+    <section v-for="track in tracks" :key="`text-${track.id}`" class="project-chain-track-group">
+      <h4 v-if="track.id !== 'main'">{{ track.label }}</h4>
+      <ol class="project-call-chain" role="list" :aria-label="`${track.label}源码调用链文本版`">
+        <li v-for="step in track.steps" :key="step.id" role="listitem">
+          <strong>{{ step.label }}</strong>
+          <span><b>源码事实：</b><code>{{ step.source_path }} · {{ step.symbol }}</code></span>
+          <span><b>本书归纳：</b>{{ step.responsibility }}</span>
+        </li>
+      </ol>
+    </section>
     <p class="project-chain-warning"><strong>不要误解：</strong>{{ chain.misconception }}</p>
-  </figure>
+  </section>
 </template>
 ```
 
@@ -1325,26 +1688,30 @@ import { getProjectPage, getProjectSubject, projectSourceUrl } from '../data/pro
 const props = defineProps<{ projectId: string }>()
 const rows = computed(() => getProjectPage(props.projectId).subjects.flatMap((subjectId) => {
   const subject = getProjectSubject(subjectId)
-  return subject.entrypoints.map((path) => ({
+  return subject.entrypoints.map((entry) => ({
     subjectId,
     repo: subject.canonical_repo,
-    path,
-    href: projectSourceUrl(subjectId, path),
+    path: entry.path,
+    symbol: entry.symbol,
+    responsibility: entry.responsibility,
+    href: projectSourceUrl(subjectId, entry.path),
   }))
 }))
 </script>
 
 <template>
   <ol class="project-source-links" role="list">
-    <li v-for="row in rows" :key="`${row.subjectId}:${row.path}`">
+    <li v-for="row in rows" :key="`${row.subjectId}:${row.path}`" role="listitem">
       <a :href="row.href"><code>{{ row.path }}</code></a>
+      <strong>{{ row.symbol }}</strong>
+      <span>{{ row.responsibility }}</span>
       <small>{{ row.repo }} · 固定 commit</small>
     </li>
   </ol>
 </template>
 ```
 
-Create `ProjectOverview.vue`; its setup remains lazy so Task 3 builds before Task 7 adds the project IDs:
+Create `ProjectOverview.vue`; its setup remains lazy so Task 3 builds before Task 8 adds the project IDs:
 
 ```vue
 <script setup lang="ts">
@@ -1366,6 +1733,11 @@ const subjectStatus = (subjectId: string) => {
   const subject = getProjectSubject(subjectId)
   return `${subject.pinned_ref} · ${subject.repository_status}`
 }
+const safetyLinks = [
+  getContentItem('frontier-agent-security-evaluation'),
+  getContentItem('chapter-09-safety-recovery'),
+  getContentItem('radar'),
+]
 </script>
 
 <template>
@@ -1373,7 +1745,7 @@ const subjectStatus = (subjectId: string) => {
     <section aria-labelledby="project-core-title">
       <h2 id="project-core-title">核心源码拆解</h2>
       <ol role="list">
-        <li v-for="page in corePages" :key="page.page_item_id">
+        <li v-for="page in corePages" :key="page.page_item_id" role="listitem">
           <a :href="withBase(getContentItem(page.page_item_id).route)">{{ getContentItem(page.page_item_id).title }}</a>
           <span>{{ page.subjects.map(subjectStatus).join('；') }}</span>
           <p v-if="courseItemFor(page.page_item_id)">{{ courseItemFor(page.page_item_id)?.outcome }}</p>
@@ -1383,12 +1755,20 @@ const subjectStatus = (subjectId: string) => {
     </section>
     <section aria-labelledby="project-history-title">
       <h2 id="project-history-title">历史反例</h2>
-      <ul role="list"><li v-for="page in historicalPages" :key="page.page_item_id"><a :href="withBase(getContentItem(page.page_item_id).route)">{{ getContentItem(page.page_item_id).title }}</a></li></ul>
+      <ul role="list"><li v-for="page in historicalPages" :key="page.page_item_id" role="listitem"><a :href="withBase(getContentItem(page.page_item_id).route)">{{ getContentItem(page.page_item_id).title }}</a></li></ul>
     </section>
     <section aria-labelledby="project-watch-title">
       <h2 id="project-watch-title">前沿高权限观察区</h2>
       <p>这些项目不是初学者默认安装步骤，也不计入课程完成度。</p>
-      <ul role="list"><li v-for="subject in watchSubjects" :key="subject.id"><a :href="subject.canonical_url">{{ subject.canonical_repo }}</a> · {{ subject.pinned_ref }} · watch-only</li></ul>
+      <ul role="list">
+        <li v-for="subject in watchSubjects" :key="subject.id" role="listitem">
+          <a :href="subject.canonical_url">{{ subject.canonical_repo }}</a> · {{ subject.pinned_ref }} · watch-only
+          <span v-for="tag in subject.risk_tags" :key="tag" class="project-risk-tag">{{ tag }}</span>
+        </li>
+      </ul>
+      <p class="project-safety-links">
+        安全延伸：<a v-for="item in safetyLinks" :key="item.id" :href="withBase(item.route)">{{ item.title }}</a>
+      </p>
     </section>
   </nav>
 </template>
@@ -1400,7 +1780,7 @@ Import and register the four components in `docs/.vitepress/theme/index.ts`. App
 
 ```css
 .project-meta,
-.project-call-chain,
+.project-chain-section,
 .project-overview section {
   margin: 1.5rem 0;
   border: 1px solid var(--reading-rule);
@@ -1409,6 +1789,7 @@ Import and register the four components in `docs/.vitepress/theme/index.ts`. App
 }
 
 .project-meta,
+.project-chain-section,
 .project-overview section {
   padding: 1rem 1.1rem;
 }
@@ -1416,7 +1797,7 @@ Import and register the four components in `docs/.vitepress/theme/index.ts`. App
 .project-meta > ul,
 .project-overview ol,
 .project-overview ul,
-.project-call-chain ol,
+.project-call-chain,
 .project-source-links {
   margin: 0;
   padding: 0;
@@ -1431,21 +1812,43 @@ Import and register the four components in `docs/.vitepress/theme/index.ts`. App
   border-top: 1px solid var(--reading-rule);
 }
 
-.project-call-chain {
-  padding: 1.1rem;
+.project-architecture {
+  margin: 1rem 0;
 }
 
-.project-call-chain figcaption {
+.project-architecture figcaption {
   color: var(--reading-text);
   font-weight: 750;
   font-size: 1.05rem;
 }
 
-.project-call-chain ol {
+.project-architecture-tracks {
+  display: grid;
+  gap: 1rem;
+}
+
+.project-architecture-nodes,
+.project-call-chain {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 0.75rem;
   margin-top: 1rem;
+}
+
+.project-architecture-nodes span {
+  position: relative;
+  padding: 0.7rem;
+  border: 1px solid var(--reading-rule);
+  border-radius: 8px;
+  background: var(--reading-bg-soft);
+  text-align: center;
+}
+
+.project-architecture-nodes span:not(:last-child)::after {
+  content: '→';
+  position: absolute;
+  inset-inline-end: -0.65rem;
+  color: var(--reading-link);
 }
 
 .project-call-chain li {
@@ -1464,16 +1867,31 @@ Import and register the four components in `docs/.vitepress/theme/index.ts`. App
   white-space: normal;
 }
 
-.project-chain-track,
+.project-chain-track-group h4,
 .project-meta small,
 .project-source-links small {
-  color: var(--reading-muted);
+  color: var(--reading-text-soft);
   font-size: 0.8rem;
 }
 
 .project-chain-warning {
   border-left: 3px solid var(--reading-risk);
   padding-left: 0.8rem;
+}
+
+.project-risk-tag {
+  display: inline-block;
+  margin: 0.25rem 0.25rem 0 0;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid var(--reading-risk);
+  border-radius: 999px;
+  color: var(--reading-risk);
+}
+
+.project-safety-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
 }
 
 .project-license-print {
@@ -1501,16 +1919,24 @@ Import and register the four components in `docs/.vitepress/theme/index.ts`. App
 }
 
 @media (max-width: 700px) {
-  .project-call-chain ol { grid-template-columns: 1fr; }
+  .project-architecture-nodes,
+  .project-call-chain { grid-template-columns: 1fr; }
+  .project-architecture-nodes span:not(:last-child)::after {
+    content: '↓';
+    inset-inline-end: auto;
+    inset-block-end: -0.8rem;
+    inset-inline-start: 50%;
+  }
   .project-meta,
-  .project-call-chain,
+  .project-chain-section,
   .project-overview section { padding: 0.9rem; }
 }
 
 @media print {
   .project-meta details { display: none !important; }
   .project-license-print { display: block !important; }
-  .project-call-chain ol { grid-template-columns: 1fr; }
+  .project-architecture { display: none !important; }
+  .project-call-chain { grid-template-columns: 1fr; }
   .project-source-links a[href]::after { content: " (" attr(href) ")"; overflow-wrap: anywhere; }
 }
 ```
@@ -1523,8 +1949,8 @@ Run:
 
 ```bash
 pnpm vitest run tests/project-pages.spec.ts -t 'project presentation primitives'
-pnpm test
-pnpm build
+pnpm typecheck:projects
+pnpm test && pnpm validate && pnpm build
 ```
 
 Expected: all tests and the production build pass; no public project route exists yet.
@@ -1532,11 +1958,113 @@ Expected: all tests and the production build pass; no public project route exist
 - [ ] **Step 7: Commit the presentation primitives**
 
 ```bash
-git add docs/.vitepress/theme/data/projectCatalog.data.ts docs/.vitepress/theme/data/projectCatalog.ts docs/.vitepress/theme/components/ProjectOverview.vue docs/.vitepress/theme/components/ProjectMeta.vue docs/.vitepress/theme/components/ProjectCallChain.vue docs/.vitepress/theme/components/ProjectSourceLinks.vue docs/.vitepress/theme/index.ts docs/.vitepress/theme/style.css tests/project-pages.spec.ts
+git add docs/.vitepress/theme/data/projectCatalog.data.ts docs/.vitepress/theme/data/projectCatalogTypes.ts docs/.vitepress/theme/data/projectCatalogCore.ts docs/.vitepress/theme/data/projectCatalog.ts docs/.vitepress/theme/components/ProjectOverview.vue docs/.vitepress/theme/components/ProjectMeta.vue docs/.vitepress/theme/components/ProjectCallChain.vue docs/.vitepress/theme/components/ProjectSourceLinks.vue docs/.vitepress/theme/index.ts docs/.vitepress/theme/style.css docs/.vitepress/env.d.ts tsconfig.projects.json package.json pnpm-lock.yaml tests/project-pages.spec.ts
 git commit -m "feat: add project dissection primitives"
 ```
 
-### Task 4: Write the MCP and Aider core dissections
+### Task 4: Introduce a progressive project-output allowlist before any page exists
+
+**Files:**
+
+- Modify: `scripts/check-dist.mjs`
+- Modify: `tests/content.spec.ts`
+
+- [ ] **Step 1: Write failing transition-boundary tests**
+
+Add tests against a pure exported helper so a normal incomplete project subset can be tested without fabricating the rest of dist:
+
+```ts
+import { validatePublishedRouteBoundary } from '../scripts/check-dist.mjs'
+
+describe('progressive project publication boundary', () => {
+  it('allows any subset of the eight approved project outputs during implementation', () => {
+    expect(validatePublishedRouteBoundary([
+      'index.html',
+      'projects/mcp-python-sdk.html',
+      'projects/aider.html',
+    ])).toEqual([])
+  })
+
+  it('still rejects unapproved projects and every lab or capstone output', () => {
+    expect(validatePublishedRouteBoundary([
+      'projects/unreviewed.html',
+      'projects/private/notes.html',
+      'projects.html',
+      'labs/index.html',
+      'capstone/index.html',
+    ])).toEqual(expect.arrayContaining([
+      expect.stringContaining('projects/unreviewed.html'),
+      expect.stringContaining('projects/private/notes.html'),
+      expect.stringContaining('projects.html'),
+      expect.stringContaining('labs/index.html'),
+      expect.stringContaining('capstone/index.html'),
+    ]))
+  })
+})
+```
+
+- [ ] **Step 2: Run the transition test and verify RED**
+
+Run: `pnpm vitest run tests/content.spec.ts -t 'progressive project publication boundary'`
+
+Expected: FAIL because `validatePublishedRouteBoundary` is not exported and the current gate rejects every project file.
+
+- [ ] **Step 3: Add the approved output set and pure boundary helper**
+
+At the top of `scripts/check-dist.mjs`, add:
+
+```js
+export const approvedProjectFiles = new Set([
+  'projects/index.html',
+  'projects/mcp-python-sdk.html',
+  'projects/aider.html',
+  'projects/openhands.html',
+  'projects/agent-benchmarks.html',
+  'projects/dify.html',
+  'projects/crewai.html',
+  'projects/history-autogpt-flowise.html',
+])
+
+export function validatePublishedRouteBoundary(relativeFiles) {
+  const forbidden = relativeFiles.filter((file) =>
+    /^(?:labs|capstone)(?:\.html|[\\/])/u.test(file)
+    || (/^projects(?:\.html|[\\/])/u.test(file) && !approvedProjectFiles.has(file)),
+  )
+  return forbidden.length === 0
+    ? []
+    : [`构建产物包含未批准项目、实验或综合实战页面：${forbidden.join(', ')}`]
+}
+```
+
+Replace the old blanket `unpublished` block inside `validateDist` with:
+
+```js
+errors.push(...validatePublishedRouteBoundary(relativeFiles))
+```
+
+In the existing `requires every published course target and rejects unpublished route artifacts` test, keep `projects/index.html` in the fixture as an approved subset example, remove the assertion that it is rejected, and retain rejection assertions for `projects/example.html`, `projects.html`, `labs/index.html`, `labs/example.html`, and `labs.html`. Add `capstone/index.html` and `capstone.html` to the fixture and rejection assertions.
+
+Do not require any project file yet. Keep `publishedCourseRoutes`, the 20-link course check, and `/projects/` inside `forbiddenCourseMarkers` unchanged until Task 9; Task 12 is the only task that makes all eight approved project outputs mandatory.
+
+- [ ] **Step 4: Run focused and full gates**
+
+Run:
+
+```bash
+pnpm vitest run tests/content.spec.ts -t 'progressive project publication boundary'
+pnpm test && pnpm validate && pnpm build
+```
+
+Expected: approved subsets pass, unapproved project/Lab/capstone files fail, and the current site with zero project outputs still builds.
+
+- [ ] **Step 5: Commit the transition gate**
+
+```bash
+git add scripts/check-dist.mjs tests/content.spec.ts
+git commit -m "test: allow only approved project outputs"
+```
+
+### Task 5: Write the MCP and Aider core dissections
 
 **Files:**
 
@@ -1742,8 +2270,7 @@ Run:
 
 ```bash
 pnpm vitest run tests/project-pages.spec.ts -t 'MCP and Aider'
-pnpm test
-pnpm build
+pnpm test && pnpm validate && pnpm build
 ```
 
 Expected: both pages pass the 13-section contract; build succeeds without adding navigation or course items yet.
@@ -1755,7 +2282,7 @@ git add docs/projects/mcp-python-sdk.md docs/projects/aider.md tests/project-pag
 git commit -m "docs: dissect MCP and Aider"
 ```
 
-### Task 5: Write the OpenHands and benchmark core dissections
+### Task 6: Write the OpenHands and benchmark core dissections
 
 **Files:**
 
@@ -1946,8 +2473,7 @@ Run:
 
 ```bash
 pnpm vitest run tests/project-pages.spec.ts -t 'OpenHands and benchmark'
-pnpm test
-pnpm build
+pnpm test && pnpm validate && pnpm build
 ```
 
 Expected: focused tests and the full build pass.
@@ -1959,7 +2485,7 @@ git add docs/projects/openhands.md docs/projects/agent-benchmarks.md tests/proje
 git commit -m "docs: dissect OpenHands and agent benchmarks"
 ```
 
-### Task 6: Write the Dify and CrewAI core dissections
+### Task 7: Write the Dify and CrewAI core dissections
 
 **Files:**
 
@@ -2146,8 +2672,7 @@ Run:
 
 ```bash
 pnpm vitest run tests/project-pages.spec.ts -t 'Dify and CrewAI'
-pnpm test
-pnpm build
+pnpm test && pnpm validate && pnpm build
 ```
 
 Expected: focused tests and the full build pass.
@@ -2159,7 +2684,7 @@ git add docs/projects/dify.md docs/projects/crewai.md tests/project-pages.spec.t
 git commit -m "docs: dissect Dify and CrewAI"
 ```
 
-### Task 7: Publish the project overview and historical counterexample, then register all eight routes
+### Task 8: Publish the project overview and historical counterexample, then register all eight routes
 
 **Files:**
 
@@ -2192,6 +2717,9 @@ describe('project routes and catalog overview', () => {
     expect(contentItems).toHaveLength(39)
     expect(projectCatalog.pages.map((page) => page.page_item_id))
       .toEqual(projectRouteRecords.map(([id]) => id))
+    for (const page of projectCatalog.pages) {
+      expect(getContentItem(page.page_item_id).kind).toBe('project')
+    }
   })
 
   it('publishes the overview and keeps watch-only items external-only', () => {
@@ -2349,8 +2877,7 @@ Run:
 
 ```bash
 pnpm vitest run tests/project-pages.spec.ts tests/course-map.spec.ts -t 'project routes|catalog overview'
-pnpm test
-pnpm build
+pnpm test && pnpm validate && pnpm build
 ```
 
 Expected: content registry has 39 unique real routes; overview/history tests and build pass.
@@ -2362,14 +2889,16 @@ git add docs/projects/index.md docs/projects/history-autogpt-flowise.md docs/.vi
 git commit -m "feat: publish the project dissection catalog"
 ```
 
-### Task 8: Integrate six core projects into course progress, the engineering path, and navigation
+### Task 9: Integrate six core projects into course progress, the engineering path, and navigation
 
 **Files:**
 
 - Modify: `docs/.vitepress/theme/data/courseMap.ts`
 - Modify: `docs/.vitepress/theme/data/readingPaths.ts`
 - Modify: `docs/.vitepress/config.mts`
+- Modify: `scripts/check-dist.mjs`
 - Modify: `tests/course-map.spec.ts`
+- Modify: `tests/content.spec.ts`
 - Modify: `tests/project-pages.spec.ts`
 
 - [ ] **Step 1: Write failing graph, path, and navigation tests**
@@ -2405,6 +2934,11 @@ describe('project curriculum integration', () => {
     expect(engineering.steps.slice(-7).map((step) => step.itemId)).toEqual(engineeringProjectTail)
     expect(readingPathDefinitions.find((path) => path.id === 'beginner')?.steps).toHaveLength(8)
     expect(readingPathDefinitions.find((path) => path.id === 'interview')?.steps).toHaveLength(11)
+    const tracked = new Set([
+      ...publishedCourseItems.map(({ itemId }) => getContentItem(itemId).route),
+      ...readingPaths.flatMap((path) => path.steps.map((step) => step.path)),
+    ])
+    expect(tracked.size).toBe(29)
   })
 
   it('gives the project overview course outcomes and prerequisite text', () => {
@@ -2429,11 +2963,33 @@ describe('project curriculum integration', () => {
       'project-history-autogpt-flowise',
     ])
     expect(JSON.stringify(themeConfig)).not.toContain('/labs/')
+    expect(themeConfig.nav.map((group) =>
+      group.items.map((item) => idByRoute.get(item.link)),
+    )).toEqual([
+      ['course', 'preface', 'paths'],
+      ['projects-index', 'case-delivery-agent'],
+      ['radar', 'frontier-context-engineering', 'frontier-interoperability-identity', 'frontier-durable-execution', 'frontier-agent-security-evaluation'],
+      ['appendix-interview-training', 'appendix-interview', 'appendix-glossary'],
+    ])
+    expect(themeConfig.sidebar.map((group) => [
+      group.text,
+      group.items.map((item) => idByRoute.get(item.link)),
+    ])).toEqual([
+      ['课程入口', ['course', 'paths']],
+      ['第一篇 · 认识 Agent', ['preface', 'chapter-01-ai-native', 'chapter-02-workflow-agent', 'chapter-03-react']],
+      ['第二篇 · 组装 Agent', ['chapter-04-tools-mcp', 'chapter-05-state-memory', 'chapter-06-loop-graph', 'chapter-07-multi-agent']],
+      ['第三篇 · 敢于上线', ['chapter-08-evaluation', 'chapter-09-safety-recovery', 'chapter-10-production']],
+      ['第四篇 · 应用方向', ['chapter-11-research-agent', 'chapter-12-service-operations-agent', 'chapter-13-coding-agent', 'chapter-14-computer-use']],
+      ['开源项目拆解', ['projects-index', 'project-mcp-python-sdk', 'project-aider', 'project-openhands', 'project-agent-benchmarks', 'project-dify', 'project-crewai', 'project-history-autogpt-flowise']],
+      ['案例研究', ['case-delivery-agent']],
+      ['活教材 · 前沿层', ['radar', 'radar-2026-09', 'frontier-context-engineering', 'frontier-interoperability-identity', 'frontier-durable-execution', 'frontier-agent-security-evaluation']],
+      ['随手查', ['appendix-glossary', 'appendix-review-checklist', 'appendix-reading', 'appendix-application-matrix', 'appendix-chapter-template', 'appendix-interview', 'appendix-interview-training']],
+    ])
   })
 })
 ```
 
-Update the earlier graph tests from 20 to 26 and update the exact `expectedCourseItems` array with the six records below. Do not loosen equality assertions into `arrayContaining`.
+Update the earlier graph tests from 20 to 26, rename the `handles 20/20` case to `handles 26/26`, update the tracked-route union assertion from 23 to 29, and update the exact `expectedCourseItems` array with the six records below. Replace the existing complete nav/sidebar expected arrays with the arrays above. In `tests/content.spec.ts`, change the course-link error assertion from 20 to 26 and remove `/projects/` from the course-page forbidden marker expectation. Do not keep contradictory old assertions and do not loosen equality into `arrayContaining`.
 
 - [ ] **Step 2: Run focused tests and verify RED**
 
@@ -2498,26 +3054,41 @@ Use these exact groups in `config.mts`:
 
 Insert the project group after “第四篇 · 应用方向” and before the existing “案例研究”. Do not remove or rename any existing destination.
 
-- [ ] **Step 6: Run graph, path, navigation, and build gates**
+- [ ] **Step 6: Move the course dist contract from 20 to 26 links**
+
+In `scripts/check-dist.mjs`, append the six core project routes to `publishedCourseRoutes`, change all exact link-count checks and error text from 20 to 26, and change:
+
+```js
+const forbiddenCourseMarkers = ['/projects/', '/labs/', '标记已读', '加入书签']
+```
+
+to:
+
+```js
+const forbiddenCourseMarkers = ['/labs/', '/capstone/', '标记已读', '加入书签']
+```
+
+Keep the Task 4 progressive project output allowlist. Do not require all eight project outputs yet; Task 12 adds completeness only after every page exists.
+
+- [ ] **Step 7: Run graph, path, navigation, dist, and build gates**
 
 Run:
 
 ```bash
-pnpm vitest run tests/course-map.spec.ts -t 'project curriculum integration|course graph|course navigation integration'
-pnpm test
-pnpm build
+pnpm vitest run tests/course-map.spec.ts tests/content.spec.ts -t 'project curriculum integration|course graph|course navigation integration|no-JavaScript course output'
+pnpm test && pnpm validate && pnpm build
 ```
 
 Expected: 26 published items, a seven-item project stage, 17 engineering steps, exact nav groups, and a green build.
 
-- [ ] **Step 7: Commit the course integration**
+- [ ] **Step 8: Commit the course integration**
 
 ```bash
-git add docs/.vitepress/theme/data/courseMap.ts docs/.vitepress/theme/data/readingPaths.ts docs/.vitepress/config.mts tests/course-map.spec.ts tests/project-pages.spec.ts
+git add docs/.vitepress/theme/data/courseMap.ts docs/.vitepress/theme/data/readingPaths.ts docs/.vitepress/config.mts scripts/check-dist.mjs tests/course-map.spec.ts tests/content.spec.ts tests/project-pages.spec.ts
 git commit -m "feat: add project dissections to the curriculum"
 ```
 
-### Task 9: Add the project asset provenance gate
+### Task 10: Add the project asset provenance gate
 
 **Files:**
 
@@ -2537,6 +3108,16 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { validateProvenanceFile } from '../scripts/validate-provenance.mjs'
 
+const provenanceCatalog = {
+  pages: [{ page_item_id: 'project-aider', subjects: ['aider'] }],
+  subjects: [{
+    id: 'aider',
+    canonical_repo: 'Aider-AI/aider',
+    pinned_commit: 'a'.repeat(40),
+    license_scopes: [{ basis: 'path', expression: 'Apache-2.0', path_or_glob: '**' }],
+  }],
+}
+
 describe('project asset provenance', () => {
   it('accepts the intentionally empty phase-two registry', () => {
     expect(validateProvenanceFile('assets/provenance.yml', process.cwd())).toEqual([])
@@ -2549,14 +3130,14 @@ describe('project asset provenance', () => {
       mkdirSync(join(root, 'assets'), { recursive: true })
       writeFileSync(join(root, 'docs/public/project-assets/copied.svg'), '<svg/>')
       writeFileSync(join(root, 'assets/provenance.yml'), 'schema_version: 1\nassets: []\n')
-      expect(validateProvenanceFile(join(root, 'assets/provenance.yml'), root))
+      expect(validateProvenanceFile(join(root, 'assets/provenance.yml'), root, provenanceCatalog))
         .toContain('Unregistered project asset: docs/public/project-assets/copied.svg')
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
   })
 
-  it('rejects third-party assets without a fixed commit URL and complete attribution', () => {
+  it('rejects forged host, repository, source path, and license claims', () => {
     const root = mkdtempSync(join(tmpdir(), 'project-assets-'))
     try {
       mkdirSync(join(root, 'docs/public/project-assets'), { recursive: true })
@@ -2567,21 +3148,72 @@ schema_version: 1
 assets:
   - local_file: docs/public/project-assets/copied.svg
     origin: third-party
-    source_url: https://github.com/example/repo/blob/main/image.svg
-    source_repo: example/repo
-    source_ref: main
+    subject_id: aider
+    source_url: https://evil.example/Aider-AI/other/blob/${'c'.repeat(40)}/other.svg
+    source_repo: Aider-AI/other
+    source_ref: ${'c'.repeat(40)}
     source_path: image.svg
-    license: MIT
+    license: GPL-3.0
+    license_basis: path
+    manual_license_review: false
+    manual_reviewed_by: null
+    manual_review_note: null
     copyright_holder: Example
     modified: false
     used_by: [project-aider]
     alt: Architecture
     verified_at: '2026-09-26'
 `)
-      expect(validateProvenanceFile(join(root, 'assets/provenance.yml'), root)).toEqual(expect.arrayContaining([
-        'Third-party asset must use a 40-character source_ref: docs/public/project-assets/copied.svg',
-        'Third-party asset URL must be pinned to source_ref: docs/public/project-assets/copied.svg',
+      expect(validateProvenanceFile(join(root, 'assets/provenance.yml'), root, provenanceCatalog)).toEqual(expect.arrayContaining([
+        'Third-party asset URL must use https://github.com: docs/public/project-assets/copied.svg',
+        'Third-party asset source_repo does not match subject: docs/public/project-assets/copied.svg',
+        'Third-party asset source_ref does not match subject pin: docs/public/project-assets/copied.svg',
+        'Third-party asset URL does not match repo/ref/path: docs/public/project-assets/copied.svg',
+        'Third-party asset license does not match the most specific path scope: docs/public/project-assets/copied.svg',
       ]))
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('requires explicit human evidence for contribution-based licenses', () => {
+    const catalog = {
+      pages: [{ page_item_id: 'project-mcp-python-sdk', subjects: ['mcp-spec'] }],
+      subjects: [{
+        id: 'mcp-spec', canonical_repo: 'modelcontextprotocol/modelcontextprotocol',
+        pinned_commit: 'b'.repeat(40),
+        license_scopes: [{ basis: 'contribution', expression: 'Apache-2.0', selector: 'new-code', scope: 'new', note: 'history required' }],
+      }],
+    }
+    const root = mkdtempSync(join(tmpdir(), 'project-assets-'))
+    try {
+      mkdirSync(join(root, 'docs/public/project-assets'), { recursive: true })
+      mkdirSync(join(root, 'assets'), { recursive: true })
+      writeFileSync(join(root, 'docs/public/project-assets/schema.svg'), '<svg/>')
+      writeFileSync(join(root, 'assets/provenance.yml'), `
+schema_version: 1
+assets:
+  - local_file: docs/public/project-assets/schema.svg
+    origin: third-party
+    subject_id: mcp-spec
+    source_url: https://github.com/modelcontextprotocol/modelcontextprotocol/blob/${'b'.repeat(40)}/schema.svg
+    source_repo: modelcontextprotocol/modelcontextprotocol
+    source_ref: ${'b'.repeat(40)}
+    source_path: schema.svg
+    license: Apache-2.0
+    license_basis: contribution
+    license_selector: new-code
+    manual_license_review: false
+    manual_reviewed_by: null
+    manual_review_note: null
+    copyright_holder: MCP contributors
+    modified: true
+    used_by: [project-mcp-python-sdk]
+    alt: Schema relationship
+    verified_at: '2026-09-26'
+`)
+      expect(validateProvenanceFile(join(root, 'assets/provenance.yml'), root, catalog))
+        .toContain('Contribution-based asset requires recorded human review: docs/public/project-assets/schema.svg')
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -2616,13 +3248,16 @@ Create `scripts/validate-provenance.mjs`:
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative, resolve, sep } from 'node:path'
 import { parse } from 'yaml'
+import { loadProjectCatalog } from './project-catalog.mjs'
 
 const assetRoot = 'docs/public/project-assets'
 const shaPattern = /^[0-9a-f]{40}$/u
 const datePattern = /^\d{4}-\d{2}-\d{2}$/u
 const requiredFields = [
-  'local_file', 'origin', 'source_url', 'source_repo', 'source_ref', 'source_path',
-  'license', 'copyright_holder', 'modified', 'used_by', 'alt', 'verified_at',
+  'local_file', 'origin', 'subject_id', 'source_url', 'source_repo', 'source_ref',
+  'source_path', 'license', 'license_basis', 'manual_license_review',
+  'manual_reviewed_by', 'manual_review_note', 'copyright_holder', 'modified',
+  'used_by', 'alt', 'verified_at',
 ]
 
 function files(root) {
@@ -2633,15 +3268,36 @@ function files(root) {
   })
 }
 
-export function validateProvenanceFile(path, root = process.cwd()) {
+function pathScopeMatches(path, pattern) {
+  if (pattern === '**') return true
+  if (pattern.endsWith('/**')) return path.startsWith(pattern.slice(0, -2))
+  return path === pattern
+}
+
+function pathScopeSpecificity(pattern) {
+  return pattern === '**' ? 0 : pattern.replace('/**', '').length
+}
+
+export function validateProvenanceFile(
+  path,
+  root = process.cwd(),
+  catalog = null,
+) {
   if (!existsSync(path)) return ['Missing assets/provenance.yml']
   let data
   try { data = parse(readFileSync(path, 'utf8')) } catch { return ['Asset provenance YAML cannot be parsed'] }
   const errors = []
   const assets = Array.isArray(data?.assets) ? data.assets : []
   if (data?.schema_version !== 1) errors.push('Asset provenance schema_version must be 1')
+  let projectCatalog = catalog
+  if (!projectCatalog) {
+    try { projectCatalog = loadProjectCatalog(resolve(root, 'sources/project-index.yml')) }
+    catch { return [...errors, 'Asset provenance cannot load a valid project catalog'] }
+  }
   const actual = files(resolve(root, assetRoot)).map((file) => relative(root, file).split(sep).join('/'))
   const counts = new Map()
+  const subjectById = new Map(projectCatalog.subjects.map((subject) => [subject.id, subject]))
+  const pageById = new Map(projectCatalog.pages.map((page) => [page.page_item_id, page]))
 
   for (const asset of assets) {
     for (const field of requiredFields) {
@@ -2658,11 +3314,51 @@ export function validateProvenanceFile(path, root = process.cwd()) {
     if (!actual.includes(asset.local_file)) errors.push(`Provenance record points to a missing file: ${asset.local_file}`)
     if (asset.origin === 'third-party') {
       if (!shaPattern.test(asset.source_ref ?? '')) errors.push(`Third-party asset must use a 40-character source_ref: ${asset.local_file}`)
-      if (!String(asset.source_url ?? '').includes(`/blob/${asset.source_ref}/`)) {
-        errors.push(`Third-party asset URL must be pinned to source_ref: ${asset.local_file}`)
+      let sourceUrl = null
+      try { sourceUrl = new URL(asset.source_url) } catch {}
+      if (!sourceUrl || sourceUrl.protocol !== 'https:' || sourceUrl.hostname !== 'github.com') {
+        errors.push(`Third-party asset URL must use https://github.com: ${asset.local_file}`)
+      }
+      const subject = subjectById.get(asset.subject_id)
+      if (!subject || subject.canonical_repo !== asset.source_repo) {
+        errors.push(`Third-party asset source_repo does not match subject: ${asset.local_file}`)
+      }
+      if (subject && subject.pinned_commit !== asset.source_ref) {
+        errors.push(`Third-party asset source_ref does not match subject pin: ${asset.local_file}`)
+      }
+      const expectedPath = `/${asset.source_repo}/blob/${asset.source_ref}/${asset.source_path}`
+      if (!sourceUrl || sourceUrl.pathname !== expectedPath || sourceUrl.search || sourceUrl.hash) {
+        errors.push(`Third-party asset URL does not match repo/ref/path: ${asset.local_file}`)
       }
       for (const field of ['source_repo', 'source_path', 'license', 'copyright_holder', 'alt']) {
         if (typeof asset[field] !== 'string' || asset[field].trim() === '') errors.push(`Third-party asset ${asset.local_file} requires ${field}`)
+      }
+      for (const pageId of asset.used_by ?? []) {
+        if (!pageById.get(pageId)?.subjects?.includes(asset.subject_id)) {
+          errors.push(`Third-party asset subject is not owned by page ${pageId}: ${asset.local_file}`)
+        }
+      }
+
+      if (subject && asset.license_basis === 'path') {
+        const scopes = subject.license_scopes
+          .filter((scope) => scope.basis === 'path' && pathScopeMatches(asset.source_path, scope.path_or_glob))
+          .sort((a, b) => pathScopeSpecificity(b.path_or_glob) - pathScopeSpecificity(a.path_or_glob))
+        if (scopes.length === 0 || scopes[0].expression !== asset.license) {
+          errors.push(`Third-party asset license does not match the most specific path scope: ${asset.local_file}`)
+        }
+      } else if (subject && asset.license_basis === 'contribution') {
+        const scope = subject.license_scopes.find((candidate) =>
+          candidate.basis === 'contribution'
+          && candidate.expression === asset.license
+          && candidate.selector === asset.license_selector,
+        )
+        if (!scope || asset.manual_license_review !== true
+          || typeof asset.manual_reviewed_by !== 'string' || asset.manual_reviewed_by.trim() === ''
+          || typeof asset.manual_review_note !== 'string' || asset.manual_review_note.trim() === '') {
+          errors.push(`Contribution-based asset requires recorded human review: ${asset.local_file}`)
+        }
+      } else {
+        errors.push(`Third-party asset has invalid license_basis: ${asset.local_file}`)
       }
     }
   }
@@ -2697,9 +3393,7 @@ Run:
 
 ```bash
 pnpm vitest run tests/project-catalog.spec.ts tests/project-pages.spec.ts -t 'project asset provenance'
-pnpm validate
-pnpm test
-pnpm build
+pnpm test && pnpm validate && pnpm build
 ```
 
 Expected: empty provenance is accepted, both malicious fixtures fail as asserted, and all production gates pass.
@@ -2711,7 +3405,7 @@ git add assets/provenance.yml scripts/validate-provenance.mjs scripts/validate-c
 git commit -m "feat: enforce project asset provenance"
 ```
 
-### Task 10: Add project freshness discovery without automatic content edits
+### Task 11: Add project freshness discovery without automatic content edits
 
 **Files:**
 
@@ -2728,8 +3422,14 @@ Append tests with injected fetch responses; never call GitHub in unit tests:
 import {
   buildProjectFreshnessReport,
   checkProjectSubject,
+  isProjectReportBlocking,
+  requestProjectJson,
   runProjectCheck,
 } from '../scripts/check-projects.mjs'
+import { createHash } from 'node:crypto'
+
+const licenseText = 'MIT fixture license\n'
+const licenseDigest = createHash('sha256').update(licenseText).digest('hex')
 
 const projectSubject = {
   id: 'aider',
@@ -2744,7 +3444,8 @@ const projectSubject = {
   watch_url: 'https://github.com/Aider-AI/aider/releases/latest',
   verified_at: '2026-09-26',
   review_by: '2026-10-26',
-  entrypoints: ['aider/main.py'],
+  license_sources: [{ path: 'LICENSE.txt', sha256: licenseDigest }],
+  entrypoints: [{ path: 'aider/main.py', symbol: 'main', responsibility: 'Validate repository arguments.' }],
 }
 
 describe('project freshness checker', () => {
@@ -2753,10 +3454,11 @@ describe('project freshness checker', () => {
       retryAttempts: 1,
       fetchImpl: async (url: string) => {
         if (url.endsWith('/commits/v0.86.0')) return { status: 200, url, json: async () => ({ sha: 'a'.repeat(40) }) }
+        if (url.endsWith('/commits/main')) return { status: 200, url, json: async () => ({ sha: 'a'.repeat(40), commit: { committer: { date: '2026-09-26T00:00:00Z' } } }) }
         if (url.includes('/contents/aider/main.py')) return { status: 200, url, json: async () => ({ path: 'aider/main.py' }) }
-        if (url.includes('/contents/LICENSE.txt')) return { status: 200, url, json: async () => ({ path: 'LICENSE.txt' }) }
+        if (url.includes('/contents/LICENSE.txt')) return { status: 200, url, json: async () => ({ path: 'LICENSE.txt', encoding: 'base64', content: Buffer.from(licenseText).toString('base64') }) }
         if (url.endsWith('/releases/latest')) return { status: 200, url, json: async () => ({ tag_name: 'v0.86.0' }) }
-        return { status: 200, url, json: async () => ({ full_name: 'Aider-AI/aider', archived: false, pushed_at: '2026-09-26T00:00:00Z' }) }
+        return { status: 200, url, json: async () => ({ full_name: 'Aider-AI/aider', archived: false, default_branch: 'main' }) }
       },
     })
     expect(result.findings).toEqual([])
@@ -2767,15 +3469,31 @@ describe('project freshness checker', () => {
       retryAttempts: 1,
       fetchImpl: async (url: string) => {
         if (url.endsWith('/commits/v0.86.0')) return { status: 200, url, json: async () => ({ sha: 'b'.repeat(40) }) }
+        if (url.endsWith('/commits/main')) return { status: 200, url, json: async () => ({ sha: 'c'.repeat(40), commit: { committer: { date: '2026-09-27T00:00:00Z' } } }) }
         if (url.includes('/contents/')) return { status: 404, url, json: async () => ({}) }
         if (url.endsWith('/releases/latest')) return { status: 200, url, json: async () => ({ tag_name: 'v0.87.0' }) }
-        return { status: 200, url, json: async () => ({ full_name: 'NewOwner/aider', archived: true, pushed_at: '2026-09-27T00:00:00Z' }) }
+        return { status: 200, url, json: async () => ({ full_name: 'NewOwner/aider', archived: true, default_branch: 'main' }) }
       },
     })
     expect(result.findings).toEqual(expect.arrayContaining([
       'canonical_repo_changed', 'repository_status_changed', 'pin_ref_mismatch',
-      'entrypoint_missing', 'license_source_missing', 'project_update_available', 'repository_updated',
+      'entrypoint_missing', 'license_source_missing', 'project_update_available', 'project_review_required',
     ]))
+  })
+
+  it('uses the default-branch HEAD commit rather than repository pushed_at', async () => {
+    const result = await checkProjectSubject(projectSubject, {
+      retryAttempts: 1,
+      fetchImpl: async (url: string) => {
+        if (url.endsWith('/commits/v0.86.0')) return { status: 200, url, json: async () => ({ sha: 'a'.repeat(40) }) }
+        if (url.endsWith('/commits/main')) return { status: 200, url, json: async () => ({ sha: 'c'.repeat(40), commit: { committer: { date: '2026-09-27T00:00:00Z' } } }) }
+        if (url.includes('/contents/LICENSE.txt')) return { status: 200, url, json: async () => ({ encoding: 'base64', content: Buffer.from(licenseText).toString('base64') }) }
+        if (url.includes('/contents/')) return { status: 200, url, json: async () => ({ path: 'aider/main.py' }) }
+        if (url.endsWith('/releases/latest')) return { status: 200, url, json: async () => ({ tag_name: 'v0.86.0' }) }
+        return { status: 200, url, json: async () => ({ full_name: 'Aider-AI/aider', archived: false, default_branch: 'main', pushed_at: '2020-01-01T00:00:00Z' }) }
+      },
+    })
+    expect(result.findings).toEqual(['project_update_available'])
   })
 
   it('keeps HTTP, parse, and request failures explicit and non-healthy', async () => {
@@ -2792,6 +3510,40 @@ describe('project freshness checker', () => {
     expect(network.findings).toContain('project_network_error')
   })
 
+  it('retries JSON parsing before reporting an exhausted parse failure', async () => {
+    let attempts = 0
+    const recovered = await requestProjectJson('https://api.github.com/repos/example/repo', {
+      retryAttempts: 2,
+      retryDelayMs: 0,
+      fetchImpl: async (url: string) => ({
+        status: 200,
+        url,
+        json: async () => {
+          attempts += 1
+          if (attempts === 1) throw new Error('truncated json')
+          return { full_name: 'example/repo' }
+        },
+      }),
+    })
+    expect(attempts).toBe(2)
+    expect(recovered).toMatchObject({ failure: null, data: { full_name: 'example/repo' } })
+  })
+
+  it('escalates a changed license digest to manual review', async () => {
+    const result = await checkProjectSubject(projectSubject, {
+      retryAttempts: 1,
+      fetchImpl: async (url: string) => {
+        if (url.endsWith('/commits/v0.86.0')) return { status: 200, url, json: async () => ({ sha: 'a'.repeat(40) }) }
+        if (url.endsWith('/commits/main')) return { status: 200, url, json: async () => ({ sha: 'a'.repeat(40), commit: { committer: { date: '2026-09-26T00:00:00Z' } } }) }
+        if (url.includes('/contents/LICENSE.txt')) return { status: 200, url, json: async () => ({ encoding: 'base64', content: Buffer.from('changed license').toString('base64') }) }
+        if (url.includes('/contents/')) return { status: 200, url, json: async () => ({ path: 'aider/main.py' }) }
+        if (url.endsWith('/releases/latest')) return { status: 200, url, json: async () => ({ tag_name: 'v0.86.0' }) }
+        return { status: 200, url, json: async () => ({ full_name: 'Aider-AI/aider', archived: false, default_branch: 'main' }) }
+      },
+    })
+    expect(result.findings).toEqual(expect.arrayContaining(['license_changed', 'project_review_required']))
+  })
+
   it('sends the token only to api.github.com and fails closed on invalid schema', async () => {
     const seen = new Map<string, string | undefined>()
     await checkProjectSubject(projectSubject, {
@@ -2801,10 +3553,11 @@ describe('project freshness checker', () => {
         seen.set(url, init?.headers?.authorization)
         return { status: 200, url, json: async () => url.endsWith('/commits/v0.86.0')
           ? ({ sha: 'a'.repeat(40) })
-          : url.includes('/contents/LICENSE.txt') ? ({ path: 'LICENSE.txt' })
+          : url.endsWith('/commits/main') ? ({ sha: 'a'.repeat(40), commit: { committer: { date: '2026-09-26T00:00:00Z' } } })
+          : url.includes('/contents/LICENSE.txt') ? ({ path: 'LICENSE.txt', encoding: 'base64', content: Buffer.from(licenseText).toString('base64') })
             : url.includes('/contents/') ? ({ path: 'aider/main.py' })
             : url.endsWith('/releases/latest') ? ({ tag_name: 'v0.86.0' })
-              : ({ full_name: 'Aider-AI/aider', archived: false, pushed_at: '2026-09-26T00:00:00Z' }) }
+              : ({ full_name: 'Aider-AI/aider', archived: false, default_branch: 'main' }) }
       },
     })
     expect([...seen.entries()].every(([url, auth]) => url.startsWith('https://api.github.com/') && auth === 'Bearer read-token')).toBe(true)
@@ -2829,6 +3582,30 @@ describe('project freshness checker', () => {
       { id: 'ok', findings: [] },
       { id: 'changed', findings: ['project_update_available'] },
     ], '2026-09-26T00:00:00.000Z').summary).toEqual({ total: 2, healthy: 1, needs_review: 1 })
+    expect(isProjectReportBlocking(buildProjectFreshnessReport([
+      { id: 'update', findings: ['project_update_available'] },
+    ]))).toBe(false)
+    expect(isProjectReportBlocking(buildProjectFreshnessReport([
+      { id: 'license', findings: ['project_review_required'] },
+    ]))).toBe(true)
+    expect(isProjectReportBlocking(buildProjectFreshnessReport([
+      { id: 'network', findings: ['project_network_error'] },
+    ]))).toBe(true)
+  })
+
+  it('keeps write permission and repository execution in separate workflow jobs', () => {
+    const workflow = parse(readFileSync('.github/workflows/source-freshness.yml', 'utf8')) as any
+    expect(workflow.jobs.scan.permissions).toEqual({ contents: 'read' })
+    expect(workflow.jobs.scan.steps.find((step: any) => step.uses === 'actions/checkout@v4').with['persist-credentials']).toBe(false)
+    expect(workflow.jobs.scan.steps.some((step: any) => step.run === 'pnpm projects:check')).toBe(true)
+    expect(workflow.jobs.scan.steps.find((step: any) => step.uses === 'actions/upload-artifact@v4').with.path).toBe('reports/*freshness.*')
+    expect(workflow.jobs.report.permissions).toMatchObject({ contents: 'read', issues: 'write' })
+    expect(workflow.jobs.report.if).toContain('default_branch')
+    expect(workflow.jobs.report.steps.some((step: any) => step.uses === 'actions/checkout@v4')).toBe(false)
+    expect(workflow.jobs.report.steps.some((step: any) => /pnpm|npm|yarn/u.test(step.run ?? ''))).toBe(false)
+    const reportScript = workflow.jobs.report.steps.find((step: any) => step.uses === 'actions/github-script@v7').with.script
+    expect(reportScript).toContain('[Freshness] Source review required')
+    expect(reportScript).toContain('[Freshness] Project review required')
   })
 })
 ```
@@ -2844,6 +3621,7 @@ Expected: FAIL because `scripts/check-projects.mjs` does not exist.
 Create `scripts/check-projects.mjs` with these public contracts:
 
 ```js
+import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -2853,7 +3631,7 @@ import { reviewDateInTimeZone } from './review-date.mjs'
 
 const retryable = new Set([408, 429, 500, 502, 503, 504])
 
-async function requestJson(url, { fetchImpl, githubToken, retryAttempts, retryDelayMs }) {
+export async function requestProjectJson(url, { fetchImpl, githubToken, retryAttempts, retryDelayMs }) {
   for (let attempt = 1; attempt <= retryAttempts; attempt += 1) {
     try {
       const response = await fetchImpl(url, {
@@ -2870,7 +3648,10 @@ async function requestJson(url, { fetchImpl, githubToken, retryAttempts, retryDe
       }
       if (response.status >= 400) return { status: response.status, data: null, failure: retryable.has(response.status) ? 'transient' : 'http' }
       try { return { status: response.status, data: await response.json(), failure: null } }
-      catch { return { status: response.status, data: null, failure: 'parse' } }
+      catch {
+        if (attempt === retryAttempts) return { status: response.status, data: null, failure: 'parse' }
+        await new Promise((done) => setTimeout(done, retryDelayMs * attempt))
+      }
     } catch {
       if (attempt === retryAttempts) return { status: 0, data: null, failure: 'network' }
       await new Promise((done) => setTimeout(done, retryDelayMs * attempt))
@@ -2886,6 +3667,15 @@ function recordFailure(findings, response) {
   else if (response.failure === 'http') findings.push('project_http_error')
 }
 
+function requireReview(findings, detail) {
+  findings.push(detail, 'project_review_required')
+}
+
+function githubContentSha256(data) {
+  if (data?.encoding !== 'base64' || typeof data?.content !== 'string') return null
+  return createHash('sha256').update(Buffer.from(data.content.replace(/\n/gu, ''), 'base64')).digest('hex')
+}
+
 export async function checkProjectSubject(subject, {
   fetchImpl = fetch,
   githubToken = process.env.GITHUB_TOKEN,
@@ -2896,48 +3686,73 @@ export async function checkProjectSubject(subject, {
   const api = `https://api.github.com/repos/${subject.canonical_repo}`
   const options = { fetchImpl, githubToken, retryAttempts, retryDelayMs }
   const findings = []
-  const metadata = await requestJson(api, options)
+  let defaultBranch = null
+  const metadata = await requestProjectJson(api, options)
   if (metadata.failure) recordFailure(findings, metadata)
   else {
-    if (metadata.data.full_name !== subject.canonical_repo) findings.push('canonical_repo_changed')
-    if (Boolean(metadata.data.archived) !== subject.archived) findings.push('repository_status_changed')
-    if (metadata.data.pushed_at && reviewDateInTimeZone(new Date(metadata.data.pushed_at)) > subject.verified_at) findings.push('repository_updated')
+    defaultBranch = metadata.data.default_branch
+    if (typeof metadata.data.full_name !== 'string'
+      || typeof metadata.data.archived !== 'boolean'
+      || typeof defaultBranch !== 'string' || defaultBranch === '') {
+      requireReview(findings, 'repository_metadata_invalid')
+    }
+    if (metadata.data.full_name !== subject.canonical_repo) requireReview(findings, 'canonical_repo_changed')
+    if (Boolean(metadata.data.archived) !== subject.archived) requireReview(findings, 'repository_status_changed')
   }
 
-  const ref = await requestJson(`${api}/commits/${encodeURIComponent(subject.pinned_ref)}`, options)
+  if (defaultBranch) {
+    const head = await requestProjectJson(`${api}/commits/${encodeURIComponent(defaultBranch)}`, options)
+    if (head.failure) recordFailure(findings, head)
+    else if (head.data.sha !== subject.pinned_commit
+      && head.data.commit?.committer?.date
+      && reviewDateInTimeZone(new Date(head.data.commit.committer.date)) > subject.verified_at) {
+      findings.push('project_update_available')
+    }
+  }
+
+  const ref = await requestProjectJson(`${api}/commits/${encodeURIComponent(subject.pinned_ref)}`, options)
   if (ref.failure) recordFailure(findings, ref)
-  else if (ref.data.sha !== subject.pinned_commit) findings.push('pin_ref_mismatch')
+  else if (ref.data.sha !== subject.pinned_commit) requireReview(findings, 'pin_ref_mismatch')
 
-  for (const path of subject.entrypoints) {
-    const encodedPath = path.split('/').map(encodeURIComponent).join('/')
-    const entry = await requestJson(`${api}/contents/${encodedPath}?ref=${subject.pinned_commit}`, options)
-    if (entry.failure === 'http' && entry.status === 404) findings.push('entrypoint_missing')
+  for (const entrypoint of subject.entrypoints) {
+    const encodedPath = entrypoint.path.split('/').map(encodeURIComponent).join('/')
+    const entry = await requestProjectJson(`${api}/contents/${encodedPath}?ref=${subject.pinned_commit}`, options)
+    if (entry.failure === 'http' && entry.status === 404) requireReview(findings, 'entrypoint_missing')
     else if (entry.failure) recordFailure(findings, entry)
+    else if (entry.data.path !== entrypoint.path) requireReview(findings, 'entrypoint_response_invalid')
   }
 
-  for (const path of subject.license_source_paths) {
-    const encodedPath = path.split('/').map(encodeURIComponent).join('/')
-    const license = await requestJson(`${api}/contents/${encodedPath}?ref=${subject.pinned_commit}`, options)
-    if (license.failure === 'http' && license.status === 404) findings.push('license_source_missing')
-    else if (license.failure) recordFailure(findings, license)
+  for (const source of subject.license_sources) {
+    const encodedPath = source.path.split('/').map(encodeURIComponent).join('/')
+    const refs = [...new Set([subject.pinned_commit, defaultBranch].filter(Boolean))]
+    for (const refName of refs) {
+      const license = await requestProjectJson(`${api}/contents/${encodedPath}?ref=${encodeURIComponent(refName)}`, options)
+      if (license.failure === 'http' && license.status === 404) {
+        requireReview(findings, 'license_source_missing')
+      } else if (license.failure) {
+        recordFailure(findings, license)
+      } else if (githubContentSha256(license.data) !== source.sha256) {
+        requireReview(findings, 'license_changed')
+      }
+    }
   }
 
   if (subject.pin_kind !== 'commit') {
     const latestUrl = subject.pin_kind === 'tag'
       ? `${api}/tags?per_page=1`
       : `${api}/releases/latest`
-    const latest = await requestJson(latestUrl, options)
+    const latest = await requestProjectJson(latestUrl, options)
     if (latest.failure === 'http' && latest.status === 404) {
-      findings.push('project_release_missing')
+      requireReview(findings, 'project_release_missing')
     } else if (latest.failure) {
       recordFailure(findings, latest)
     } else {
       const latestRef = subject.pin_kind === 'tag' ? latest.data[0]?.name : latest.data.tag_name
-      if (!latestRef) findings.push('project_release_missing')
+      if (!latestRef) requireReview(findings, 'project_release_missing')
       else if (latestRef !== subject.pinned_ref) findings.push('project_update_available')
     }
   }
-  if (subject.review_by < reviewDateInTimeZone(now)) findings.push('project_review_due')
+  if (subject.review_by < reviewDateInTimeZone(now)) requireReview(findings, 'project_review_due')
   return { id: subject.id, findings: [...new Set(findings)] }
 }
 
@@ -2949,6 +3764,15 @@ export function buildProjectFreshnessReport(results, generatedAt = new Date().to
     needs_review: flagged.length > 0,
     results,
   }
+}
+
+const blockingFindings = new Set([
+  'project_review_required', 'project_transient_error', 'project_network_error',
+  'project_parse_error', 'project_http_error', 'project_schema_invalid',
+])
+
+export function isProjectReportBlocking(report) {
+  return report.results.some((result) => result.findings.some((finding) => blockingFindings.has(finding)))
 }
 
 function renderProjectReport(report) {
@@ -2989,6 +3813,7 @@ const invokedPath = process.argv[1] ? resolve(process.argv[1]) : ''
 if (invokedPath && pathToFileURL(invokedPath).href === import.meta.url) {
   const report = await runProjectCheck()
   console.log(JSON.stringify(report.summary))
+  if (process.argv.includes('--strict') && isProjectReportBlocking(report)) process.exitCode = 1
 }
 ```
 
@@ -3050,12 +3875,11 @@ Run:
 
 ```bash
 pnpm vitest run tests/source-freshness.spec.ts -t 'project freshness checker'
-pnpm test
-pnpm validate
+pnpm test && pnpm validate && pnpm build
 GITHUB_TOKEN="$(gh auth token)" pnpm projects:check
 ```
 
-Expected: unit tests pass; real report has 13 results; update findings are review prompts, and no schema, canonical, pin-ref, or entrypoint failures appear.
+Expected: unit tests pass; real report has 13 results; ordinary upstream changes appear only as `project_update_available`, and no schema, canonical, pin-ref, entrypoint, license-source, or license-digest failure appears.
 
 - [ ] **Step 6: Commit project freshness automation**
 
@@ -3064,7 +3888,7 @@ git add scripts/check-projects.mjs tests/source-freshness.spec.ts package.json .
 git commit -m "feat: monitor pinned project sources"
 ```
 
-### Task 11: Replace the project ban with an exact publication allowlist
+### Task 12: Require the complete approved project publication set
 
 **Files:**
 
@@ -3173,7 +3997,7 @@ Add this exact content test:
 ```ts
 import { interviewQuestions } from '../docs/.vitepress/theme/data/interviewQuestions'
 
-it('keeps every project page within the reading-only template', () => {
+it('enforces the project page contract for every reading-only page', () => {
   const coreIds = projectRouteRecords.slice(1, 7).map(([id]) => id)
   for (const [id, route] of projectRouteRecords) {
     const file = `docs${route.endsWith('/') ? `${route}index` : route}.md`
@@ -3198,7 +4022,7 @@ it('keeps every project page within the reading-only template', () => {
 
 Run: `pnpm vitest run tests/content.spec.ts tests/project-pages.spec.ts -t 'project publication boundary|project page contract'`
 
-Expected: FAIL because the current validator rejects every `/projects` output and still expects 20 course links.
+Expected: FAIL because the progressive gate does not yet require all eight outputs and the course check still expects 20 links.
 
 - [ ] **Step 3: Define exact route and output allowlists**
 
@@ -3213,19 +4037,9 @@ In `scripts/check-dist.mjs`, extend `publishedCourseRoutes` with the six core pr
 '/projects/crewai',
 ```
 
-Add:
+Reuse `approvedProjectFiles` from Task 4 and add only the two classification sets:
 
 ```js
-const publishedProjectFiles = new Set([
-  'projects/index.html',
-  'projects/mcp-python-sdk.html',
-  'projects/aider.html',
-  'projects/openhands.html',
-  'projects/agent-benchmarks.html',
-  'projects/dify.html',
-  'projects/crewai.html',
-  'projects/history-autogpt-flowise.html',
-])
 const coreProjectFiles = new Set([
   'projects/mcp-python-sdk.html',
   'projects/aider.html',
@@ -3240,22 +4054,15 @@ const dissectionProjectFiles = new Set([
 ])
 ```
 
-Replace the current blanket project/lab rejection with:
+Keep `validatePublishedRouteBoundary(relativeFiles)` from Task 4 and add the final completeness check:
 
 ```js
-const forbiddenOutputs = relativeFiles.filter((file) =>
-  /^(?:labs|capstone)(?:\.html|[\\/])/u.test(file)
-  || (/^projects(?:\.html|[\\/])/u.test(file) && !publishedProjectFiles.has(file)),
-)
-if (forbiddenOutputs.length > 0) {
-  errors.push(`构建产物包含未批准项目、实验或综合实战页面：${forbiddenOutputs.join(', ')}`)
-}
-for (const file of publishedProjectFiles) {
+for (const file of approvedProjectFiles) {
   if (!relativeFiles.includes(file)) errors.push(`构建产物缺少项目页面：${file}`)
 }
 ```
 
-Update the course markup check from 20 to 26 in all three places: expected link count, unique count, and error text. Remove `/projects/` from `forbiddenCourseMarkers`; keep `/labs/`, `/capstone/`, `标记已读`, and `加入书签` forbidden in the course map.
+The progressive boundary and its legacy fixture were finalized in Task 4; the 26-link course contract and `/projects/` course-marker change were finalized in Task 9. Do not rewrite those assertions here. This task adds only the eight-file completeness requirement and static page contracts.
 
 - [ ] **Step 4: Add static project-page checks**
 
@@ -3268,10 +4075,12 @@ const coreProjectHeadings = [
   '高频面试点', '升级复核', '来源与归因',
 ]
 for (const file of dissectionProjectFiles) {
+  if (!relativeFiles.includes(file)) continue
   const projectHtml = readFileSync(join(distPath, file), 'utf8')
   if (!projectHtml.includes('固定版本')) errors.push(`项目页缺少固定版本：${file}`)
   if (!projectHtml.includes('关键源码入口')) errors.push(`项目页缺少源码入口：${file}`)
   if (/blob\/(?:main|master)\//u.test(projectHtml)) errors.push(`项目页包含移动分支源码链接：${file}`)
+  if (!/github\.com\/[^/]+\/[^/]+\/blob\/[0-9a-f]{40}\//u.test(projectHtml)) errors.push(`项目页缺少固定 commit 源码链接：${file}`)
   if (/<img\b[^>]*src=["']https?:\/\//iu.test(projectHtml)) errors.push(`项目页包含外链图片：${file}`)
   if (coreProjectFiles.has(file)) {
     for (const heading of coreProjectHeadings) {
@@ -3281,7 +4090,7 @@ for (const file of dissectionProjectFiles) {
 }
 ```
 
-Apply the full 13-heading check only to `coreProjectFiles`. The overview and historical page use their own contracts from Task 7; `projects/index.html` must not be forced to contain a source list.
+Apply the full 13-heading check only to `coreProjectFiles`. The overview and historical page use their own contracts from Task 8; `projects/index.html` must not be forced to contain a source list.
 
 - [ ] **Step 5: Run test, validation, and production build gates**
 
@@ -3289,9 +4098,7 @@ Run:
 
 ```bash
 pnpm vitest run tests/content.spec.ts tests/project-pages.spec.ts -t 'project publication boundary|project page contract'
-pnpm test
-pnpm validate
-pnpm build
+pnpm test && pnpm validate && pnpm build
 ```
 
 Expected: complete fixture and real dist pass; missing or extra page fixtures fail with the exact assertions; course SSR contains 26 unique targets.
@@ -3303,7 +4110,7 @@ git add scripts/check-dist.mjs tests/content.spec.ts tests/project-pages.spec.ts
 git commit -m "test: enforce project publication boundaries"
 ```
 
-### Task 12: Document the project-reading layer and run final release acceptance
+### Task 13: Document the project-reading layer and run pre-merge acceptance
 
 **Files:**
 
@@ -3351,11 +4158,9 @@ Run:
 
 ```bash
 pnpm vitest run tests/project-pages.spec.ts -t 'project documentation handoff'
-pnpm test
-pnpm validate
-pnpm build
-GITHUB_TOKEN="$(gh auth token)" pnpm sources:check
-GITHUB_TOKEN="$(gh auth token)" pnpm projects:check
+pnpm test && pnpm validate && pnpm build
+GITHUB_TOKEN="$(gh auth token)" pnpm run sources:check -- --strict
+GITHUB_TOKEN="$(gh auth token)" pnpm run projects:check -- --strict
 git diff origin/main...HEAD --check
 git status --short
 ```
@@ -3365,7 +4170,7 @@ Expected:
 - all tests pass;
 - content, provenance, project schema, build, and dist gates pass;
 - source report contains the existing source inventory;
-- project report contains 13 subjects with no schema, canonical, pin-ref, or entrypoint failure;
+- project report contains 13 subjects with no schema, canonical, pin-ref, entrypoint, license-source, or license-digest failure; ordinary update notices may remain non-blocking;
 - range diff check prints nothing;
 - only the intended README/test changes remain before commit.
 
@@ -3378,21 +4183,55 @@ git commit -m "docs: describe the project reading layer"
 
 - [ ] **Step 6: Start the built preview and verify route status**
 
-Run `pnpm preview -- --port 4175` in a persistent terminal. Verify all eight project routes, both clean and trailing-slash forms, plus `/course/`, `/paths/`, the 14 chapters, four frontier pages, interview pages, glossary, Radar, and delivery case.
-
-Use this exact HTTP matrix:
+Run `pnpm preview -- --port 4175` in a persistent terminal. In another terminal, run this accumulating matrix; it checks all 39 registered routes in both clean and trailing-slash forms instead of exiting on the first failure:
 
 ```bash
-for route in \
-  projects/ projects/mcp-python-sdk projects/aider projects/openhands \
-  projects/agent-benchmarks projects/dify projects/crewai \
-  projects/history-autogpt-flowise; do
-  curl -fsS -o /dev/null "http://127.0.0.1:4175/agent-engineering-for-beginners/${route}"
-  curl -fsS -o /dev/null "http://127.0.0.1:4175/agent-engineering-for-beginners/${route%/}/"
+site_root='http://127.0.0.1:4175/agent-engineering-for-beginners'
+routes=(
+  course paths preface
+  chapters/01-ai-native chapters/02-workflow-agent chapters/03-react
+  chapters/04-tools-mcp chapters/05-state-memory chapters/06-loop-graph
+  chapters/07-multi-agent chapters/08-evaluation chapters/09-safety-recovery
+  chapters/10-production chapters/11-research-agent chapters/12-service-operations-agent
+  chapters/13-coding-agent chapters/14-computer-use
+  frontier/context-engineering frontier/interoperability-identity
+  frontier/durable-execution frontier/agent-security-evaluation
+  case-study/delivery-agent radar radar/2026-09
+  appendix/glossary appendix/review-checklist appendix/reading
+  appendix/application-matrix appendix/chapter-template appendix/interview
+  appendix/interview-training
+  projects projects/mcp-python-sdk projects/aider projects/openhands
+  projects/agent-benchmarks projects/dify projects/crewai
+  projects/history-autogpt-flowise
+)
+failures=()
+for route in "${routes[@]}"; do
+  for suffix in "" "/"; do
+    url="$site_root/$route$suffix"
+    code=$(curl -L -sS -o /dev/null -w '%{http_code}' "$url")
+    if [ "$code" != '200' ]; then failures+=("$code $url"); fi
+  done
 done
+root_code=$(curl -L -sS -o /dev/null -w '%{http_code}' "$site_root/")
+if [ "$root_code" != '200' ]; then failures+=("$root_code $site_root/"); fi
+printf '%s\n' "${failures[@]}"
+test "${#failures[@]}" -eq 0
 ```
 
-Expected: every approved route returns 200. Separately assert `/labs/`, `/capstone/`, and `/projects/unreviewed` return 404.
+Then run the negative matrix:
+
+```bash
+failures=()
+for route in labs labs/example capstone capstone/example projects/unreviewed; do
+  url="$site_root/$route/"
+  code=$(curl -L -sS -o /dev/null -w '%{http_code}' "$url")
+  if [ "$code" != '404' ]; then failures+=("$code $url"); fi
+done
+printf '%s\n' "${failures[@]}"
+test "${#failures[@]}" -eq 0
+```
+
+Expected: all positive variants return 200; every negative route returns 404; both failure arrays are empty.
 
 - [ ] **Step 7: Run browser acceptance with named sessions**
 
@@ -3406,6 +4245,99 @@ Use `agent-browser --session project-catalog-acceptance` and complete all checks
 6. On each core page, click one fixed source link and confirm the destination URL contains the exact 40-character pinned commit, then return and re-snapshot before using another ref.
 7. Confirm console and page error lists are empty.
 
+Run the desktop overview check:
+
+```bash
+agent-browser --session project-catalog-acceptance set viewport 1440 1000
+agent-browser --session project-catalog-acceptance set media light
+agent-browser --session project-catalog-acceptance open http://127.0.0.1:4175/agent-engineering-for-beginners/projects/
+agent-browser --session project-catalog-acceptance wait --load networkidle
+agent-browser --session project-catalog-acceptance snapshot -s '.project-overview'
+agent-browser --session project-catalog-acceptance eval --stdin <<'EVALEOF'
+(() => {
+  const root = document.querySelector('.project-overview')
+  const result = {
+    width: innerWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+    coreLinks: root?.querySelectorAll('[aria-labelledby="project-core-title"] a').length,
+    historyLinks: root?.querySelectorAll('[aria-labelledby="project-history-title"] a').length,
+    watchLinks: root?.querySelectorAll('[aria-labelledby="project-watch-title"] > ul a').length,
+    riskTags: Array.from(root?.querySelectorAll('.project-risk-tag') ?? []).map((node) => node.textContent?.trim()),
+    labActions: Array.from(root?.querySelectorAll('a,button') ?? []).filter((node) => /lab|实验/i.test(node.textContent ?? '')).length,
+  }
+  if (result.scrollWidth !== result.width || result.coreLinks !== 6 || result.historyLinks !== 1 || result.watchLinks !== 2 || result.labActions !== 0) throw new Error(JSON.stringify(result))
+  return JSON.stringify(result)
+})()
+EVALEOF
+agent-browser --session project-catalog-acceptance screenshot /tmp/projects-index-1440-light.png --full
+```
+
+Run the 390px dark checks for all complex layouts:
+
+```bash
+agent-browser --session project-catalog-acceptance set viewport 390 844
+agent-browser --session project-catalog-acceptance set media dark
+for route in projects/openhands projects/agent-benchmarks projects/history-autogpt-flowise; do
+  agent-browser --session project-catalog-acceptance open "http://127.0.0.1:4175/agent-engineering-for-beginners/$route"
+  agent-browser --session project-catalog-acceptance wait --load networkidle
+  agent-browser --session project-catalog-acceptance snapshot -s '.vp-doc'
+  agent-browser --session project-catalog-acceptance eval --stdin <<'EVALEOF'
+(() => {
+  const required = ['固定版本', '仓库状态', '教学层级', '源码事实', '本书归纳', '怎么看', '不要误解', '失败边界']
+  const text = document.querySelector('.vp-doc')?.textContent ?? ''
+  const result = { width: innerWidth, scrollWidth: document.documentElement.scrollWidth, missing: required.filter((item) => !text.includes(item)) }
+  if (result.width !== result.scrollWidth || result.missing.length) throw new Error(JSON.stringify(result))
+  return JSON.stringify(result)
+})()
+EVALEOF
+done
+agent-browser --session project-catalog-acceptance open http://127.0.0.1:4175/agent-engineering-for-beginners/projects/openhands
+agent-browser --session project-catalog-acceptance screenshot /tmp/project-openhands-390-dark.png --full
+agent-browser --session project-catalog-acceptance open http://127.0.0.1:4175/agent-engineering-for-beginners/projects/agent-benchmarks
+agent-browser --session project-catalog-acceptance screenshot /tmp/project-benchmarks-390-dark.png --full
+```
+
+Use actual keyboard events and collect the focused link text:
+
+```bash
+agent-browser --session project-catalog-acceptance open http://127.0.0.1:4175/agent-engineering-for-beginners/projects/
+agent-browser --session project-catalog-acceptance press Tab
+agent-browser --session project-catalog-acceptance press Enter
+for step in $(seq 1 16); do
+  agent-browser --session project-catalog-acceptance eval 'JSON.stringify({tag:document.activeElement?.tagName,text:document.activeElement?.textContent?.trim(),outline:getComputedStyle(document.activeElement).outline})'
+  agent-browser --session project-catalog-acceptance press Tab
+done
+```
+
+Expected: focus follows DOM/visual order, reaches every internal project link and watch-only external link, and each focused interactive element has a non-zero visible outline.
+
+Verify all eight routes without JavaScript:
+
+```bash
+agent-browser --session project-catalog-nojs network route '**/*.js' --abort
+for route in projects/ projects/mcp-python-sdk projects/aider projects/openhands projects/agent-benchmarks projects/dify projects/crewai projects/history-autogpt-flowise; do
+  agent-browser --session project-catalog-nojs open "http://127.0.0.1:4175/agent-engineering-for-beginners/$route"
+  agent-browser --session project-catalog-nojs eval --stdin <<'EVALEOF'
+(() => {
+  const text = document.querySelector('.vp-doc')?.textContent ?? ''
+  const anchors = document.querySelectorAll('.vp-doc a').length
+  if (!text.trim() || anchors === 0) throw new Error(JSON.stringify({ url: location.href, anchors, textLength: text.length }))
+  return JSON.stringify({ url: location.href, anchors, textLength: text.length })
+})()
+EVALEOF
+done
+```
+
+Finally run:
+
+```bash
+agent-browser --session project-catalog-acceptance console
+agent-browser --session project-catalog-acceptance errors
+agent-browser --session project-catalog-acceptance network requests --status 400-599
+```
+
+Expected: no console error, page error, or failed first-party request.
+
 Save screenshots:
 
 ```text
@@ -3418,12 +4350,55 @@ Save screenshots:
 
 Generate PDFs for `/projects/openhands` and `/projects/agent-benchmarks` while license details are closed on screen:
 
-```text
-/tmp/project-openhands.pdf
-/tmp/project-benchmarks.pdf
+```bash
+agent-browser --session project-catalog-acceptance open http://127.0.0.1:4175/agent-engineering-for-beginners/projects/openhands
+agent-browser --session project-catalog-acceptance eval 'JSON.stringify(Array.from(document.querySelectorAll(".project-meta details")).map((node)=>node.open))'
+agent-browser --session project-catalog-acceptance pdf /tmp/project-openhands.pdf
+agent-browser --session project-catalog-acceptance open http://127.0.0.1:4175/agent-engineering-for-beginners/projects/agent-benchmarks
+agent-browser --session project-catalog-acceptance eval 'JSON.stringify(Array.from(document.querySelectorAll(".project-meta details")).map((node)=>node.open))'
+agent-browser --session project-catalog-acceptance pdf /tmp/project-benchmarks.pdf
 ```
 
-Use `pdftotext` when available; otherwise use the already installed `pypdf`. Assert that each PDF contains the full primary chain, all source paths, the complete fixed SHA for every subject, and no disclosure summary such as “许可证边界”.
+Both `eval` commands must return only `false` values. Extract and assert content with:
+
+```bash
+if command -v pdftotext >/dev/null 2>&1; then
+  pdftotext /tmp/project-openhands.pdf /tmp/project-openhands.txt
+  pdftotext /tmp/project-benchmarks.pdf /tmp/project-benchmarks.txt
+else
+  python3 - <<'PY'
+from pathlib import Path
+from pypdf import PdfReader
+for stem in ('project-openhands', 'project-benchmarks'):
+    text = '\n'.join(page.extract_text() or '' for page in PdfReader(f'/tmp/{stem}.pdf').pages)
+    Path(f'/tmp/{stem}.txt').write_text(text, encoding='utf-8')
+PY
+fi
+python3 - <<'PY'
+from pathlib import Path
+checks = {
+    'project-openhands': [
+        '7dc6805406ea3c76cb4a3ce407c3c72d481b0ac6',
+        'fcc102a697874d54a357e36004e02c95040dbdc0',
+        'conversation_router.py', 'conversation.py', 'tool.py', 'workspace.py',
+        'Canvas conversation API', 'Event return',
+    ],
+    'project-benchmarks': [
+        '87ab1f6ced28f75ba73ca899dc759b019310944a',
+        'fc0055dc4e0a316c3f83133267fbd6faaa770992',
+        'run_evaluation.py', 'grading.py', 'simulation.py', 'evaluator.py',
+        'Instance and prediction', 'Evaluator and reward',
+    ],
+}
+for stem, required in checks.items():
+    text = Path(f'/tmp/{stem}.txt').read_text(encoding='utf-8')
+    missing = [item for item in required if item not in text]
+    assert not missing, f'{stem} missing: {missing}'
+    assert '许可证边界' not in text, f'{stem} printed the closed disclosure summary'
+PY
+```
+
+Expected: the PDFs contain complete primary chains, source paths, and full commit SHAs; the closed disclosure summary is absent because the print-only license fallback supplies the content.
 
 - [ ] **Step 9: Verify public and copyright boundaries**
 
@@ -3439,13 +4414,194 @@ git status --short --branch
 
 Expected: no process/Lab/capstone output, no unregistered project asset, no remote image embedding, no range whitespace error, and a clean worktree.
 
-- [ ] **Step 10: Push the feature branch and request final review; do not merge**
+- [ ] **Step 10: Close browser sessions and the preview server**
+
+```bash
+agent-browser --session project-catalog-acceptance close
+agent-browser --session project-catalog-nojs close
+lsof -nP -iTCP:4175 -sTCP:LISTEN
+```
+
+Send Ctrl-C to the exact persistent preview terminal session, then rerun the `lsof` command. Expected: the final `lsof` output is empty; do not use a broad process kill.
+
+- [ ] **Step 11: Push the feature branch and request final review; do not merge**
 
 ```bash
 git push -u origin feat/open-source-project-dissections
 ```
 
 Send the final branch HEAD, commit list, test counts, real project freshness summary, preview route matrix, accessibility evidence, PDF evidence, and screenshots to the user and reviewer. Wait for explicit review approval before merging `main` or deploying Pages.
+
+### Task 14: Merge the approved branch, deploy Pages, and verify production
+
+**Files:**
+
+- No repository file changes are expected.
+- Remote changes: push `feat/open-source-project-dissections` and fast-forward `main` only after reviewer approval.
+
+- [ ] **Step 1: Reconfirm the approved immutable state**
+
+Run:
+
+```bash
+git fetch origin --prune
+git status --short --branch
+git diff origin/main...HEAD --check
+git merge-base --is-ancestor origin/main HEAD
+git rev-parse HEAD
+```
+
+Expected: clean worktree, empty range check, ancestor exit 0, and HEAD exactly matches the reviewer-approved commit. If `origin/main` moved, stop and rebase or merge only after rerunning the complete Task 13 acceptance; never force push.
+
+- [ ] **Step 2: Push the approved feature branch and fast-forward main**
+
+```bash
+git push -u origin feat/open-source-project-dissections
+git push origin feat/open-source-project-dissections:main
+git ls-remote origin refs/heads/main refs/heads/feat/open-source-project-dissections
+```
+
+Expected: both refs resolve to the same approved 40-character commit. Use a normal push; never use `--force`.
+
+- [ ] **Step 3: Find and wait for the exact Pages run**
+
+```bash
+head_sha=$(git rev-parse HEAD)
+run_id=$(gh run list --repo MengEn-Ink/agent-engineering-for-beginners --branch main --workflow 'Deploy book to GitHub Pages' --limit 10 --json databaseId,headSha --jq ".[] | select(.headSha == \"$head_sha\") | .databaseId" | head -n 1)
+test -n "$run_id"
+gh run watch "$run_id" --repo MengEn-Ink/agent-engineering-for-beginners --exit-status
+gh run view "$run_id" --repo MengEn-Ink/agent-engineering-for-beginners --json status,conclusion,headSha,url,jobs
+```
+
+Expected: build and deploy jobs both conclude `success`, and `headSha` equals the approved commit.
+
+- [ ] **Step 4: Run the production HTTP matrix**
+
+```bash
+site_root='https://mengen-ink.github.io/agent-engineering-for-beginners'
+routes=(
+  course paths preface
+  chapters/01-ai-native chapters/02-workflow-agent chapters/03-react
+  chapters/04-tools-mcp chapters/05-state-memory chapters/06-loop-graph
+  chapters/07-multi-agent chapters/08-evaluation chapters/09-safety-recovery
+  chapters/10-production chapters/11-research-agent chapters/12-service-operations-agent
+  chapters/13-coding-agent chapters/14-computer-use
+  frontier/context-engineering frontier/interoperability-identity
+  frontier/durable-execution frontier/agent-security-evaluation
+  case-study/delivery-agent radar radar/2026-09
+  appendix/glossary appendix/review-checklist appendix/reading
+  appendix/application-matrix appendix/chapter-template appendix/interview
+  appendix/interview-training
+  projects projects/mcp-python-sdk projects/aider projects/openhands
+  projects/agent-benchmarks projects/dify projects/crewai
+  projects/history-autogpt-flowise
+)
+failures=()
+for route in "${routes[@]}"; do
+  for suffix in "" "/"; do
+    url="$site_root/$route$suffix"
+    code=$(curl -L -sS -o /dev/null -w '%{http_code}' "$url")
+    if [ "$code" != '200' ]; then failures+=("$code $url"); fi
+  done
+done
+root_code=$(curl -L -sS -o /dev/null -w '%{http_code}' "$site_root/")
+if [ "$root_code" != '200' ]; then failures+=("$root_code $site_root/"); fi
+for route in labs labs/example capstone capstone/example projects/unreviewed; do
+  url="$site_root/$route/"
+  code=$(curl -L -sS -o /dev/null -w '%{http_code}' "$url")
+  if [ "$code" != '404' ]; then failures+=("$code $url"); fi
+done
+printf '%s\n' "${failures[@]}"
+test "${#failures[@]}" -eq 0
+```
+
+Expected: all 79 positive requests return 200, all five negative requests return 404, and the failure array is empty.
+
+- [ ] **Step 5: Run production browser and no-JavaScript checks**
+
+```bash
+agent-browser --session project-catalog-production set viewport 390 844
+agent-browser --session project-catalog-production set media dark
+agent-browser --session project-catalog-production open https://mengen-ink.github.io/agent-engineering-for-beginners/course/
+agent-browser --session project-catalog-production wait --load networkidle
+agent-browser --session project-catalog-production eval --stdin <<'EVALEOF'
+(() => {
+  const result = {
+    width: innerWidth,
+    scrollWidth: document.documentElement.scrollWidth,
+    links: document.querySelectorAll('.course-map a').length,
+    projectItems: document.querySelectorAll('.course-stage:nth-child(5) .course-item').length,
+  }
+  if (result.width !== result.scrollWidth || result.links !== 26 || result.projectItems !== 7) throw new Error(JSON.stringify(result))
+  return JSON.stringify(result)
+})()
+EVALEOF
+agent-browser --session project-catalog-production screenshot /tmp/course-map-projects-production-390-dark.png --full
+
+for route in projects/openhands projects/agent-benchmarks projects/history-autogpt-flowise; do
+  agent-browser --session project-catalog-production open "https://mengen-ink.github.io/agent-engineering-for-beginners/$route"
+  agent-browser --session project-catalog-production eval 'if(document.documentElement.scrollWidth!==innerWidth)throw new Error(JSON.stringify({url:location.href,width:innerWidth,scrollWidth:document.documentElement.scrollWidth}));location.href'
+done
+agent-browser --session project-catalog-production screenshot /tmp/project-history-production-390-dark.png --full
+
+agent-browser --session project-catalog-production open https://mengen-ink.github.io/agent-engineering-for-beginners/paths/
+agent-browser --session project-catalog-production find role button click --name '工程实战'
+agent-browser --session project-catalog-production eval 'if(document.querySelectorAll(".path-step").length!==17||document.documentElement.scrollWidth!==innerWidth)throw new Error("engineering path mismatch");"17 steps"'
+
+agent-browser --session project-catalog-production open https://mengen-ink.github.io/agent-engineering-for-beginners/projects/
+agent-browser --session project-catalog-production set viewport 1440 1000
+agent-browser --session project-catalog-production set media light
+agent-browser --session project-catalog-production snapshot -s '.project-overview'
+agent-browser --session project-catalog-production eval 'const r={core:document.querySelectorAll("[aria-labelledby=project-core-title] a").length,history:document.querySelectorAll("[aria-labelledby=project-history-title] a").length,watch:document.querySelectorAll("[aria-labelledby=project-watch-title] > ul a").length,overflow:document.documentElement.scrollWidth-innerWidth};if(r.core!==6||r.history!==1||r.watch!==2||r.overflow!==0)throw new Error(JSON.stringify(r));JSON.stringify(r)'
+agent-browser --session project-catalog-production screenshot /tmp/projects-index-production-1440-light.png --full
+agent-browser --session project-catalog-production press Tab
+agent-browser --session project-catalog-production press Enter
+for step in $(seq 1 16); do
+  agent-browser --session project-catalog-production eval 'if(document.activeElement&&getComputedStyle(document.activeElement).outlineStyle==="none")throw new Error(`missing focus: ${document.activeElement.textContent}`);document.activeElement?.textContent?.trim()'
+  agent-browser --session project-catalog-production press Tab
+done
+
+agent-browser --session project-catalog-production-nojs network route '**/*.js' --abort
+for route in projects/ projects/mcp-python-sdk projects/aider projects/openhands projects/agent-benchmarks projects/dify projects/crewai projects/history-autogpt-flowise; do
+  agent-browser --session project-catalog-production-nojs open "https://mengen-ink.github.io/agent-engineering-for-beginners/$route"
+  agent-browser --session project-catalog-production-nojs eval 'const r={text:(document.querySelector(".vp-doc")?.textContent??"").length,links:document.querySelectorAll(".vp-doc a").length};if(r.text===0||r.links===0)throw new Error(JSON.stringify({url:location.href,...r}));JSON.stringify(r)'
+done
+
+agent-browser --session project-catalog-production open https://mengen-ink.github.io/agent-engineering-for-beginners/projects/openhands
+agent-browser --session project-catalog-production pdf /tmp/project-openhands-production.pdf
+agent-browser --session project-catalog-production open https://mengen-ink.github.io/agent-engineering-for-beginners/projects/agent-benchmarks
+agent-browser --session project-catalog-production pdf /tmp/project-benchmarks-production.pdf
+python3 - <<'PY'
+from pathlib import Path
+from pypdf import PdfReader
+checks = {
+    'project-openhands-production': ['7dc6805406ea3c76cb4a3ce407c3c72d481b0ac6', 'fcc102a697874d54a357e36004e02c95040dbdc0', 'Conversation', 'Tool execution', 'Event return'],
+    'project-benchmarks-production': ['87ab1f6ced28f75ba73ca899dc759b019310944a', 'fc0055dc4e0a316c3f83133267fbd6faaa770992', 'Container execution', 'Evaluator and reward'],
+}
+for stem, required in checks.items():
+    text = '\n'.join(page.extract_text() or '' for page in PdfReader(f'/tmp/{stem}.pdf').pages)
+    missing = [item for item in required if item not in text]
+    assert not missing, f'{stem} missing: {missing}'
+    assert '许可证边界' not in text, f'{stem} printed the closed disclosure summary'
+    Path(f'/tmp/{stem}.txt').write_text(text, encoding='utf-8')
+PY
+agent-browser --session project-catalog-production console
+agent-browser --session project-catalog-production errors
+agent-browser --session project-catalog-production network requests --status 400-599
+```
+
+Expected: course map reports 26 links and 7 project items with zero overflow; engineering path reports 17 steps; project index reports 6 core, 1 history, 2 watch links; all eight no-JS pages have non-zero text and links; the inline Python block validates both PDFs; console, page error, and failed network lists are empty.
+
+- [ ] **Step 6: Report final evidence and close sessions**
+
+```bash
+agent-browser --session project-catalog-production close
+agent-browser --session project-catalog-production-nojs close
+git ls-remote origin refs/heads/main
+git status --short --branch
+```
+
+Send the production site URL, `/projects/` URL, six core URLs, historical URL, commit SHA, Actions run URL, HTTP matrix result, browser/mobile/no-JS/print evidence, and any non-blocking freshness findings to the user and reviewer. This is the first step allowed to say that the second stage is deployed.
 
 ---
 
@@ -3461,9 +4617,9 @@ Send the final branch HEAD, commit list, test counts, real project freshness sum
 - [ ] All diagrams are original; direct assets, if any, have exact provenance records.
 - [ ] Source automation reports changes but never edits or publishes content.
 - [ ] 1440px, 390px, light, dark, keyboard, screen-reader tree, no-JS, and print checks pass.
-- [ ] `pnpm test`, `pnpm validate`, `pnpm build`, both freshness checks, and `git diff origin/main...HEAD --check` pass.
+- [ ] `pnpm test`, `pnpm validate`, `pnpm build`, both strict freshness checks, and `git diff origin/main...HEAD --check` pass.
 - [ ] Third-stage Python Lab and fourth-stage capstone remain absent.
 
 ## Delivery handoff
 
-After the plan passes review, execute it from a fresh implementation worktree based on `main@815d761`. Use a fresh implementation agent for each task, then run both a specification review and a code-quality review before moving to the next task. Do not merge or deploy until the final acceptance task and reviewer approval are complete.
+After the plan passes review, execute Tasks 1–13 from a fresh implementation worktree based on `main@815d761`. Use a fresh implementation agent for each task, then run both a specification review and a code-quality review before moving to the next task. Execute Task 14 only after explicit final reviewer approval.
