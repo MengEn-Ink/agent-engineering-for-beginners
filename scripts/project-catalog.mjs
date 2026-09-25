@@ -13,10 +13,20 @@ function nonEmpty(value) {
   return typeof value === 'string' && value.trim() !== ''
 }
 
+function isRecord(value) {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 function validDate(value) {
   if (!nonEmpty(value) || !datePattern.test(value)) return false
   const parsed = new Date(`${value}T00:00:00Z`)
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
+}
+
+function validPathScope(value) {
+  if (!nonEmpty(value) || value.includes('\\') || value.startsWith('/') || value.startsWith('./')) return false
+  if (value.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')) return false
+  return pathScopePattern.test(value)
 }
 
 export function parseProjectCatalog(text) {
@@ -29,11 +39,22 @@ export function parseProjectCatalog(text) {
 
 export function validateProjectCatalog(data) {
   const errors = []
-  const pages = Array.isArray(data?.pages) ? data.pages : []
-  const subjects = Array.isArray(data?.subjects)
-    ? data.subjects.map((subject) => ({ ...data?.defaults, ...subject }))
-    : []
-  const chains = Array.isArray(data?.chains) ? data.chains : []
+  const defaults = isRecord(data?.defaults) ? data.defaults : {}
+  const pages = []
+  const subjects = []
+  const chains = []
+  for (const [index, page] of (Array.isArray(data?.pages) ? data.pages : []).entries()) {
+    if (!isRecord(page)) errors.push(`Project catalog page at index ${index} must be an object`)
+    else pages.push(page)
+  }
+  for (const [index, subject] of (Array.isArray(data?.subjects) ? data.subjects : []).entries()) {
+    if (!isRecord(subject)) errors.push(`Project catalog subject at index ${index} must be an object`)
+    else subjects.push({ ...defaults, ...subject })
+  }
+  for (const [index, chain] of (Array.isArray(data?.chains) ? data.chains : []).entries()) {
+    if (!isRecord(chain)) errors.push(`Project catalog chain at index ${index} must be an object`)
+    else chains.push(chain)
+  }
   const pageById = new Map(pages.map((page) => [page.page_item_id, page]))
   const subjectById = new Map(subjects.map((subject) => [subject.id, subject]))
   const chainById = new Map(chains.map((chain) => [chain.id, chain]))
@@ -57,7 +78,7 @@ export function validateProjectCatalog(data) {
       || typeof page.counted_in_course !== 'boolean') {
       errors.push(`Page ${page.page_item_id} has invalid mapping fields`)
     }
-    for (const subjectId of page.subjects ?? []) {
+    for (const subjectId of Array.isArray(page.subjects) ? page.subjects : []) {
       if (!subjectById.has(subjectId)) errors.push(`Page ${page.page_item_id} references unknown subject: ${subjectId}`)
     }
     if (page.primary_chain_id !== null && !chainById.has(page.primary_chain_id)) {
@@ -102,26 +123,41 @@ export function validateProjectCatalog(data) {
     if (!nonEmpty(subject.license_summary) || !Array.isArray(subject.license_scopes) || subject.license_scopes.length === 0) {
       errors.push(`Subject ${subject.id} requires license_summary and license_scopes`)
     }
+    const entrypoints = Array.isArray(subject.entrypoints) ? subject.entrypoints : []
+    const licenseSources = Array.isArray(subject.license_sources) ? subject.license_sources : []
+    const licenseScopes = Array.isArray(subject.license_scopes) ? subject.license_scopes : []
     if (!/^https:\/\//u.test(subject.watch_url ?? '') || !Array.isArray(subject.entrypoints)
-      || !Array.isArray(subject.license_sources) || subject.license_sources.length === 0) {
+      || !Array.isArray(subject.license_sources) || licenseSources.length === 0) {
       errors.push(`Subject ${subject.id} requires HTTPS watch_url, entrypoints, and license_sources`)
     }
     const entryPaths = new Set()
-    for (const entry of subject.entrypoints ?? []) {
+    for (const [index, entry] of entrypoints.entries()) {
+      if (!isRecord(entry)) {
+        errors.push(`Subject ${subject.id} entrypoint at index ${index} must be an object`)
+        continue
+      }
       if (!nonEmpty(entry.path) || !nonEmpty(entry.symbol) || !nonEmpty(entry.responsibility)) {
         errors.push(`Subject ${subject.id} has an incomplete entrypoint`)
       }
       if (entryPaths.has(entry.path)) errors.push(`Subject ${subject.id} has duplicate entrypoint: ${entry.path}`)
       entryPaths.add(entry.path)
     }
-    for (const license of subject.license_sources ?? []) {
+    for (const [index, license] of licenseSources.entries()) {
+      if (!isRecord(license)) {
+        errors.push(`Subject ${subject.id} license source at index ${index} must be an object`)
+        continue
+      }
       if (!nonEmpty(license.path) || !/^[0-9a-f]{64}$/u.test(license.sha256 ?? '')) {
         errors.push(`Subject ${subject.id} has an invalid license source`)
       }
     }
 
     const pathExpressions = new Map()
-    for (const scope of subject.license_scopes ?? []) {
+    for (const [index, scope] of licenseScopes.entries()) {
+      if (!isRecord(scope)) {
+        errors.push(`Subject ${subject.id} license scope at index ${index} must be an object`)
+        continue
+      }
       if (!['path', 'contribution'].includes(scope.basis)
         || !nonEmpty(scope.expression) || !nonEmpty(scope.scope) || !nonEmpty(scope.note)) {
         errors.push(`Subject ${subject.id} has an invalid license scope`)
@@ -130,7 +166,7 @@ export function validateProjectCatalog(data) {
       if (scope.basis === 'path') {
         if (!nonEmpty(scope.path_or_glob) || Object.hasOwn(scope, 'selector')) {
           errors.push(`Subject ${subject.id} path license scope requires path_or_glob and forbids selector`)
-        } else if (!pathScopePattern.test(scope.path_or_glob)) {
+        } else if (!validPathScope(scope.path_or_glob)) {
           errors.push(`Subject ${subject.id} has unsupported path license scope: ${scope.path_or_glob}`)
         } else {
           const previous = pathExpressions.get(scope.path_or_glob)
@@ -156,7 +192,12 @@ export function validateProjectCatalog(data) {
     if (!page) errors.push(`Chain ${chain.id} references unknown page: ${chain.page_item_id}`)
     if (!Array.isArray(chain.steps) || chain.steps.length === 0) errors.push(`Chain ${chain.id} requires non-empty steps`)
     const stepIds = new Set()
-    for (const step of chain.steps ?? []) {
+    const steps = Array.isArray(chain.steps) ? chain.steps : []
+    for (const [index, step] of steps.entries()) {
+      if (!isRecord(step)) {
+        errors.push(`Chain ${chain.id} step at index ${index} must be an object`)
+        continue
+      }
       for (const field of ['id', 'label', 'subject_id', 'source_path', 'symbol', 'responsibility']) {
         if (!nonEmpty(step[field])) errors.push(`Chain ${chain.id} step ${step?.id ?? '<unknown>'} is missing ${field}`)
       }
@@ -166,11 +207,19 @@ export function validateProjectCatalog(data) {
       if (!subject) {
         errors.push(`Chain ${chain.id} step ${step.id} references unknown subject: ${step.subject_id}`)
       } else {
-        if (!page?.subjects?.includes(step.subject_id)) {
+        if (!Array.isArray(page?.subjects) || !page.subjects.includes(step.subject_id)) {
           errors.push(`Chain ${chain.id} step ${step.id} subject is not owned by page: ${step.subject_id}`)
         }
-        if (!(subject.entrypoints ?? []).some((entry) => entry.path === step.source_path)) {
-          errors.push(`Chain ${chain.id} step ${step.id} references an undeclared entrypoint: ${step.subject_id}/${step.source_path}`)
+        const entrypoints = Array.isArray(subject.entrypoints)
+          ? subject.entrypoints.filter(isRecord)
+          : []
+        const matchingPath = entrypoints.some((entry) => entry.path === step.source_path)
+        const matchingEntrypoint = entrypoints.some(
+          (entry) => entry.path === step.source_path && entry.symbol === step.symbol,
+        )
+        if (!matchingEntrypoint) {
+          const reference = `${step.subject_id}/${step.source_path}${matchingPath ? `#${step.symbol}` : ''}`
+          errors.push(`Chain ${chain.id} step ${step.id} references an undeclared entrypoint: ${reference}`)
         }
       }
     }
@@ -181,7 +230,9 @@ export function validateProjectCatalog(data) {
     if (new Set(ids).size !== ids.length) errors.push(`Project catalog has duplicate ${label} IDs`)
   }
   for (const subject of subjects.filter((item) => item.catalog_tier === 'watch-only')) {
-    const owners = pages.filter((page) => page.subjects?.includes(subject.id)).map((page) => page.page_item_id)
+    const owners = pages
+      .filter((page) => Array.isArray(page.subjects) && page.subjects.includes(subject.id))
+      .map((page) => page.page_item_id)
     if (owners.length !== 1 || owners[0] !== 'projects-index') {
       errors.push(`Watch-only subject ${subject.id} must belong only to projects-index`)
     }
@@ -192,21 +243,41 @@ export function validateProjectCatalog(data) {
   return errors
 }
 
-export function validateProjectCatalogIntegration(data, { contentRegistryText, interviewQuestionsText }) {
+export function validateProjectCatalogIntegration(data, sources) {
   const errors = []
-  const contentIds = new Set(Array.from(
-    contentRegistryText.matchAll(/\{\s*id:\s*'([^']+)'/gu),
-    (match) => match[1],
-  ))
-  const questionIds = new Set(Array.from(
-    interviewQuestionsText.matchAll(/question\(\s*'([^']+)'/gu),
-    (match) => match[1],
-  ))
-  for (const page of data.pages ?? []) {
+  const pages = Array.isArray(data?.pages) ? data.pages : []
+  const contentItems = Array.isArray(sources?.contentItems) ? sources.contentItems : []
+  const interviewQuestions = Array.isArray(sources?.interviewQuestions) ? sources.interviewQuestions : []
+  if (!Array.isArray(data?.pages)) errors.push('Project catalog integration requires pages')
+  if (!Array.isArray(sources?.contentItems)) errors.push('Project catalog integration requires contentItems')
+  if (!Array.isArray(sources?.interviewQuestions)) {
+    errors.push('Project catalog integration requires interviewQuestions')
+  }
+  const contentIds = new Set()
+  for (const [index, item] of contentItems.entries()) {
+    if (!isRecord(item) || !nonEmpty(item.id)) {
+      errors.push(`Content registry item at index ${index} requires non-empty id`)
+    } else {
+      contentIds.add(item.id)
+    }
+  }
+  const questionIds = new Set()
+  for (const [index, question] of interviewQuestions.entries()) {
+    if (!isRecord(question) || !nonEmpty(question.id)) {
+      errors.push(`Interview question at index ${index} requires non-empty id`)
+    } else {
+      questionIds.add(question.id)
+    }
+  }
+  for (const [index, page] of pages.entries()) {
+    if (!isRecord(page)) {
+      errors.push(`Project catalog integration page at index ${index} must be an object`)
+      continue
+    }
     if (!contentIds.has(page.page_item_id)) {
       errors.push(`Project page is missing from contentRegistry: ${page.page_item_id}`)
     }
-    for (const questionId of page.interview_question_ids ?? []) {
+    for (const questionId of Array.isArray(page.interview_question_ids) ? page.interview_question_ids : []) {
       if (!questionIds.has(questionId)) {
         errors.push(`Project page ${page.page_item_id} references unknown interview question: ${questionId}`)
       }

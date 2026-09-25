@@ -81,6 +81,20 @@ describe('project catalog schema', () => {
     expect(validateProjectCatalog(conflicting)).toContain(
       'Subject aider has conflicting path license scopes for **',
     )
+
+    for (const path of ['../LICENSE', '/LICENSE', './src/**', 'src//file.ts', String.raw`src\file.ts`]) {
+      const nonCanonical = structuredClone(validCatalog)
+      nonCanonical.subjects[0].license_scopes[0].path_or_glob = path
+      expect(validateProjectCatalog(nonCanonical)).toContain(
+        `Subject aider has unsupported path license scope: ${path}`,
+      )
+    }
+
+    const emptyPath = structuredClone(validCatalog)
+    emptyPath.subjects[0].license_scopes[0].path_or_glob = ''
+    expect(validateProjectCatalog(emptyPath)).toContain(
+      'Subject aider path license scope requires path_or_glob and forbids selector',
+    )
   })
 
   it('keeps repository status and catalog tier independent', () => {
@@ -105,16 +119,25 @@ describe('project catalog schema', () => {
       'Chain aider-chain step entry references an undeclared entrypoint: aider/missing.py',
     ]))
     expect(validateProjectCatalogIntegration(validCatalog, {
-      contentRegistryText: "export const contentItems = [{ id: 'other' }]",
-      interviewQuestionsText: "question('iq-other', 1, 'x', '工程', '基础', 'x', 'x', [], [], 'x')",
+      contentItems: [{ id: 'other' }],
+      interviewQuestions: [{ id: 'iq-other' }],
     })).toEqual([
       'Project page is missing from contentRegistry: project-aider',
       'Project page project-aider references unknown interview question: iq-13-a',
     ])
     expect(validateProjectCatalogIntegration(validCatalog, {
-      contentRegistryText: "export const contentItems = [{ id: 'project-aider' }]",
-      interviewQuestionsText: "question('iq-13-a', 13, 'x', '工程', '基础', 'x', 'x', [], [], 'x')",
+      contentItems: [{ id: 'project-aider' }],
+      interviewQuestions: [{ id: 'iq-13-a' }],
     })).toEqual([])
+    expect(validateProjectCatalogIntegration(validCatalog, {
+      contentItems: [{ id: 'other' }],
+      interviewQuestions: [{ id: 'iq-other' }],
+      contentRegistryText: "// { id: 'project-aider' }",
+      interviewQuestionsText: "const unrelated = \"question('iq-13-a', only, in, a, string)\"",
+    } as never)).toEqual([
+      'Project page is missing from contentRegistry: project-aider',
+      'Project page project-aider references unknown interview question: iq-13-a',
+    ])
   })
 
   it('requires complete chains, unique steps, and page-owned subjects', () => {
@@ -129,6 +152,12 @@ describe('project catalog schema', () => {
     ]))
     broken.chains[0].steps = []
     expect(validateProjectCatalog(broken)).toContain('Chain aider-chain requires non-empty steps')
+
+    const wrongSymbol = structuredClone(validCatalog)
+    wrongSymbol.chains[0].steps[0].symbol = 'missing'
+    expect(validateProjectCatalog(wrongSymbol)).toContain(
+      'Chain aider-chain step entry references an undeclared entrypoint: aider/aider/main.py#missing',
+    )
   })
 
   it('parses YAML without accepting an empty or malformed registry', () => {
@@ -139,5 +168,45 @@ describe('project catalog schema', () => {
       'Project catalog requires chains',
     ]))
     expect(() => parseProjectCatalog('{broken')).toThrow('Project catalog YAML cannot be parsed')
+
+    expect(validateProjectCatalog(null)).toContain('Project catalog schema_version must be 1')
+
+    const invalidMembers: { pages: unknown[]; subjects: unknown[]; chains: unknown[] } =
+      structuredClone(validCatalog)
+    invalidMembers.pages = [null]
+    invalidMembers.subjects = [null]
+    invalidMembers.chains = [null]
+    expect(() => validateProjectCatalog(invalidMembers)).not.toThrow()
+    expect(validateProjectCatalog(invalidMembers)).toEqual(expect.arrayContaining([
+      'Project catalog page at index 0 must be an object',
+      'Project catalog subject at index 0 must be an object',
+      'Project catalog chain at index 0 must be an object',
+    ]))
+
+    const invalidNested = structuredClone(validCatalog) as {
+      pages: Array<{ subjects: unknown }>
+      subjects: Array<{ entrypoints: unknown; license_sources: unknown; license_scopes: unknown }>
+      chains: Array<{ steps: unknown }>
+    }
+    invalidNested.pages[0].subjects = { aider: true }
+    invalidNested.subjects[0].entrypoints = [null]
+    invalidNested.subjects[0].license_sources = [null]
+    invalidNested.subjects[0].license_scopes = [null]
+    invalidNested.chains[0].steps = [null]
+    expect(() => validateProjectCatalog(invalidNested)).not.toThrow()
+    expect(validateProjectCatalog(invalidNested)).toEqual(expect.arrayContaining([
+      'Page project-aider has invalid mapping fields',
+      'Subject aider entrypoint at index 0 must be an object',
+      'Subject aider license source at index 0 must be an object',
+      'Subject aider license scope at index 0 must be an object',
+      'Chain aider-chain step at index 0 must be an object',
+    ]))
+
+    expect(() => validateProjectCatalogIntegration(null, null as never)).not.toThrow()
+    expect(validateProjectCatalogIntegration(null, null as never)).toEqual([
+      'Project catalog integration requires pages',
+      'Project catalog integration requires contentItems',
+      'Project catalog integration requires interviewQuestions',
+    ])
   })
 })
