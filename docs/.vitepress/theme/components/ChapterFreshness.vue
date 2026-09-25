@@ -1,16 +1,25 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { chapterMetaByPath, isReviewOverdue, type ContentStability } from '../data/chapterMeta'
 
 const props = defineProps<{ path: string }>()
 const meta = computed(() => chapterMetaByPath[props.path])
-const overdue = computed(() => Boolean(meta.value && isReviewOverdue(meta.value.reviewBy)))
+const reviewStatus = ref<'pending' | 'current' | 'overdue'>('pending')
+const statusLabel = computed(() => ({
+  pending: '按日期复核',
+  current: '已核验',
+  overdue: '需要复核',
+})[reviewStatus.value])
 
 const stabilityLabels: Record<ContentStability, string> = {
   evergreen: '常青',
   evolving: '持续演进',
   frontier: '前沿观察',
 }
+
+onMounted(() => {
+  reviewStatus.value = meta.value && isReviewOverdue(meta.value.reviewBy) ? 'overdue' : 'current'
+})
 
 </script>
 
@@ -23,8 +32,8 @@ const stabilityLabels: Record<ContentStability, string> = {
   >
     <div class="freshness-heading">
       <span class="freshness-stability">{{ stabilityLabels[meta.stability] }}</span>
-      <strong :class="{ 'is-overdue': overdue }" aria-live="polite">
-        {{ overdue ? '需要复核' : '已核验' }}
+      <strong :class="{ 'is-overdue': reviewStatus === 'overdue' }" aria-live="polite">
+        {{ statusLabel }}
       </strong>
     </div>
     <dl>

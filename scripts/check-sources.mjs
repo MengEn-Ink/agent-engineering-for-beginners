@@ -3,12 +3,13 @@ import { dirname, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parse } from 'yaml'
 import { validateSourceRegistry } from './validate-content.mjs'
+import { reviewDateInTimeZone } from './review-date.mjs'
 
 const githubRepositoryPattern = /^https:\/\/github\.com\/([^/]+)\/([^/#?]+)\/?$/u
 const retryableStatuses = new Set([408, 429, 500, 502, 503, 504])
 
 function isoDate(value) {
-  return value.toISOString().slice(0, 10)
+  return reviewDateInTimeZone(value)
 }
 
 function wait(milliseconds) {
@@ -175,7 +176,8 @@ export async function checkSource(source, {
         release_published_at: null,
       }
       if (repository.archived) findings.push('repository_archived')
-      if (repository.pushed_at?.slice(0, 10) > source.last_verified) {
+      if (repository.pushed_at
+        && reviewDateInTimeZone(new Date(repository.pushed_at)) > source.last_verified) {
         findings.push('repository_updated')
       }
     }
@@ -201,7 +203,8 @@ export async function checkSource(source, {
       }
       repository.latest_release = release.tag_name ?? null
       repository.release_published_at = release.published_at ?? null
-      if (repository.release_published_at?.slice(0, 10) > source.last_verified) {
+      if (repository.release_published_at
+        && reviewDateInTimeZone(new Date(repository.release_published_at)) > source.last_verified) {
         findings.push('repository_release')
       }
       if (source.version !== 'rolling' && repository.latest_release

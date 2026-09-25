@@ -87,6 +87,17 @@ describe('source freshness checker', () => {
     expect(result.findings).toEqual(expect.arrayContaining(['review_due', 'version_watch']))
   })
 
+  it('uses the same Shanghai calendar boundary as the reader freshness label', async () => {
+    const result = await checkSource(
+      { ...baseSource, review_by: '2026-09-24' },
+      {
+        fetchImpl: async () => ({ status: 200, url: baseSource.url }),
+        now: new Date('2026-09-24T16:30:00Z'),
+      },
+    )
+    expect(result.findings).toContain('review_due')
+  })
+
   it('detects a newer current version even when the old version remains on the page', async () => {
     const result = await checkSource(
       { ...baseSource, watch_url: 'https://example.com/spec/' },

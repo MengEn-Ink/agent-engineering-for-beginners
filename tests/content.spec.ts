@@ -486,7 +486,7 @@ describe('chapter freshness', () => {
     }
   })
 
-  it('shows stable labels and renders the overdue state during SSR', async () => {
+  it('shows a neutral SSR label and calculates overdue state after hydration', async () => {
     const component = readFileSync(
       'docs/.vitepress/theme/components/ChapterFreshness.vue',
       'utf8',
@@ -494,18 +494,25 @@ describe('chapter freshness', () => {
     for (const label of ['常青', '持续演进', '前沿观察', '最后核验', '下次复核', '版本关注']) {
       expect(component).toContain(label)
     }
-    expect(component).not.toContain('onMounted')
+    expect(component).toContain('onMounted')
+    expect(component).toContain("ref<'pending' | 'current' | 'overdue'>('pending')")
+    expect(component).toContain('按日期复核')
     expect(component).toContain('isReviewOverdue')
     expect(component).toContain('需要复核')
     expect(component).toContain('<time')
 
-    const { isReviewOverdue, reviewDateInShanghai } = await import(
-      pathToFileURL(join(process.cwd(), 'docs/.vitepress/theme/data/chapterMeta.ts')).href
+    const { isReviewOverdue, reviewDateInTimeZone } = await import(
+      pathToFileURL(join(process.cwd(), 'scripts/review-date.mjs')).href
     )
     const afterMidnightInShanghai = new Date('2026-09-24T16:30:00Z')
-    expect(reviewDateInShanghai(afterMidnightInShanghai)).toBe('2026-09-25')
+    expect(reviewDateInTimeZone(afterMidnightInShanghai)).toBe('2026-09-25')
     expect(isReviewOverdue('2026-09-24', afterMidnightInShanghai)).toBe(true)
     expect(isReviewOverdue('2026-09-25', afterMidnightInShanghai)).toBe(false)
+
+    const checker = readFileSync('scripts/check-sources.mjs', 'utf8')
+    const metadata = readFileSync('docs/.vitepress/theme/data/chapterMeta.ts', 'utf8')
+    expect(checker).toContain("from './review-date.mjs'")
+    expect(metadata).toContain("from '../../../../scripts/review-date.mjs'")
   })
 })
 
@@ -969,6 +976,9 @@ describe('release configuration', () => {
       )
       expect(resolvePreviewPath('/agent-engineering-for-beginners/paths/', fixtureDir)).toBe(
         join(fixtureDir, 'paths/index.html'),
+      )
+      expect(resolvePreviewPath('/agent-engineering-for-beginners/chapters/01/', fixtureDir)).toBe(
+        join(fixtureDir, 'chapters/01.html'),
       )
       expect(resolvePreviewPath('/agent-engineering-for-beginners/../../LICENSE', fixtureDir)).toBeNull()
     } finally {
