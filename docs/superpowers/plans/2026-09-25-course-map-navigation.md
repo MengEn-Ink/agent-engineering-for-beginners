@@ -225,7 +225,7 @@ Add a registry test proving `navigationItem('preface', 'nav').text === '开始�
 
 - [ ] **Step 4: Run registry tests and verify GREEN**
 
-Run: `pnpm vitest run tests/course-map.spec.ts -t 'content registry'`  
+Run: `pnpm vitest run tests/course-map.spec.ts -t 'content registry'`
 Expected: 3 tests pass.
 
 - [ ] **Step 5: Commit the registry**
@@ -297,7 +297,7 @@ describe('course graph', () => {
 
 - [ ] **Step 2: Run the graph tests and verify RED**
 
-Run: `pnpm vitest run tests/course-map.spec.ts -t 'course graph'`  
+Run: `pnpm vitest run tests/course-map.spec.ts -t 'course graph'`
 Expected: FAIL because `courseMap.ts` does not exist.
 
 - [ ] **Step 3: Implement the exact stage and item contracts**
@@ -362,7 +362,7 @@ export function validateCourseMap(items: CourseItem[], stages: CourseStage[]): s
 
 - [ ] **Step 4: Run graph tests and verify GREEN**
 
-Run: `pnpm vitest run tests/course-map.spec.ts -t 'course graph'`  
+Run: `pnpm vitest run tests/course-map.spec.ts -t 'course graph'`
 Expected: all course graph tests pass.
 
 - [ ] **Step 5: Commit the graph**
@@ -428,7 +428,7 @@ describe('course progress input', () => {
 
 - [ ] **Step 2: Run state tests and verify RED**
 
-Run: `pnpm vitest run tests/course-map.spec.ts -t 'course progress input'`  
+Run: `pnpm vitest run tests/course-map.spec.ts -t 'course progress input'`
 Expected: FAIL because cross-origin URLs are accepted and `readCourseProgress` is missing.
 
 - [ ] **Step 3: Implement the strict, read-only API**
@@ -523,7 +523,7 @@ Distinguish JSON parsing from storage access: wrap `getItem` and `JSON.parse` se
 
 - [ ] **Step 4: Run state tests and verify GREEN**
 
-Run: `pnpm vitest run tests/course-map.spec.ts -t 'course progress input'`  
+Run: `pnpm vitest run tests/course-map.spec.ts -t 'course progress input'`
 Expected: all normalization and state tests pass.
 
 - [ ] **Step 5: Re-run existing local-state tests**
@@ -878,7 +878,7 @@ describe('course page', () => {
 
 - [ ] **Step 2: Run page tests and verify RED**
 
-Run: `pnpm vitest run tests/course-map.spec.ts tests/content.spec.ts -t 'course page'`  
+Run: `pnpm vitest run tests/course-map.spec.ts tests/content.spec.ts -t 'course page'`
 Expected: FAIL because the page and component do not exist.
 
 - [ ] **Step 3: Implement `CourseMap.vue` as a read-only projection**
@@ -1104,7 +1104,7 @@ describe('course navigation integration', () => {
 
 - [ ] **Step 2: Run integration tests and verify RED**
 
-Run: `pnpm vitest run tests/course-map.spec.ts -t 'course navigation integration'`  
+Run: `pnpm vitest run tests/course-map.spec.ts -t 'course navigation integration'`
 Expected: FAIL because tracking and config still use path arrays.
 
 - [ ] **Step 3: Expand `ReadingProgress` tracking without changing its write contract**
@@ -1129,6 +1129,10 @@ const nextStep = computed(() => currentPath.value === null
   ? undefined
   : findNextReadingStep(activePath.value, currentPath.value, state.value.completed))
 
+function hasCurrent(key: 'completed' | 'bookmarks') {
+  return currentPath.value !== null && state.value[key].includes(currentPath.value)
+}
+
 function toggle(key: 'completed' | 'bookmarks') {
   if (currentPath.value === null) return
   const items = state.value[key]
@@ -1139,7 +1143,28 @@ function toggle(key: 'completed' | 'bookmarks') {
 }
 ```
 
-Remove the old `readingPaths.some(...)` tracking expression. Do not add course-page write controls.
+Replace all four template membership expressions as well:
+
+```vue
+<button
+  type="button"
+  class="reading-action"
+  :aria-pressed="hasCurrent('completed')"
+  @click="toggle('completed')"
+>
+  {{ hasCurrent('completed') ? '撤销已读' : '标记已读' }}
+</button>
+<button
+  type="button"
+  class="reading-action"
+  :aria-pressed="hasCurrent('bookmarks')"
+  @click="toggle('bookmarks')"
+>
+  {{ hasCurrent('bookmarks') ? '取消书签' : '加入书签' }}
+</button>
+```
+
+Remove the old `readingPaths.some(...)` tracking expression and every `state.*.includes(currentPath)` template expression. Do not add course-page write controls.
 
 - [ ] **Step 4: Replace literal nav targets with registry lookups**
 
@@ -1240,13 +1265,15 @@ it('keeps the course rail semantic and responsive', () => {
   expect(style).toContain('.course-item')
   expect(style).toContain('@media (max-width: 700px)')
   expect(style).toContain('min-height: 44px')
+  expect(style).toContain('.course-stage-more:not([open]) > *:not(summary)')
+  expect(style).toContain('.course-stage-more > summary')
   expect(style).not.toContain('background-attachment: fixed')
 })
 ```
 
 - [ ] **Step 2: Run style tests and verify RED**
 
-Run: `pnpm vitest run tests/course-map.spec.ts -t 'semantic and responsive'`  
+Run: `pnpm vitest run tests/course-map.spec.ts -t 'semantic and responsive'`
 Expected: FAIL because course-specific styles are absent.
 
 - [ ] **Step 3: Add restrained course styles**
@@ -1398,10 +1425,14 @@ Append this complete course-specific block to `style.css`:
 }
 
 @media print {
-  .course-stage-more[open] summary,
+  .course-stage-more > summary,
   .course-progress progress,
   .course-stage progress {
     display: none;
+  }
+
+  .course-stage-more:not([open]) > *:not(summary) {
+    display: block !important;
   }
 
   .course-stage,
@@ -1492,11 +1523,24 @@ Expected:
 - marking a chapter on its content page or `/paths/` updates `/course/` after navigation/refresh;
 - no mark, bookmark, clear, login, cloud sync, project, or lab action appears on `/course/`.
 
-- [ ] **Step 4: Verify compatibility and public boundary**
+- [ ] **Step 4: Verify closed disclosures print all course items**
+
+Leave every stage `<details>` closed, then generate a print PDF and extract its text:
+
+```bash
+agent-browser --session course-map open http://127.0.0.1:4174/agent-engineering-for-beginners/course/
+agent-browser --session course-map pdf /tmp/course-map.pdf
+pdftotext /tmp/course-map.pdf /tmp/course-map.txt
+rg -n "交付型 Agent 的质量门|Agent 互操作与身份|Agent 安全评测" /tmp/course-map.txt
+```
+
+Expected: all three titles are present even though they occur after the fourth item in their stage or near the end of the curriculum; no “展开其余” summary text is printed. If `pdftotext` is unavailable, use the browser print media emulation and assert every `.course-stage-more > ol` has computed `display` other than `none` while every `.course-stage-more > summary` has `display: none`.
+
+- [ ] **Step 5: Verify compatibility and public boundary**
 
 Check the existing homepage, all 14 chapters, four frontier topics, Radar, paths, interview index/trainer, glossary, and delivery case. Confirm process documents remain excluded from dist and no external image was added.
 
-- [ ] **Step 5: Commit only evidence-driven corrections if needed**
+- [ ] **Step 6: Commit only evidence-driven corrections if needed**
 
 If acceptance revealed an in-scope defect, add its failing regression test first, make the smallest correction, rerun Steps 1–4, then commit:
 
@@ -1517,4 +1561,3 @@ If no correction was needed, do not create an empty commit.
 - Route/title literals move to one registry before course, path, freshness, interview, and navigation consumers migrate.
 - No task creates project content, Python labs, images, extra interview questions, backend services, accounts, or copied chapter prose.
 - Commits are small and independently verifiable; implementation does not begin until this plan is reviewed and the execution approach is chosen.
-
