@@ -209,7 +209,8 @@ subjects:
     catalog_tier: core
     license_summary: Apache-2.0 repository license; third-party assets still require file-level review
     license_scopes:
-      - expression: Apache-2.0
+      - basis: path
+        expression: Apache-2.0
         path_or_glob: '**'
         scope: repository code and documentation unless a file states otherwise
         note: Preserve notices and separately review logos, trademarks, and third-party files.
@@ -236,8 +237,10 @@ page 级 `catalog_tier: core` 表示该页面属于主项目目录，不等于�
 - `repository_status` 只能是 `active`、`archived` 或 `eol`；`archived` 是独立布尔事实，允许表达“已归档且 EOL”。
 - `repository_status: active` 必须搭配 `archived: false`；`repository_status: archived` 必须搭配 `archived: true`；`repository_status: eol` 可按 GitHub 实际归档状态搭配布尔值。
 - subject 的 `catalog_tier` 只能是 `core`、`historical` 或 `watch-only`；page 的 `catalog_tier` 只能是 `core` 或 `historical`。
-- `license_summary` 必须是非空字符串；`license_scopes` 必须是非空数组，每项至少包含 `expression / path_or_glob / scope / note`。
-- 混合许可按目录、文件或贡献范围拆成多条 `license_scopes`。不得使用一个 `AND` 表达“不同目录分别适用不同许可”。
+- `license_summary` 必须是非空字符串；`license_scopes` 必须是非空数组，每项都包含 `basis / expression / scope / note`。
+- `basis: path` 表示按目录或文件分区，必须提供 `path_or_glob`，不得提供 `selector`；同等具体的路径 scope 重叠且 expression 不同时校验失败。
+- `basis: contribution` 表示许可证取决于贡献历史而非文件路径，必须提供 `selector`，不得提供 `path_or_glob`，也不参与路径冲突算法。
+- 混合许可必须拆成多条 `license_scopes`。不得使用一个 `AND` 表达“不同目录或不同贡献分别适用不同许可”。
 - `LicenseRef-*` 只用于项目自定义或无法准确写成 SPDX 的条款，必须在 `note` 中链接或解释项目原始许可文件。
 - `interview_question_ids` 只能引用现有 42 题，页面不得创建新答案副本。
 - 八个 page 记录都必须包含 `page_item_id / catalog_tier / subjects / interview_question_ids / counted_in_course / primary_chain_id`；只有 `projects-index.primary_chain_id` 可以为 `null`。
@@ -265,19 +268,19 @@ page 级 `catalog_tier: core` 表示该页面属于主项目目录，不等于�
 
 ### 8.1 特殊许可证的 `license_scopes`
 
-| subject ID | expression | path_or_glob | scope | note |
-| --- | --- | --- | --- | --- |
-| `mcp-spec` | `Apache-2.0` | `**` | 新代码与规范贡献，以及已取得重许可同意的贡献 | 这是贡献级适用范围，不能仅凭文件路径推断全部历史内容 |
-| `mcp-spec` | `MIT` | `**` | 尚未取得重许可同意的历史贡献 | 引用前需追踪具体文件与历史 |
-| `mcp-spec` | `CC-BY-4.0` | `docs/**` | 普通文档贡献，不含规范 | 规范仍按仓库过渡许可处理 |
-| `dify` | `LicenseRef-Dify-Modified-Apache-2.0` | `**` | 仓库代码与内容 | 多租户服务、`web/` 前端 Logo/版权与外观专利受附加条件约束 |
-| `autogpt` | `PolyForm-Shield-1.0.0` | `autogpt_platform/**` | 平台目录代码与内容 | 不得把平台目录写成 MIT |
-| `autogpt` | `MIT` | `**` | classic 与 LICENSE 明列的其他部分 | 更具体的 `autogpt_platform/**` PolyForm scope 优先；文件若有独立声明，以文件声明为准 |
-| `flowise` | `LicenseRef-Flowise-Commercial` | `packages/server/src/enterprise/**` | enterprise 目录 | 商业许可，不作为可自由复制素材 |
-| `flowise` | `LicenseRef-Flowise-Commercial` | `packages/server/src/IdentityManager.ts` | 当前许可文件点名的显式商业许可文件 | 扫描到其他显式商业声明时必须新增独立 scope，否则校验失败 |
-| `flowise` | `Apache-2.0` | `**` | 其余未受限内容 | 更具体的 commercial scope 优先；第三方组件仍服从各自原始许可 |
+| subject ID | basis | expression | selector 或 path_or_glob | scope | note |
+| --- | --- | --- | --- | --- | --- |
+| `mcp-spec` | `contribution` | `Apache-2.0` | `selector: new-code-or-spec-contribution OR recorded-relicense-consent` | 新代码与规范贡献，以及已取得重许可同意的贡献 | 这是贡献级适用范围，不能仅凭文件路径推断全部历史内容 |
+| `mcp-spec` | `contribution` | `MIT` | `selector: historical-contribution-without-recorded-consent` | 尚未取得重许可同意的历史贡献 | 引用前需追踪具体文件与贡献历史 |
+| `mcp-spec` | `path` | `CC-BY-4.0` | `path_or_glob: docs/**` | 普通文档贡献，不含规范 | 规范仍按仓库过渡许可处理；直接复用前还需排除规范路径 |
+| `dify` | `path` | `LicenseRef-Dify-Modified-Apache-2.0` | `path_or_glob: **` | 仓库代码与内容 | 多租户服务、`web/` 前端 Logo/版权与外观专利受附加条件约束 |
+| `autogpt` | `path` | `PolyForm-Shield-1.0.0` | `path_or_glob: autogpt_platform/**` | 平台目录代码与内容 | 不得把平台目录写成 MIT |
+| `autogpt` | `path` | `MIT` | `path_or_glob: **` | classic 与 LICENSE 明列的其他部分 | 更具体的 `autogpt_platform/**` PolyForm scope 优先；文件若有独立声明，以文件声明为准 |
+| `flowise` | `path` | `LicenseRef-Flowise-Commercial` | `path_or_glob: packages/server/src/enterprise/**` | enterprise 目录 | 商业许可，不作为可自由复制素材 |
+| `flowise` | `path` | `LicenseRef-Flowise-Commercial` | `path_or_glob: packages/server/src/IdentityManager.ts` | 当前许可文件点名的显式商业许可文件 | 扫描到其他显式商业声明时必须新增独立 scope，否则校验失败 |
+| `flowise` | `path` | `Apache-2.0` | `path_or_glob: **` | 其余未受限内容 | 更具体的 commercial scope 优先；第三方组件仍服从各自原始许可 |
 
-`license_scopes` 使用“最具体路径优先”规则；两个同等具体的 scope 重叠且 expression 不同时，校验失败。MCP 的许可过渡属于贡献级而非纯路径级，任何直接复制都必须进入人工 provenance 审核，不能仅靠 glob 自动放行。
+路径型 `license_scopes` 使用“最具体路径优先”规则。MCP 的 Apache/MIT 过渡使用贡献型 selector，允许覆盖同一文件树而不触发路径冲突；它不能自动授权直接复制，任何引用仍必须进入人工 provenance 审核。MCP 普通文档的 CC-BY-4.0 是路径型规则，但 scope 和 note 明确排除规范。
 
 ## 9. 核心页面固定模板
 
