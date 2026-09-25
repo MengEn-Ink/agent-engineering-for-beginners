@@ -1,0 +1,519 @@
+# 优秀开源项目拆解页设计
+
+**状态：** 待审判者复核
+**日期：** 2026-09-26
+**阶段：** 课程化重构第 2/4 阶段
+**设计基线：** `main@815d7613ca639d462979b1e57024eafd897e176b`
+
+## 1. 决策摘要
+
+本阶段把现有“原理教材”向真实源码推进，但只做可核验的阅读型项目拆解，不做框架排行榜、安装教程或可运行实验。
+
+公开交付包含一个项目总览、六个核心拆解和一个历史反例页：
+
+1. MCP 规范与官方 Python SDK；
+2. Aider；
+3. OpenHands；
+4. SWE-bench 与 τ²-bench；
+5. Dify；
+6. CrewAI；
+7. AutoGPT 与 Flowise 的历史反例。
+
+六个核心拆解进入课程地图第 05 阶段；项目总览和历史反例只提供导航与补充判断，不计入课程完成度。现有交付型案例仍保留，项目阶段因此从 1 项扩为 7 项，全书公开课程完成度从 20 项变为 26 项。
+
+Hermes Agent 与 OpenClaw 只进入项目总览的“前沿高权限观察区”，标记为 `watch-only`，不创建独立拆解页、不进入课程完成度，也不提供默认安装步骤。
+
+## 2. 已确认事实与边界
+
+- 当前公开站点已经有 14 章、4 个前沿专题、交付型案例、课程地图、三条阅读路径、42 道面试题和本地学习状态。
+- 所有现有 URL、localStorage 键和 42 道题的题目 ID、正文、岗位与难度保持不变。
+- Python 是第三阶段 Lab Kit 和第四阶段综合项目的默认实现语言；本阶段按开源项目原生技术栈阅读源码。
+- MCP 页面必须把规范与运行实现分开：协议事实来自 `modelcontextprotocol/modelcontextprotocol`，Python 实现来自 `modelcontextprotocol/python-sdk`。
+- OpenHands 当前是多仓库系统。`OpenHands/OpenHands@v1.24.0` 是 Agent Canvas 与本地编排，核心 Python Agent Server、agent、conversation、tool 和 workspace 在 `OpenHands/software-agent-sdk@v1.49.6`。页面不能继续按旧单仓库架构讲解。
+- CrewAI canonical 仓库为 `crewAIInc/crewAI`；旧 owner 会重定向，但正文与数据只保存 canonical 名称。
+- Flowise 仓库已归档。维护者在讨论 `#6727` 中给出的时间线为：2026-07-29 停止新功能、2026-08-13 归档、2026-08-31 EOL。它只能作为历史反例。
+- Dify 使用附加限制的修改版 Apache-2.0；AutoGPT 与 Flowise 都是按目录或文件区分的混合许可，不能用一个宽泛的“开源许可”标签代替逐文件判断。
+- 官方仓库可公开访问不等于其中的截图、Logo、商标或第三方素材可自由复制。项目图默认原创重绘。
+- 本阶段不执行项目、不下载模型、不调用付费 API、不公布非本书自建的 benchmark 成绩。
+
+## 3. 目标读者与学习结果
+
+本阶段面向已经读过基础章节、希望从“知道概念”过渡到“能读真实工程”的读者。
+
+完成六个核心拆解后，读者应能：
+
+- 从入口、状态、工具、执行、证据和失败边界追踪一条真实调用链；
+- 区分协议定义、SDK 实现、产品壳、运行时和评测 harness；
+- 解释一个设计为何存在，以及它解决了什么代价；
+- 识别仓库迁移、版本漂移、许可证分区、归档和营销指标的风险；
+- 用现有面试题讨论源码判断与工程取舍，而不是背框架 API；
+- 为第三阶段 Python Lab Kit 写出可验证的实验假设，但本阶段不运行实验。
+
+## 4. 方案比较与选择
+
+### 方案 A：每个仓库一篇独立长文
+
+优点是仓库边界直观。缺点是 MCP 规范与 SDK、OpenHands Canvas 与 SDK、SWE-bench 与 τ²-bench 会被错误拆开，读者难以理解跨仓库契约；页面数量也会把课程变成框架目录。
+
+### 方案 B：按工程问题组织六个核心拆解（采用）
+
+每页回答一个稳定工程问题，并允许一个页面包含两个明确分工的仓库。正文采用 Markdown，机器可校验的版本、许可证、维护状态、源码入口和调用链放入集中数据。它既保留叙事能力，又能阻止链接和版本在多处漂移。
+
+### 方案 C：把全部内容生成自结构化数据
+
+一致性最强，但长篇中文解释、反例和源码推导会被迫塞进数据结构，编辑体验差，组件也会承担过多内容职责。
+
+因此采用方案 B：`contentRegistry` 继续负责页面身份，新的项目索引负责版本化源码事实，Markdown 负责解释，组件只渲染可复用的事实卡和调用链。
+
+## 5. 公开信息架构与精确路由
+
+| 稳定 item ID | 规范路由 | 页面角色 | 计入课程 |
+| --- | --- | --- | --- |
+| `projects-index` | `/projects/` | 项目总览、阅读顺序与分类边界 | 否 |
+| `project-mcp-python-sdk` | `/projects/mcp-python-sdk` | MCP 规范到 Python SDK 工具调用 | 是 |
+| `project-aider` | `/projects/aider` | 仓库上下文到可验证代码修改 | 是 |
+| `project-openhands` | `/projects/openhands` | Canvas、Agent Server、SDK 与工作区边界 | 是 |
+| `project-agent-benchmarks` | `/projects/agent-benchmarks` | SWE-bench 与 τ²-bench 的任务到评分链 | 是 |
+| `project-dify` | `/projects/dify` | 平台请求到工作流图执行 | 是 |
+| `project-crewai` | `/projects/crewai` | Crew、Task、Agent 与工具协作 | 是 |
+| `project-history-autogpt-flowise` | `/projects/history-autogpt-flowise` | 历史价值、架构债与迁移判断 | 否 |
+
+规则：
+
+- `/projects/` 是索引，不复制六篇正文；它展示学习目标、先修、状态和入口。
+- 六个核心页面是 `kind: 'project'` 的公开 `CourseItem`。
+- 历史页也是 `kind: 'project'` 的内容记录，但 `catalogTier: 'historical'`，不进入 `courseMap` 或完成度。
+- `/labs/`、`/capstone/` 与任何“开始实验”入口继续不存在并返回 404。
+- `/projects` 与 `/projects/`、每个 clean URL 与尾斜杠形式都必须能由预览和 Pages 正确解析。
+
+## 6. 课程地图、导航与学习状态
+
+### 6.1 第 05 阶段
+
+项目阶段按以下顺序展示：
+
+1. MCP 规范与 Python SDK；
+2. Aider；
+3. OpenHands；
+4. Agent 评测基准；
+5. Dify；
+6. CrewAI；
+7. 现有交付型 Agent 质量门案例。
+
+新增六项后的公开课程分母固定为 26。项目总览、历史反例和 `watch-only` 条目不进入分母。旧的 20 条完成记录按规范化 route 原样复用，不迁移、不清空；新增项目初始为未完成。
+
+新增课程项的先修关系：
+
+| item ID | prerequisites | 完成证据 |
+| --- | --- | --- |
+| `project-mcp-python-sdk` | `chapter-04-tools-mcp`, `frontier-interoperability-identity` | 一张规范层、SDK 层与业务授权层边界图 |
+| `project-aider` | `chapter-08-evaluation`, `chapter-09-safety-recovery`, `chapter-13-coding-agent` | 一份从仓库上下文到补丁验证的调用链笔记 |
+| `project-openhands` | `chapter-09-safety-recovery`, `chapter-10-production`, `chapter-13-coding-agent`, `project-aider` | 一张 Canvas、Server、SDK、Workspace 的信任边界图 |
+| `project-agent-benchmarks` | `chapter-08-evaluation`, `project-aider`, `project-openhands` | 一份任务、环境、轨迹、评分与不可比较项清单 |
+| `project-dify` | `chapter-06-loop-graph`, `chapter-09-safety-recovery`, `chapter-10-production` | 一张 API 请求到 Graph 节点事件的执行图 |
+| `project-crewai` | `chapter-07-multi-agent`, `chapter-08-evaluation`, `chapter-09-safety-recovery` | 一份角色消融与协调成本评审表 |
+
+先修只表达推荐理解顺序，不锁页面。现有 `case-delivery-agent` 仍保留原先修关系，排列在阶段末尾作为跨项目工程质量门总结。
+
+### 6.2 阅读路径
+
+- `beginner` 与 `interview` 两条路径不变。
+- `engineering` 在现有 10 站后追加六个核心项目和交付型案例，共 17 站；顺序与第 05 阶段一致。
+- 项目总览与历史页不进入 `readingPaths`。
+- `ReadingProgress` 继续追踪“全部公开 CourseItem 与所有 readingPath step 的并集”；localStorage 仍保存 route 字符串。
+
+### 6.3 导航
+
+- 顶栏“实战”只放“开源项目拆解”和“交付型案例”，避免塞入八个子项。
+- 侧栏新增“开源项目拆解”分组，顺序为总览、六个核心、历史反例。
+- 现有“案例研究”保留交付型案例，章节、前沿、复习与 GitHub 入口不变。
+
+## 7. 项目事实索引
+
+### 7.1 单一数据源
+
+页面身份继续由 `contentRegistry` 唯一提供 `itemId / route / title / navTitle / kind`。项目专属事实进入 `sources/project-index.yml`，只通过 `page_item_id` 引用页面，不重复 route 或标题。
+
+建议 schema：
+
+```yaml
+schema_version: 1
+defaults:
+  verified_at: '2026-09-26'
+  review_by: '2026-10-26'
+pages:
+  - page_item_id: project-aider
+    tier: core
+    subjects: [aider]
+    interview_question_ids: [iq-13-a, iq-13-b, iq-13-c]
+subjects:
+  - id: aider
+    canonical_repo: Aider-AI/aider
+    canonical_url: https://github.com/Aider-AI/aider
+    pin_kind: release
+    pinned_ref: v0.86.0
+    pinned_commit: a4be6ccd87ebaa59b361f3f028d116ce1761b626
+    maintenance: active
+    license_expression: Apache-2.0
+    license_path: LICENSE.txt
+    license_scope: repository
+    watch_url: https://github.com/Aider-AI/aider/releases/latest
+    entrypoints:
+      - aider/main.py
+      - aider/coders/base_coder.py
+```
+
+`project-index.yml` 只包含公开事实和固定源码路径。页面中的解释性段落仍在 Markdown；组件从索引渲染固定版本、维护状态、许可证、源码入口和升级日期。
+
+### 7.2 字段不变量
+
+- `page_item_id` 必须存在于 `contentRegistry`，且页面 tier 与 courseMap 使用方式一致。
+- `canonical_repo` 使用 GitHub API 返回的 `full_name`，不能保存会重定向的旧 owner。
+- `pinned_commit` 必须是 40 位小写十六进制 SHA；页面源码链接必须使用该 SHA，不使用 `main`、`master` 或可移动 tag。
+- `pinned_ref` 用于人类识别；`pin_kind` 明确是 `release`、`tag` 或 `commit`。
+- 一个 ref 若存在，远端解析结果必须等于 `pinned_commit`。
+- `entrypoints` 必须在固定 commit 中存在；每个核心页面至少 3 个、最多 8 个。
+- `maintenance` 只能是 `active`、`watch-only`、`historical`、`archived-eol`。
+- 许可证按具体文件与目录作用域记录。`license_expression` 不确定时使用项目内定义的 `LicenseRef-*`，不能伪造 SPDX。
+- `interview_question_ids` 只能引用现有 42 题，页面不得创建新答案副本。
+- `verified_at <= review_by`，到期只改变复核状态，不自动改正文。
+
+## 8. 初始固定版本与许可证基线
+
+下表是设计日核验的初始 pin。实施时如果上游已发布新版本，不自动追新；先比较差异，再由人工决定更新设计 pin 或保留当前教学基线。
+
+| subject ID | canonical repo | pinned ref | pinned commit | 维护状态 | 许可证边界 |
+| --- | --- | --- | --- | --- | --- |
+| `mcp-spec` | `modelcontextprotocol/modelcontextprotocol` | `2026-07-28` | `5f5440bb26a62e2cf3440b92da5a667efa03b267` | active | 仓库处于 MIT → Apache-2.0 过渡；新代码与规范贡献 Apache-2.0，普通文档（不含规范）CC-BY-4.0，未重许可旧贡献仍为 MIT |
+| `mcp-python-sdk` | `modelcontextprotocol/python-sdk` | `v2.2.0` | `9972c21aa42054fb1450c5fc614761ed11847ec6` | active | MIT，仍需逐文件排除第三方素材 |
+| `aider` | `Aider-AI/aider` | `v0.86.0` | `a4be6ccd87ebaa59b361f3f028d116ce1761b626` | active | Apache-2.0 |
+| `openhands-canvas` | `OpenHands/OpenHands` | `v1.24.0` | `7dc6805406ea3c76cb4a3ce407c3c72d481b0ac6` | active | MIT；本仓库现在主要是 Agent Canvas 和编排层 |
+| `openhands-sdk` | `OpenHands/software-agent-sdk` | `v1.49.6` | `fcc102a697874d54a357e36004e02c95040dbdc0` | active | MIT；Canvas 同版本依赖 `@openhands/typescript-client@1.49.6` |
+| `swe-bench` | `SWE-bench/SWE-bench` | `v5.0.1` | `87ab1f6ced28f75ba73ca899dc759b019310944a` | active | MIT；该 ref 是 tag，不冒充 GitHub Release |
+| `tau2-bench` | `sierra-research/tau2-bench` | `v1.0.1` | `fc0055dc4e0a316c3f83133267fbd6faaa770992` | active | MIT |
+| `dify` | `langgenius/dify` | `1.17.1` | `8387590ace4a094de812b7847fc6a4c3a27cd52b` | active | `LicenseRef-Dify-Modified-Apache-2.0`：多租户、前端 Logo/版权与外观专利有附加条件 |
+| `crewai` | `crewAIInc/crewAI` | `1.15.22` | `7a01af27912c2b142d8bac70d1894343f8b91bd1` | active | MIT；源码已采用 `lib/crewai/...` monorepo 路径 |
+| `autogpt` | `Significant-Gravitas/AutoGPT` | `autogpt-platform-beta-v0.8.1` | `ead8f943f981ea650285eee3020c8ff0e7eda94d` | historical | 混合许可：`autogpt_platform/` 为 PolyForm Shield，其余列明范围为 MIT |
+| `flowise` | `FlowiseAI/Flowise` | `flowise@3.1.4` | `a65f81bb43ef66d3ce734bf0dff4223ae8041c95` | archived-eol | 混合许可：enterprise 目录与显式标记文件为商业许可，其余为 Apache-2.0；2026-08-31 EOL |
+| `hermes-agent` | `NousResearch/hermes-agent` | `v2026.9.24` | `f97608f178d1ffeca59860195ab7da295f7c8e5f` | watch-only | MIT；仅做长期自主能力与权限风险观察 |
+| `openclaw` | `openclaw/openclaw` | `v2026.9.6` | `eb377ac59e6c9fd6c7705028034812becf00271b` | watch-only | MIT，另有 `THIRD_PARTY_NOTICES.md`；仅做高权限个人 Agent 风险观察 |
+
+## 9. 核心页面固定模板
+
+六个核心页面使用同一信息顺序，标题可按项目调整，但不能删除契约段落：
+
+1. **30 秒结论**：这个项目解决什么，不解决什么；
+2. **为什么选它**：与课程哪一章连接，以及为什么不是按 Star 排名；
+3. **版本与边界卡**：canonical repo、固定 ref/SHA、核验日期、维护状态、许可证作用域；
+4. **原创架构图**：只画本页会追踪的组件，标明“源码事实”和“本书归纳”；
+5. **唯一纵向调用链**：从一个入口追到结果或评分，步骤有稳定编号；
+6. **关键源码入口**：3–8 个固定 commit 链接，写清文件职责与本页使用的符号；
+7. **一次请求的数据流**：输入、状态变化、工具或环境、输出证据；
+8. **阅读练习**：要求读者在固定源码中找证据，不要求安装依赖或调用模型；
+9. **失败边界**：至少一个确定性反例，说明哪一层负责停止、恢复或拒绝；
+10. **生产边界**：什么不能由该项目自动保证；
+11. **高频面试点**：只链接现有题目 ID，页面不复制答案；
+12. **升级复核**：上游变化时先检查哪些文件与契约；
+13. **来源与归因**：固定源码、许可证、官方文档和原创图依据。
+
+页面必须明确区分三类陈述：
+
+- **源码事实**：固定 commit 中可以定位的接口、路径或控制流；
+- **本书解释**：为教学简化的架构名称、分层和类比；
+- **阅读练习**：读者应从源码验证的假设，不写成已经运行的结果。
+
+## 10. 六个核心拆解的纵向范围
+
+### 10.1 MCP 规范与 Python SDK
+
+- **核心问题：** 一次 `tools/call` 如何从协议消息进入 Python 工具函数，再返回结构化结果。
+- **唯一链路：** 2026-07-28 schema → Python tool 注册 → ToolManager → low-level Server handler → ServerSession → stdio 传输。
+- **关键入口：**
+  - `schema/2026-07-28/schema.json`
+  - `docs/docs/2026-07-28/learn/architecture.mdx`
+  - `examples/snippets/servers/basic_tool.py`
+  - `src/mcp/server/mcpserver/server.py`
+  - `src/mcp/server/mcpserver/tools/tool_manager.py`
+  - `src/mcp/server/lowlevel/server.py`
+  - `src/mcp/server/session.py`
+  - `src/mcp/server/stdio.py`
+- **必须讲清：** 规范仓库不是 Python 服务实现；SDK 提供协议实现，但不替业务授权、工具最小权限或结果正确性背书。
+- **面试题：** `iq-04-a`、`iq-04-b`、`iq-04-c`。
+
+### 10.2 Aider
+
+- **核心问题：** 一个 Coding Agent 如何把仓库上下文变成可审查的补丁并接回 Git 证据。
+- **唯一链路：** CLI 参数与仓库确认 → Coder 创建 → repo map/上下文选择 → 模型请求 → edit format 解析 → 文件修改 → lint/test/commit 反馈。
+- **关键入口：**
+  - `aider/main.py`
+  - `aider/coders/base_coder.py`
+  - `aider/repomap.py`
+  - `aider/coders/editblock_coder.py`
+  - `aider/repo.py`
+  - `aider/run_cmd.py`
+- **必须讲清：** repo map 是上下文选择策略，不等于模型读完全部仓库；自动提交也不等于任务已经通过业务验收。
+- **面试题：** `iq-13-a`、`iq-13-b`、`iq-13-c`。
+
+### 10.3 OpenHands
+
+- **核心问题：** 用户界面、Agent Server、SDK agent 与 workspace 如何跨仓库协作并隔离执行权限。
+- **唯一链路：** Agent Canvas conversation API → TypeScript client/adapter → Agent Server conversation router/service → SDK Conversation → Agent → Tool/Workspace → Event 回流 Canvas。
+- **关键入口：**
+  - Canvas：`src/api/conversation-service/agent-server-conversation-service.api.ts`
+  - Canvas：`src/api/agent-server-adapter.ts`
+  - Server：`openhands-agent-server/openhands/agent_server/conversation_router.py`
+  - Server：`openhands-agent-server/openhands/agent_server/conversation_service.py`
+  - SDK：`openhands-sdk/openhands/sdk/conversation/conversation.py`
+  - SDK：`openhands-sdk/openhands/sdk/agent/agent.py`
+  - SDK：`openhands-sdk/openhands/sdk/tool/tool.py`
+  - SDK：`openhands-sdk/openhands/sdk/workspace/workspace.py`
+- **必须讲清：** `OpenHands/OpenHands` 当前不是旧版单体 Python Agent 仓库；直接在宿主机运行的权限风险与 Docker/远端 workspace 的隔离边界必须单列。
+- **面试题：** `iq-09-b`、`iq-10-a`、`iq-13-c`。
+
+### 10.4 SWE-bench 与 τ²-bench
+
+- **核心问题：** Agent 输出如何进入可复现环境、轨迹和评分，为什么两个 benchmark 的分数不能直接横比。
+- **纵向双轨：**
+  - SWE-bench：实例与预测 patch → evaluation runner → 容器环境 → 测试执行 → grading → report；
+  - τ²-bench：task → agent/user simulation → environment/tool → trajectory → evaluator/reward。
+- **关键入口：**
+  - `swebench/harness/run_evaluation.py`
+  - `swebench/harness/docker_utils.py`
+  - `swebench/harness/grading.py`
+  - `swebench/harness/reporting.py`
+  - `src/tau2/run.py`
+  - `src/tau2/runner/simulation.py`
+  - `src/tau2/environment/environment.py`
+  - `src/tau2/evaluator/evaluator.py`
+- **必须讲清：** 本书只拆 harness，不公布自称官方的成绩；后续 10 条本地 fixture 是第三阶段自建微型回归集，不是 SWE-bench 或 τ²-bench 子集。
+- **面试题：** `iq-08-a`、`iq-08-b`、`iq-08-c`。
+
+### 10.5 Dify
+
+- **核心问题：** 一个低代码平台如何把 API 请求转成可执行工作流图，并在节点、事件和持久化之间分层。
+- **唯一链路：** service API workflow controller → Workflow AppGenerator/AppRunner → WorkflowEntry → Graphon GraphEngine → NodeFactory/Agent node → event/response converter。
+- **关键入口：**
+  - `api/controllers/service_api/app/workflow.py`
+  - `api/core/app/apps/workflow/app_generator.py`
+  - `api/core/app/apps/workflow/app_runner.py`
+  - `api/core/workflow/workflow_entry.py`
+  - `api/core/workflow/node_factory.py`
+  - `api/core/workflow/nodes/agent_v2/agent_node.py`
+  - `api/core/app/apps/common/workflow_response_converter.py`
+- **必须讲清：** 只选一条纵向链，不从头解释整个平台；Graphon 是实际执行依赖；Dify 许可证不是无附加条件的 Apache-2.0。
+- **面试题：** `iq-02-b`、`iq-06-a`、`iq-10-a`。
+
+### 10.6 CrewAI
+
+- **核心问题：** 角色式多 Agent 如何把 Crew、Process、Task、Agent、Executor 和 Tool 串起来，以及协调成本在哪里出现。
+- **唯一链路：** `Crew.kickoff` → process 选择 → Task 执行 → Agent core → CrewAgentExecutor/StepExecutor → ToolUsage → Task output。
+- **关键入口：**
+  - `lib/crewai/src/crewai/crew.py`
+  - `lib/crewai/src/crewai/process.py`
+  - `lib/crewai/src/crewai/execution.py`
+  - `lib/crewai/src/crewai/task.py`
+  - `lib/crewai/src/crewai/agent/core.py`
+  - `lib/crewai/src/crewai/agents/crew_agent_executor.py`
+  - `lib/crewai/src/crewai/agents/step_executor.py`
+  - `lib/crewai/src/crewai/tools/tool_usage.py`
+- **必须讲清：** 页面以 sequential process 作为一条可追踪链，不把它泛化为所有 CrewAI 模式；角色名称不自动形成权限隔离或质量增益。
+- **面试题：** `iq-07-a`、`iq-07-b`、`iq-07-c`。
+
+## 11. 历史反例与前沿观察
+
+### 11.1 AutoGPT / Flowise 历史页
+
+历史页仍记录固定 commit、维护状态、许可证和关键路径，但不使用核心页的“推荐采用”语气。页面回答：
+
+- 当时解决了什么真实问题；
+- 哪些架构模式仍值得学习；
+- 哪些假设在模型、工具和工程实践变化后失效；
+- 许可证、归档或迁移如何改变生产选型；
+- 如何迁移到更小、更可测、更可维护的结构。
+
+AutoGPT 只追踪 `classic/original_autogpt/autogpt/app/main.py`、`agents/agent.py` 与当前平台边界；Flowise 只追踪 `packages/server/src/controllers/predictions/index.ts`、`services/predictions/index.ts` 与 Agentflow 结构。页面不提供安装命令，也不把仓库未归档等同于经典架构仍是推荐生产基线。
+
+关联面试题：`iq-02-b`、`iq-07-c`、`iq-10-a`。
+
+### 11.2 Hermes Agent / OpenClaw
+
+项目总览设置“前沿高权限观察区”，只展示：
+
+- canonical repo 与固定观察版本；
+- 长期自主、记忆、IM/桌面/外部系统权限的风险标签；
+- 指向 `Agent 安全评测`、`失败、恢复与安全边界` 和 Radar 的站内链接；
+- “不是初学者默认安装步骤”的明确说明。
+
+二者不进入课程完成度、readingPaths、侧栏项目拆解列表或面试题扩展。以后若要升格为核心拆解，必须走新的设计与安全审查。
+
+## 12. 组件与内容边界
+
+建议最小组件：
+
+- `ProjectOverview.vue`：从项目索引生成核心、历史与 watch-only 三组入口；
+- `ProjectMeta.vue`：渲染固定版本、维护状态、许可证和核验日期；
+- `ProjectCallChain.vue`：把结构化步骤渲染成有序列表与原创关系图；
+- `ProjectSourceLinks.vue`：生成固定 SHA 的源码链接和路径说明。
+
+组件只负责结构、状态与可访问性，不保存长篇解释。每个 Markdown 页面通过 `project-id` 绑定项目索引，并保留模板中的 13 个段落。
+
+调用链数据必须是有序数组；每一步包含 `id / label / subject_id / source_path / symbol / responsibility`。同一页只能有一个主链；benchmark 页允许在同一比较组件中并列两条受控轨道，但每条各自从任务到评分闭合。
+
+## 13. 版本保鲜与自动化安全
+
+在现有每周来源巡检上增加项目索引检查，但继续遵守“只发现变化，不自动改正文”：
+
+1. 验证 canonical repo 未重定向且固定 commit 可访问；
+2. 验证 pinned ref 仍解析到 pinned commit；
+3. 验证所有 `entrypoints` 在固定 commit 中存在；
+4. 比较最新 release、默认分支 HEAD、archived 状态和许可证路径；
+5. 新版本或新提交只产生 `project_update_available`；归档、迁移、许可证变化产生 `project_review_required`；
+6. HTTP 429/5xx、DNS、超时与 JSON 解析失败归为瞬时或网络错误，不能计为 healthy，也不能当永久死链；
+7. 页面超过 `review_by` 后静态 HTML 只显示中性“固定于 X，待按日期复核”，客户端可显示当前复核状态；页面与脚本共用 `Asia/Shanghai` 日期函数；
+8. 自动化只上传报告并创建权威 Issue 或草稿 PR，绝不抓取上游正文自动写入书稿。
+
+权限保持两段式：扫描 job 只有 `contents: read`，checkout 使用 `persist-credentials: false`；写 Issue 的 job 不 checkout、不安装依赖，只读取扫描 artifact 并调用 GitHub API。feature branch 手动运行不得更新默认分支权威 Issue；workflow 使用并发组避免互相关闭或覆盖告警。
+
+## 14. 图片、代码引用与 provenance
+
+- 六张主架构图和调用链图使用本项目原创 Vue/SVG/CSS；图下注明依据的 subject、ref、commit 与源码路径。
+- 默认不放项目 Logo、README 图片、产品 UI 截图或第三方 benchmark 图表。
+- 代码只做短引或伪代码重述；直接引用必须精确到文件、固定 commit 和适用许可证，不复制大段实现。
+- 若确需直接素材，文件只能进入 `docs/public/project-assets/`，并登记到 `assets/provenance.yml`。
+
+`assets/provenance.yml` 每条必须包含：
+
+```yaml
+- local_file: docs/public/project-assets/example.svg
+  origin: third-party
+  source_url: https://github.com/org/repo/blob/<commit>/path/file.svg
+  source_repo: org/repo
+  source_ref: <commit>
+  source_path: path/file.svg
+  license: Apache-2.0
+  copyright_holder: Example Authors
+  modified: true
+  used_by: [project-example]
+  alt: 图中表达的实际关系
+  verified_at: '2026-09-26'
+```
+
+缺字段、使用移动分支 URL、许可证不覆盖该文件、来源是网页但没有复用授权时，构建失败。原创内联组件不进入外部素材目录，但图下注明“本书原创重绘”及事实来源。
+
+## 15. 页面数据流
+
+```text
+contentRegistry（页面身份）
+        │ itemId
+        ▼
+project-index.yml（固定版本、许可证、源码入口、调用链）
+        │                         ┌─ weekly check → report / Issue
+        ├─ ProjectOverview ───────┤
+        ├─ ProjectMeta            └─ no automatic content rewrite
+        ├─ ProjectCallChain
+        └─ ProjectSourceLinks
+
+Markdown（解释、反例、练习、生产边界）
+        └─ 引用同一 project-id，不复制版本和链接
+```
+
+所有项目元数据在构建时静态渲染。页面运行时不请求 GitHub API，不暴露 token，也不会因上游临时不可用而失去正文。
+
+## 16. 移动端、读屏与打印
+
+- 1440px 使用正文主列、窄事实栏和源码目录；390px 全部重排为单列。
+- 调用链使用原生 `<ol>` / `<li>`，CSS 只增强轨道；移除 marker 时显式保留 `role="list"` / `role="listitem"` 以兼容 Safari/VoiceOver。
+- 颜色不能单独表达 core、historical、watch-only 或失败状态，必须同时显示文本。
+- 源码路径允许容器内换行或局部滚动，不能造成页面级横向溢出。
+- 触控目标至少 44px，`:focus-visible` 使用明确轮廓，不用高饱和整块背景。
+- 无 JavaScript 时，版本卡、调用链、源码入口、失败边界和来源仍完整可读。
+- 打印时展开所有折叠说明，显示完整固定 SHA 与 URL；隐藏纯交互 summary，不遗漏折叠后的源码入口。
+- 原创图同时提供“怎么看”“不要误解”和纯文本有序版；纯视觉 SVG 使用明确 `aria-label`，结构性列表不套 `role="img"`。
+
+## 17. 失败与降级
+
+- **项目索引损坏：** schema 校验失败，构建中止；不能降级为“0 个项目”。
+- **页面引用未知 subject/item：** 构建失败并打印 ID。
+- **固定源码路径不存在：** 每周巡检标记 `project_review_required`；合并前的显式在线核验必须通过。
+- **上游发布新版本：** 页面继续诚实展示固定版本；Radar/Issue 提醒人工比较，不自动改 pin。
+- **仓库归档或迁移：** 不删除旧页；更新维护状态、canonical 地址和迁移说明后再发布。
+- **许可证变化：** 立即阻止新增直接素材；原创解释页可以保留，但必须复核已有代码短引与 provenance。
+- **GitHub 限流或网络失败：** 记为瞬时/网络错误并有限重试，不能算 healthy；静态站仍使用已核验数据构建。
+- **项目体量过大：** 只保留本设计的一条纵向链，其他子系统放在“本页没有覆盖”中，不扩写成框架手册。
+- **第三阶段 Lab 未交付：** 阅读练习只要求找源码证据，不显示运行、复制命令或成功结果。
+
+## 18. 测试与验收
+
+### 18.1 数据与内容
+
+- `contentRegistry` 新增且仅新增 8 条项目路由；ID、规范化 route 唯一。
+- `project-index.yml` 包含 13 个 subject：9 个核心页 subject、2 个历史 subject、2 个 watch-only subject。
+- 六个核心页、一个总览和一个历史页均存在；每页 `project-id` 与 registry、项目索引一致。
+- 六个核心页各包含模板 13 个部分、一个主调用链、3–8 个固定源码入口和至少一个失败边界。
+- 页面所有源码链接使用 40 位固定 commit；不存在 `blob/main/` 或 `blob/master/`。
+- 许可证、维护状态和设计日 pin 与第 8 节逐项一致。
+- 页面引用的面试题 ID 全部存在于现有 42 题；题目数组、答案和分布不变。
+- AutoGPT/Flowise 只在历史页，Hermes/OpenClaw 只在 watch-only 区；它们不进入 CourseItem 或 readingPaths。
+- 不使用 Star、下载量或榜单名次证明工程质量；不声称本书取得官方 benchmark 成绩。
+
+### 18.2 课程与路由
+
+- project stage 恰好 7 个 CourseItem；全书公开完成度分母恰好 26。
+- 六个核心项目在课程地图各出现一次；总览和历史页不计完成度。
+- engineering 路径恰好 17 站，原 10 站顺序不变，后接六个核心项目和交付型案例。
+- `/course/` SSR 恰好包含 26 个唯一课程链接；每个目标 HTML 存在。
+- dist 只允许本设计 8 个 `/projects` 页面，拒绝额外 `/projects/**` 与全部 `/labs/**`、`/capstone/**`。
+- 新路由的 clean URL 与尾斜杠形式均为 200；全部旧 URL 保持 200。
+- process docs 与项目研究草稿不进入 dist。
+
+### 18.3 版权与来源
+
+- 外部素材目录中的每个文件在 `assets/provenance.yml` 有且仅有一条有效记录。
+- 直接素材的 URL 固定到 commit，许可证覆盖具体文件，归因和 alt 非空。
+- 页面引用的 source path 在对应 pinned commit 中存在；canonical repo 未发生未记录重定向。
+- Dify、AutoGPT、Flowise、MCP 的特殊许可证边界有静态断言，不能被简化成错误的单一 SPDX 标签。
+- 自动检查只开待审记录，不自动修改或发布正文。
+
+### 18.4 浏览器与可访问性
+
+- 1440px 与 390px、浅色与深色分别检查总览和至少两个复杂页面。
+- 页面无横向溢出；调用链、源码路径和版本卡在 390px 可读。
+- 键盘可依次访问项目导航、固定源码和相关面试题，焦点清晰。
+- 读屏能读出项目分类、维护状态、固定版本、调用链顺序和风险说明。
+- 无 JavaScript 时八个页面的核心内容和链接完整可用。
+- 打印 PDF 包含全部调用链与源码入口，不遗漏折叠内容。
+- 控制台、资源请求和内部链接无错误。
+
+### 18.5 完整门禁
+
+- `pnpm test`、`pnpm validate`、`pnpm build` 和 dist 校验全部通过；
+- 项目来源真实巡检完成且没有永久失败或解析失败；
+- `git diff main...HEAD --check` 无输出；
+- Pages Actions 成功后，线上八个项目路由、课程地图、engineering 路径和旧入口复验通过。
+
+## 19. 非目标
+
+本阶段明确不做：
+
+- Python Lab 包、fixture、虚拟环境、Docker compose 或运行命令；
+- 调用真实模型、执行 Aider/OpenHands/Dify/CrewAI 或跑 benchmark；
+- MCP Server 示例实现、综合项目或 Computer Use 选修；
+- 登录、评论、后端、云端进度、在线 AI 问答或遥测；
+- 新增面试题或复制现有答案；
+- 框架排名、Star 榜、价格表或“最佳框架”结论；
+- 把 Hermes Agent、OpenClaw、AutoGPT 或 Flowise 作为初学者默认安装步骤；
+- 直接搬运官网图片、Logo、README 截图或第三方 benchmark 图表；
+- 自动抓取上游内容并改写正文。
+
+## 20. 实施边界与完成定义
+
+第二阶段只有在以下条件同时满足时才完成：
+
+1. 八个公开项目路由、六个核心源码拆解和历史反例全部达到模板契约；
+2. 13 个 subject 的 pin、源码入口、维护与许可证事实通过人工核验；
+3. 课程地图、工程路径、导航和完成度从现有数据稳定扩展；
+4. 原创图、provenance、无 JavaScript、390px、读屏与打印验收通过；
+5. 自动化只发现变化，不能自动发布上游结论；
+6. 第三阶段 Lab 和第四阶段综合项目没有被夹带。
+
+本规格获批后，下一步只编写文件级实施计划；未通过计划复核前不创建项目页面或改站点实现。
