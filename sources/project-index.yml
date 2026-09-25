@@ -105,9 +105,10 @@ subjects:
     entrypoints:
       - { path: examples/snippets/servers/basic_tool.py, symbols: [MCPServer, mcp.tool, sum], responsibility: Register the example tool and expose the host-owned server start point. }
       - { path: src/mcp/server/mcpserver/server.py, symbols: [MCPServer.run, run_stdio_async, MCPServer._handle_call_tool, MCPServer.call_tool], responsibility: Select stdio and bridge the low-level handler to the high-level tool API. }
-      - { path: src/mcp/server/stdio.py, symbols: [stdio_server], responsibility: Transport framed messages over standard I/O. }
+      - { path: src/mcp/server/stdio.py, symbols: [stdio_server], responsibility: Transport framed messages from the reader through the final stdout_writer. }
       - { path: src/mcp/server/lowlevel/server.py, symbols: [Server.run, get_request_handler], responsibility: Run the protocol loop and resolve the tools/call handler. }
-      - { path: src/mcp/server/runner.py, symbols: [serve_dual_era_loop, ServerRunner._on_request, ServerRunner._serialize], responsibility: Dispatch requests and serialize JSON-RPC responses for the transport writer. }
+      - { path: src/mcp/server/runner.py, symbols: [serve_dual_era_loop, ServerRunner._on_request, ServerRunner._serialize], responsibility: Drive the era-specific loop, execute request handlers, and normalize result dictionaries. }
+      - { path: src/mcp/shared/jsonrpc_dispatcher.py, symbols: [JSONRPCDispatcher.run, JSONRPCDispatcher._dispatch_request, JSONRPCDispatcher._write_result], responsibility: Dispatch inbound JSON-RPC requests and construct and write JSONRPCResponse messages. }
       - { path: src/mcp/server/mcpserver/tools/tool_manager.py, symbols: [ToolManager.call_tool], responsibility: Find the registered tool and delegate execution. }
       - { path: src/mcp/server/mcpserver/tools/base.py, symbols: [Tool.run], responsibility: Validate tool input, invoke the function, and convert its result. }
 
@@ -131,11 +132,11 @@ subjects:
     watch_url: https://github.com/Aider-AI/aider/releases/latest
     entrypoints:
       - { path: aider/main.py, symbols: [main], responsibility: Parse options and establish repository context. }
-      - { path: aider/coders/base_coder.py, symbols: [Coder.run, Coder.run_one, Coder.send_message, Coder.send, Coder.apply_updates, Coder.prepare_to_edit, Coder.auto_commit, Coder.lint_edited, Coder.run_shell_commands], responsibility: Coordinate turns, model calls, edit preparation, commits, lint, and confirmed shell commands. }
+      - { path: aider/coders/base_coder.py, symbols: [Coder.run, Coder.run_one, Coder.send_message, Coder.send, Coder.apply_updates, Coder.prepare_to_edit, Coder.auto_commit, Coder.lint_edited, Coder.run_shell_commands, Coder.handle_shell_commands], responsibility: Coordinate turns, model calls, edit preparation, commits, lint, and confirmed shell commands. }
       - { path: aider/models.py, symbols: [Model.send_completion, simple_send_with_retries], responsibility: Send the coding request and support model-generated commit messages. }
       - { path: aider/repomap.py, symbols: [RepoMap.get_repo_map], responsibility: Select a bounded structural repository context. }
       - { path: aider/coders/editblock_coder.py, symbols: [EditBlockCoder.get_edits, EditBlockCoder.apply_edits_dry_run, EditBlockCoder.apply_edits], responsibility: Parse edit tuples, dry-run them, and apply accepted edits. }
-      - { path: aider/io.py, symbols: [InputOutput.write_text, InputOutput.handle_shell_commands], responsibility: Write edited text and require explicit confirmation for shell commands. }
+      - { path: aider/io.py, symbols: [InputOutput.write_text, InputOutput.confirm_ask], responsibility: Write edited text and enforce explicit confirmation policies. }
       - { path: aider/repo.py, symbols: [GitRepo.commit, GitRepo.get_commit_message], responsibility: Generate commit messages and record bounded file changes in Git. }
       - { path: aider/commands.py, symbols: [Commands.cmd_test], responsibility: Run the optional configured test command. }
 
@@ -369,14 +370,18 @@ chains:
       - { id: transport, label: stdio transport, subject_id: mcp-python-sdk, source_path: src/mcp/server/stdio.py, symbol: stdio_server, responsibility: Expose the reader and stdout_writer without adding business authority. }
       - { id: server-run, label: Low-level server loop, subject_id: mcp-python-sdk, source_path: src/mcp/server/lowlevel/server.py, symbol: Server.run, responsibility: Enter the low-level protocol loop with request-scoped outbound support kept separate. }
       - { id: runner-loop, label: Dual-era runner loop, subject_id: mcp-python-sdk, source_path: src/mcp/server/runner.py, symbol: serve_dual_era_loop, responsibility: Drive the runner that accepts incoming protocol messages. }
-      - { id: request, label: Request dispatch entry, subject_id: mcp-python-sdk, source_path: src/mcp/server/runner.py, symbol: ServerRunner._on_request, responsibility: Receive one request and hand it to the protocol dispatcher. }
+      - { id: dispatcher-loop, label: JSON-RPC dispatcher loop, subject_id: mcp-python-sdk, source_path: src/mcp/shared/jsonrpc_dispatcher.py, symbol: JSONRPCDispatcher.run, responsibility: Read framed messages and route requests into the dispatcher request path. }
+      - { id: dispatcher-request, label: Dispatcher request callback, subject_id: mcp-python-sdk, source_path: src/mcp/shared/jsonrpc_dispatcher.py, symbol: JSONRPCDispatcher._dispatch_request, responsibility: Invoke ServerRunner._on_request through the registered on_request callback. }
+      - { id: request, label: Request handler entry, subject_id: mcp-python-sdk, source_path: src/mcp/server/runner.py, symbol: ServerRunner._on_request, responsibility: Build request context, run the selected handler, and return a normalized result dictionary. }
       - { id: dispatch, label: tools/call handler lookup, subject_id: mcp-python-sdk, source_path: src/mcp/server/lowlevel/server.py, symbol: get_request_handler, responsibility: Select the registered low-level tools/call handler. }
       - { id: mcp-handler, label: High-level tools/call handler, subject_id: mcp-python-sdk, source_path: src/mcp/server/mcpserver/server.py, symbol: MCPServer._handle_call_tool, responsibility: Adapt the protocol request to the high-level call surface. }
       - { id: mcp-call, label: MCPServer tool call, subject_id: mcp-python-sdk, source_path: src/mcp/server/mcpserver/server.py, symbol: MCPServer.call_tool, responsibility: Delegate the named tool request to the tool manager. }
       - { id: tool-lookup, label: Registered tool lookup, subject_id: mcp-python-sdk, source_path: src/mcp/server/mcpserver/tools/tool_manager.py, symbol: ToolManager.call_tool, responsibility: Find the registered tool without owning validation or invocation. }
       - { id: tool-run, label: Validation and invocation, subject_id: mcp-python-sdk, source_path: src/mcp/server/mcpserver/tools/base.py, symbol: Tool.run, responsibility: Validate input, invoke the Python function, and convert its result. }
       - { id: tool-function, label: Business tool function, subject_id: mcp-python-sdk, source_path: examples/snippets/servers/basic_tool.py, symbol: sum, responsibility: Execute the registered example capability. }
-      - { id: serialize, label: JSON-RPC response serialization, subject_id: mcp-python-sdk, source_path: src/mcp/server/runner.py, symbol: ServerRunner._serialize, responsibility: Serialize the JSON-RPC response and return it through stdout_writer. }
+      - { id: serialize, label: Result normalization, subject_id: mcp-python-sdk, source_path: src/mcp/server/runner.py, symbol: ServerRunner._serialize, responsibility: Normalize the handler result into a versioned result dictionary without constructing or writing JSONRPCResponse. }
+      - { id: dispatcher-response, label: JSON-RPC response write, subject_id: mcp-python-sdk, source_path: src/mcp/shared/jsonrpc_dispatcher.py, symbol: JSONRPCDispatcher._write_result, responsibility: Construct JSONRPCResponse and write it through the dispatcher stream. }
+      - { id: stdout, label: stdout delivery, subject_id: mcp-python-sdk, source_path: src/mcp/server/stdio.py, symbol: stdio_server, responsibility: Carry the dispatched response through the transport stdout_writer. }
 
   - id: aider-repo-to-verified-edit
     page_item_id: project-aider
@@ -401,10 +406,10 @@ chains:
       - { id: commit, track: 自动提交与 lint（条件分支）, label: Git commit, subject_id: aider, source_path: aider/repo.py, symbol: GitRepo.commit, responsibility: Generate a message through the weak or main model and record the bounded diff. }
       - { id: auto-lint, track: 自动提交与 lint（条件分支）, label: Auto-lint edited files, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.lint_edited, responsibility: By default lint only the files edited in this turn. }
       - { id: lint-commit, track: 自动提交与 lint（条件分支）, label: Second commit after lint, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.auto_commit, responsibility: Conditionally create a second commit after automatic lint fixes. }
-      - { id: shell-confirm, track: 需确认 Shell 分支, label: Shell confirmation, subject_id: aider, source_path: aider/io.py, symbol: InputOutput.handle_shell_commands, responsibility: Require an explicit yes for proposed shell commands even after yes-always. }
-      - { id: shell-run, track: 需确认 Shell 分支, label: Shell execution, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.run_shell_commands, responsibility: Run only confirmed shell commands without a third automatic commit. }
+      - { id: shell-confirm, track: 需确认 Shell 分支, label: Shell confirmation, subject_id: aider, source_path: aider/io.py, symbol: InputOutput.confirm_ask, responsibility: Set explicit_yes_required to require yes for proposed shell commands even after yes-always. }
+      - { id: shell-run, track: 需确认 Shell 分支, label: Shell execution, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.handle_shell_commands, responsibility: Execute the confirmed command and return its output without a third automatic commit. }
       - { id: auto-test, track: 可选 auto-test 分支, label: Optional auto-test, subject_id: aider, source_path: aider/commands.py, symbol: Commands.cmd_test, responsibility: Run configured tests only when auto-test is enabled and do not create a third commit. }
-      - { id: reflection, track: 错误反思回路, label: Error reflection, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.send_message, responsibility: Feed parse, edit, lint, shell, or test failures into a later model turn. }
+      - { id: reflection, track: 错误反思回路, label: Error reflection, subject_id: aider, source_path: aider/coders/base_coder.py, symbol: Coder.run_one, responsibility: Repeat only when reflected_message was set; lint and test failures require Attempt to fix confirmation, while shell output requires separate confirmation before joining cur_messages. }
 
   - id: openhands-canvas-to-workspace-event
     page_item_id: project-openhands

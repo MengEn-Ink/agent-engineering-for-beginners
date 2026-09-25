@@ -35,17 +35,17 @@ RepoMap 不是“读完全部仓库”，而是被预算约束的结构摘要。
 
 ## 一次请求的数据流
 
-用户请求先与明确加入的文件和 RepoMap 组合，`Coder.send` 再通过 `Model.send_completion` 请求模型。`EditBlockCoder.get_edits` 这个 parser 只产出 tuples；`apply_edits_dry_run` 先验证，`prepare_to_edit` 为脏文件做预提交，写盘发生在 `apply_edits` 和 `InputOutput.write_text`。编辑后可先自动提交；commit message 会调用 weak/main model。lint 默认开启，而且只检查已编辑文件，lint 修复后可能产生第二次提交。test 默认关闭；shell 命令必须显式回答 yes，yes-always 也不会放行 shell；shell 或 test 之后没有第三次自动提交。失败证据会进入后续 reflection，而不是被“已有 commit”掩盖。
+用户请求先与明确加入的文件和 RepoMap 组合，`Coder.send` 再通过 `Model.send_completion` 请求模型。`EditBlockCoder.get_edits` 这个 parser 只产出 tuples；`apply_edits_dry_run` 先验证，`prepare_to_edit` 为脏文件做预提交，写盘发生在 `apply_edits` 和 `InputOutput.write_text`。编辑后可先自动提交；commit message 会调用 weak/main model。lint 默认开启，而且只检查已编辑文件，lint 修复后可能产生第二次提交。test 默认关闭；shell 命令必须显式回答 yes：调用 `InputOutput.confirm_ask` 时设置 `explicit_yes_required=True`，所以 yes-always 也不会放行 shell；确认后才由 `Coder.handle_shell_commands` 执行。shell 或 test 之后没有第三次自动提交。lint/test failure 只有在用户确认 Attempt to fix 后才设置 reflected_message；shell output 只有再次确认后才加入 cur_messages，不自动触发当前 run_one 的 reflection。
 
 ## 阅读练习
 
 1. 找出仓库根目录与脏文件在进入 Coder 前如何处理。
 2. 比较 RepoMap 与聊天文件的来源和预算。
-3. 从 `get_edits` 追到 `write_text`，再按 track 标出首次提交、lint 后第二次提交、shell、test 与 reflection 的条件。
+3. 从 `get_edits` 追到 `write_text`，再按 track 标出首次提交、lint 后第二次提交、shell、test 与条件 reflection。
 
 ## 失败边界
 
-当模型输出不能解析为 edit block，正确结果是保留原文件并反馈格式错误；不能用模糊字符串替换“尽量改一下”。dry run 或脏文件保护失败也必须在写盘前停止。当 lint、shell 或测试命令失败，提交存在也不能被报告为任务成功。
+当模型输出不能解析为 edit block，正确结果是保留原文件并反馈格式错误；不能用模糊字符串替换“尽量改一下”。dry run 或脏文件保护失败也必须在写盘前停止。lint 或 test 错误只有在用户确认 Attempt to fix 后进入 reflection；shell 输出则需要再次确认才进入对话历史。当 lint、shell 或测试命令失败，提交存在也不能被报告为任务成功。
 
 ## 生产边界
 

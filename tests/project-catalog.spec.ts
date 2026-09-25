@@ -263,7 +263,7 @@ const expectedPageMappings = {
 }
 const expectedEntrypoints = {
   'mcp-spec': ['schema/2026-07-28/schema.json'],
-  'mcp-python-sdk': ['examples/snippets/servers/basic_tool.py', 'src/mcp/server/mcpserver/server.py', 'src/mcp/server/stdio.py', 'src/mcp/server/lowlevel/server.py', 'src/mcp/server/runner.py', 'src/mcp/server/mcpserver/tools/tool_manager.py', 'src/mcp/server/mcpserver/tools/base.py'],
+  'mcp-python-sdk': ['examples/snippets/servers/basic_tool.py', 'src/mcp/server/mcpserver/server.py', 'src/mcp/server/stdio.py', 'src/mcp/server/lowlevel/server.py', 'src/mcp/server/runner.py', 'src/mcp/shared/jsonrpc_dispatcher.py', 'src/mcp/server/mcpserver/tools/tool_manager.py', 'src/mcp/server/mcpserver/tools/base.py'],
   aider: ['aider/main.py', 'aider/coders/base_coder.py', 'aider/models.py', 'aider/repomap.py', 'aider/coders/editblock_coder.py', 'aider/io.py', 'aider/repo.py', 'aider/commands.py'],
   'openhands-canvas': ['src/api/conversation-service/agent-server-conversation-service.api.ts', 'src/api/agent-server-adapter.ts'],
   'openhands-sdk': ['openhands-agent-server/openhands/agent_server/conversation_router.py', 'openhands-agent-server/openhands/agent_server/conversation_service.py', 'openhands-sdk/openhands/sdk/conversation/conversation.py', 'openhands-sdk/openhands/sdk/agent/agent.py', 'openhands-sdk/openhands/sdk/tool/tool.py', 'openhands-sdk/openhands/sdk/workspace/workspace.py'],
@@ -286,23 +286,24 @@ const expectedCoreEntrypointSymbols = {
     'src/mcp/server/stdio.py': ['stdio_server'],
     'src/mcp/server/lowlevel/server.py': ['Server.run', 'get_request_handler'],
     'src/mcp/server/runner.py': ['serve_dual_era_loop', 'ServerRunner._on_request', 'ServerRunner._serialize'],
+    'src/mcp/shared/jsonrpc_dispatcher.py': ['JSONRPCDispatcher.run', 'JSONRPCDispatcher._dispatch_request', 'JSONRPCDispatcher._write_result'],
     'src/mcp/server/mcpserver/tools/tool_manager.py': ['ToolManager.call_tool'],
     'src/mcp/server/mcpserver/tools/base.py': ['Tool.run'],
   },
   aider: {
     'aider/main.py': ['main'],
-    'aider/coders/base_coder.py': ['Coder.run', 'Coder.run_one', 'Coder.send_message', 'Coder.send', 'Coder.apply_updates', 'Coder.prepare_to_edit', 'Coder.auto_commit', 'Coder.lint_edited', 'Coder.run_shell_commands'],
+    'aider/coders/base_coder.py': ['Coder.run', 'Coder.run_one', 'Coder.send_message', 'Coder.send', 'Coder.apply_updates', 'Coder.prepare_to_edit', 'Coder.auto_commit', 'Coder.lint_edited', 'Coder.run_shell_commands', 'Coder.handle_shell_commands'],
     'aider/models.py': ['Model.send_completion', 'simple_send_with_retries'],
     'aider/repomap.py': ['RepoMap.get_repo_map'],
     'aider/coders/editblock_coder.py': ['EditBlockCoder.get_edits', 'EditBlockCoder.apply_edits_dry_run', 'EditBlockCoder.apply_edits'],
-    'aider/io.py': ['InputOutput.write_text', 'InputOutput.handle_shell_commands'],
+    'aider/io.py': ['InputOutput.write_text', 'InputOutput.confirm_ask'],
     'aider/repo.py': ['GitRepo.commit', 'GitRepo.get_commit_message'],
     'aider/commands.py': ['Commands.cmd_test'],
   },
 }
 const expectedChains = {
-  'mcp-tool-call': ['schema:mcp-spec:schema/2026-07-28/schema.json:CallToolRequest', 'host-run:mcp-python-sdk:src/mcp/server/mcpserver/server.py:MCPServer.run', 'transport:mcp-python-sdk:src/mcp/server/stdio.py:stdio_server', 'server-run:mcp-python-sdk:src/mcp/server/lowlevel/server.py:Server.run', 'runner-loop:mcp-python-sdk:src/mcp/server/runner.py:serve_dual_era_loop', 'request:mcp-python-sdk:src/mcp/server/runner.py:ServerRunner._on_request', 'dispatch:mcp-python-sdk:src/mcp/server/lowlevel/server.py:get_request_handler', 'mcp-handler:mcp-python-sdk:src/mcp/server/mcpserver/server.py:MCPServer._handle_call_tool', 'mcp-call:mcp-python-sdk:src/mcp/server/mcpserver/server.py:MCPServer.call_tool', 'tool-lookup:mcp-python-sdk:src/mcp/server/mcpserver/tools/tool_manager.py:ToolManager.call_tool', 'tool-run:mcp-python-sdk:src/mcp/server/mcpserver/tools/base.py:Tool.run', 'tool-function:mcp-python-sdk:examples/snippets/servers/basic_tool.py:sum', 'serialize:mcp-python-sdk:src/mcp/server/runner.py:ServerRunner._serialize'],
-  'aider-repo-to-verified-edit': ['cli:aider:aider/main.py:main', 'run:aider:aider/coders/base_coder.py:Coder.run', 'turn:aider:aider/coders/base_coder.py:Coder.run_one', 'context:aider:aider/coders/base_coder.py:Coder.send_message', 'repo-map:aider:aider/repomap.py:RepoMap.get_repo_map', 'send:aider:aider/coders/base_coder.py:Coder.send', 'completion:aider:aider/models.py:Model.send_completion', 'parse:aider:aider/coders/editblock_coder.py:EditBlockCoder.get_edits', 'apply-updates:aider:aider/coders/base_coder.py:Coder.apply_updates', 'dry-run:aider:aider/coders/editblock_coder.py:EditBlockCoder.apply_edits_dry_run', 'prepare:aider:aider/coders/base_coder.py:Coder.prepare_to_edit', 'apply:aider:aider/coders/editblock_coder.py:EditBlockCoder.apply_edits', 'write:aider:aider/io.py:InputOutput.write_text', 'auto-commit:aider:aider/coders/base_coder.py:Coder.auto_commit', 'commit:aider:aider/repo.py:GitRepo.commit', 'auto-lint:aider:aider/coders/base_coder.py:Coder.lint_edited', 'lint-commit:aider:aider/coders/base_coder.py:Coder.auto_commit', 'shell-confirm:aider:aider/io.py:InputOutput.handle_shell_commands', 'shell-run:aider:aider/coders/base_coder.py:Coder.run_shell_commands', 'auto-test:aider:aider/commands.py:Commands.cmd_test', 'reflection:aider:aider/coders/base_coder.py:Coder.send_message'],
+  'mcp-tool-call': ['schema:mcp-spec:schema/2026-07-28/schema.json:CallToolRequest', 'host-run:mcp-python-sdk:src/mcp/server/mcpserver/server.py:MCPServer.run', 'transport:mcp-python-sdk:src/mcp/server/stdio.py:stdio_server', 'server-run:mcp-python-sdk:src/mcp/server/lowlevel/server.py:Server.run', 'runner-loop:mcp-python-sdk:src/mcp/server/runner.py:serve_dual_era_loop', 'dispatcher-loop:mcp-python-sdk:src/mcp/shared/jsonrpc_dispatcher.py:JSONRPCDispatcher.run', 'dispatcher-request:mcp-python-sdk:src/mcp/shared/jsonrpc_dispatcher.py:JSONRPCDispatcher._dispatch_request', 'request:mcp-python-sdk:src/mcp/server/runner.py:ServerRunner._on_request', 'dispatch:mcp-python-sdk:src/mcp/server/lowlevel/server.py:get_request_handler', 'mcp-handler:mcp-python-sdk:src/mcp/server/mcpserver/server.py:MCPServer._handle_call_tool', 'mcp-call:mcp-python-sdk:src/mcp/server/mcpserver/server.py:MCPServer.call_tool', 'tool-lookup:mcp-python-sdk:src/mcp/server/mcpserver/tools/tool_manager.py:ToolManager.call_tool', 'tool-run:mcp-python-sdk:src/mcp/server/mcpserver/tools/base.py:Tool.run', 'tool-function:mcp-python-sdk:examples/snippets/servers/basic_tool.py:sum', 'serialize:mcp-python-sdk:src/mcp/server/runner.py:ServerRunner._serialize', 'dispatcher-response:mcp-python-sdk:src/mcp/shared/jsonrpc_dispatcher.py:JSONRPCDispatcher._write_result', 'stdout:mcp-python-sdk:src/mcp/server/stdio.py:stdio_server'],
+  'aider-repo-to-verified-edit': ['cli:aider:aider/main.py:main', 'run:aider:aider/coders/base_coder.py:Coder.run', 'turn:aider:aider/coders/base_coder.py:Coder.run_one', 'context:aider:aider/coders/base_coder.py:Coder.send_message', 'repo-map:aider:aider/repomap.py:RepoMap.get_repo_map', 'send:aider:aider/coders/base_coder.py:Coder.send', 'completion:aider:aider/models.py:Model.send_completion', 'parse:aider:aider/coders/editblock_coder.py:EditBlockCoder.get_edits', 'apply-updates:aider:aider/coders/base_coder.py:Coder.apply_updates', 'dry-run:aider:aider/coders/editblock_coder.py:EditBlockCoder.apply_edits_dry_run', 'prepare:aider:aider/coders/base_coder.py:Coder.prepare_to_edit', 'apply:aider:aider/coders/editblock_coder.py:EditBlockCoder.apply_edits', 'write:aider:aider/io.py:InputOutput.write_text', 'auto-commit:aider:aider/coders/base_coder.py:Coder.auto_commit', 'commit:aider:aider/repo.py:GitRepo.commit', 'auto-lint:aider:aider/coders/base_coder.py:Coder.lint_edited', 'lint-commit:aider:aider/coders/base_coder.py:Coder.auto_commit', 'shell-confirm:aider:aider/io.py:InputOutput.confirm_ask', 'shell-run:aider:aider/coders/base_coder.py:Coder.handle_shell_commands', 'auto-test:aider:aider/commands.py:Commands.cmd_test', 'reflection:aider:aider/coders/base_coder.py:Coder.run_one'],
   'openhands-canvas-to-workspace-event': ['canvas:openhands-canvas:src/api/conversation-service/agent-server-conversation-service.api.ts:AgentServerConversationService', 'router:openhands-sdk:openhands-agent-server/openhands/agent_server/conversation_router.py:start_conversation', 'service:openhands-sdk:openhands-agent-server/openhands/agent_server/conversation_service.py:ConversationService', 'conversation:openhands-sdk:openhands-sdk/openhands/sdk/conversation/conversation.py:Conversation', 'agent:openhands-sdk:openhands-sdk/openhands/sdk/agent/agent.py:Agent.step', 'tool:openhands-sdk:openhands-sdk/openhands/sdk/tool/tool.py:ToolDefinition.__call__', 'workspace:openhands-sdk:openhands-sdk/openhands/sdk/workspace/workspace.py:Workspace', 'event-return:openhands-canvas:src/api/agent-server-adapter.ts:toAppConversation'],
   'benchmark-task-to-score': ['swe-input:swe-bench:swebench/harness/run_evaluation.py:main', 'swe-env:swe-bench:swebench/harness/docker_utils.py:exec_run_with_timeout', 'swe-grade:swe-bench:swebench/harness/grading.py:get_eval_report', 'swe-report:swe-bench:swebench/harness/reporting.py:make_run_report', 'tau-input:tau2-bench:src/tau2/run.py:run_task', 'tau-sim:tau2-bench:src/tau2/runner/simulation.py:run_simulation', 'tau-env:tau2-bench:src/tau2/environment/environment.py:Environment', 'tau-score:tau2-bench:src/tau2/evaluator/evaluator.py:evaluate_simulation'],
   'dify-request-to-graph-events': ['controller:dify:api/controllers/service_api/app/workflow.py:WorkflowRunApi.post', 'generator:dify:api/core/app/apps/workflow/app_generator.py:WorkflowAppGenerator', 'runner:dify:api/core/app/apps/workflow/app_runner.py:WorkflowAppRunner', 'entry:dify:api/core/workflow/workflow_entry.py:WorkflowEntry', 'factory:dify:api/core/workflow/node_factory.py:DifyNodeFactory', 'agent-node:dify:api/core/workflow/nodes/agent_v2/agent_node.py:DifyAgentNode', 'response:dify:api/core/app/apps/common/workflow_response_converter.py:WorkflowResponseConverter'],
@@ -349,8 +350,8 @@ const expectedSubjectFacts = {
 }
 const expectedSubjectDigests = {
   'mcp-spec': '492729a2b1d5e3690d4d4eb8ffb8a6f9089a8d3e21b7a284d49b6c9100788801',
-  'mcp-python-sdk': '3babb9e6f1bd4ff5cdcd7d0ef921f0a349cf79041c6f4501affeba443d7f9c68',
-  aider: 'bde118827811095dc67f11af4905b87fb7b61eabd233c82a365dccf2e5d4ffdb',
+  'mcp-python-sdk': '21a74ad2294a17ef639fb92539bee85e299dd9cc71fea3e6db72d615da7db867',
+  aider: '5e52014bcd913a55fbbaed8dcdf44cff28bcf19d6d6af5b33264c0bb1caec388',
   'openhands-canvas': 'a276ba6d4ae6dcbe9bf28fd1f63727d143d8c5e293ffc49ed8f7baf49b946ddc',
   'openhands-sdk': '238f8bc6be41b1216fc43af67e455cc5309d470603b657a8c08535e657425cb5',
   'swe-bench': 'e356c00937817246deae70028e1d8068a2e9426e33f5d77e5b44e485adb3efaa',
@@ -363,8 +364,8 @@ const expectedSubjectDigests = {
   openclaw: '9eb64f3e66b9ca1449a291d1abcdd39493e1ab262467c7b86dceae6792bded62',
 }
 const expectedChainDigests = {
-  'mcp-tool-call': '077a14394b3e84d60bd28131c5aaa16984801dd3b16a9d7e1824eee48eb5769c',
-  'aider-repo-to-verified-edit': '8a3aad5fbfa3350caf6091b1266db6d207557d26e164f5d7025c383147d58790',
+  'mcp-tool-call': '54b46cce64ce2559ae2656a61335d2b92df9df99fdf87e1b7215efe76d4a1ab4',
+  'aider-repo-to-verified-edit': '222bc344a8184b8ff7cac95a1e36f620a50a58cacb0f61b459132238164486ce',
   'openhands-canvas-to-workspace-event': '6ee7c2a9660f5f8a0d8457ebf2707ebaea0f6367f9ac8eabffa69f825580c79d',
   'benchmark-task-to-score': 'b7227cce3a43907b38fde1fbbde5548e0d148d6de88ddd9d3ecf5042b1876f49',
   'dify-request-to-graph-events': '060d82f9c004cfb20a95ccf3a951383bb7715b47ba25abb1232dcfc9034b6a50',
@@ -387,7 +388,7 @@ describe('real project catalog', () => {
     expect(Object.keys(catalog)).toEqual(['schema_version', 'defaults', 'pages', 'subjects', 'chains'])
     expect(catalog.schema_version).toBe(1)
     expect(catalog.defaults).toEqual({ verified_at: '2026-09-26', review_by: '2026-10-26' })
-    expect(digest(catalog)).toBe('c4fe926cb4d7dde2b73b60ad22a6900f9bed43c64acaa4e628533f7e8b0dc822')
+    expect(digest(catalog)).toBe('30b8858ca207c0b68d3e1173e658d53f37d9edd2560e6312f5d72474a6121c41')
     expect(catalog.pages.map((page: { page_item_id: string }) => page.page_item_id)).toEqual(pageIds)
     expect(catalog.subjects.map((subject: { id: string }) => subject.id)).toEqual(subjectIds)
     expect(Object.fromEntries(catalog.subjects.map((subject: any) => [subject.id, [
@@ -407,7 +408,7 @@ describe('real project catalog', () => {
       ]))
     expect(coreSubjects).toEqual(expectedCoreEntrypointSymbols)
     const sourceEntries = catalog.subjects.flatMap((subject: { entrypoints: Array<{ path: string; symbols: string[]; responsibility: string }> }) => subject.entrypoints)
-    expect(sourceEntries).toHaveLength(51)
+    expect(sourceEntries).toHaveLength(52)
     expect(sourceEntries.every((entry: { path: string; symbols: string[]; responsibility: string }) =>
       [entry.path, entry.responsibility].every((value) => value.trim().length > 0)
         && entry.symbols.length > 0

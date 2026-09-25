@@ -27,7 +27,7 @@ MCP 统一的是 Host、Client、Server 之间如何描述能力和交换消息�
 
 ## 唯一纵向调用链
 
-从 `CallToolRequest` 开始，沿宿主的 `MCPServer.run("stdio")`、`stdio_server`、`Server.run`、`serve_dual_era_loop`、`ServerRunner._on_request` 和 `get_request_handler` 进入 `tools/call` handler；再经过 `MCPServer._handle_call_tool`、`MCPServer.call_tool`、`ToolManager.call_tool`、`Tool.run` 和示例 `sum`，最后由 `ServerRunner._serialize` 生成 JSON-RPC response 并交给 `stdout_writer`。
+从 `CallToolRequest` 开始，沿宿主的 `MCPServer.run("stdio")`、`stdio_server`、`Server.run` 和 `serve_dual_era_loop` 进入 `JSONRPCDispatcher.run`。JSONRPCDispatcher._dispatch_request 调用 `ServerRunner._on_request`，后者再经 `get_request_handler`、`MCPServer._handle_call_tool`、`MCPServer.call_tool`、`ToolManager.call_tool`、`Tool.run` 到示例 `sum`。返回时 ServerRunner._serialize 只负责规范化 result dict，JSONRPCDispatcher._write_result 构造并写回 `JSONRPCResponse`，最终由 stdio transport 的 `stdout_writer` 输出。
 
 ## 关键源码入口
 
@@ -37,12 +37,12 @@ MCP 统一的是 Host、Client、Server 之间如何描述能力和交换消息�
 
 ## 一次请求的数据流
 
-客户端发送带工具名和参数的 `tools/call`。Runner 负责兼容协议消息、调用 dispatcher，并把 handler 的结果序列化成 JSON-RPC response；stdio 层只提供 reader 与 `stdout_writer`。ServerSession 只是 request-scoped outbound proxy 旁路，不是入站请求的主 dispatcher。高层 handler 把请求交给工具路径后，ToolManager 只负责查找，Tool.run 才负责输入验证、调用函数和结果转换。业务系统仍必须重新校验调用主体、资源范围与副作用。
+客户端发送带工具名和参数的 `tools/call`。Runner 负责连接事实、handler 执行与 result dict 规范化；独立的 JSONRPCDispatcher 读取消息、调用 `ServerRunner._on_request`，并在返回路径构造和写入 `JSONRPCResponse`。stdio 层只提供 reader 与最终的 `stdout_writer`。ServerSession 只是 request-scoped outbound proxy 旁路，不是入站请求的主 dispatcher。高层 handler 把请求交给工具路径后，ToolManager 只负责查找，Tool.run 才负责输入验证、调用函数和结果转换。业务系统仍必须重新校验调用主体、资源范围与副作用。
 
 ## 阅读练习
 
 1. 在 schema 中找到 `CallToolRequest` 与结果类型。
-2. 从宿主启动 `MCPServer.run("stdio")` 追到 `ServerRunner._serialize`。
+2. 从宿主启动 `MCPServer.run("stdio")` 追到 dispatcher 的 `_write_result`。
 3. 对比 ToolManager 的查找职责与 Tool.run 的验证、调用和结果转换。
 
 ## 失败边界
