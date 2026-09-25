@@ -344,7 +344,9 @@ describe('course page', () => {
     expect(fallback).not.toContain('<a')
     expect(screenStyle).toMatch(/\.course-print-items\s*\{[^}]*display:\s*none;/u)
     expect(printStyle).toMatch(/\.course-stage-more,\s*\.course-stage-more > summary,[\s\S]*display:\s*none;/u)
-    expect(printStyle).toMatch(/\.course-print-items\s*\{[^}]*display:\s*grid;/u)
+    expect(printStyle).toMatch(
+      /\.vp-doc ol\.course-print-items\s*\{[^}]*display:\s*grid;[^}]*list-style:\s*none;/u,
+    )
     expect(style).not.toContain('.course-stage-more:not([open]) > *:not(summary)')
   })
 })
