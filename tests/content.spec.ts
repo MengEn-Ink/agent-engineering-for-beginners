@@ -14,6 +14,7 @@ import { parse } from 'yaml'
 import siteConfig from '../docs/.vitepress/config.mts'
 import { getContentItem } from '../docs/.vitepress/theme/data/contentRegistry'
 import { publishedCourseItems } from '../docs/.vitepress/theme/data/courseMap'
+import { validatePublishedRouteBoundary } from '../scripts/check-dist.mjs'
 
 const expandedChapterFiles = [
   'docs/chapters/01-ai-native.md',
@@ -974,7 +975,7 @@ describe('publish boundary', () => {
     }
     for (const path of [
       'projects/index.html', 'projects/example.html', 'labs/index.html', 'labs/example.html',
-      'projects.html', 'labs.html',
+      'projects.html', 'labs.html', 'capstone/index.html', 'capstone.html',
     ]) {
       const target = join(fixtureDir, path)
       mkdirSync(join(target, '..'), { recursive: true })
@@ -984,10 +985,13 @@ describe('publish boundary', () => {
     try {
       const errors = validateDist(fixtureDir)
       expect(errors).toContain('构建产物缺少公开课程目标：chapters/14-computer-use.html')
-      expect(errors).toContainEqual(expect.stringContaining('projects/index.html'))
+      expect(errors).toContainEqual(expect.stringContaining('projects/example.html'))
       expect(errors).toContainEqual(expect.stringContaining('labs/index.html'))
+      expect(errors).toContainEqual(expect.stringContaining('labs/example.html'))
       expect(errors).toContainEqual(expect.stringContaining('projects.html'))
       expect(errors).toContainEqual(expect.stringContaining('labs.html'))
+      expect(errors).toContainEqual(expect.stringContaining('capstone/index.html'))
+      expect(errors).toContainEqual(expect.stringContaining('capstone.html'))
     } finally {
       rmSync(fixtureDir, { recursive: true, force: true })
     }
@@ -1002,6 +1006,32 @@ describe('publish boundary', () => {
 
     expect(deliverySource?.note).toContain('案例推演')
     expect(deliverySource?.note).toContain('不能单独支撑外部事实')
+  })
+})
+
+describe('progressive project publication boundary', () => {
+  it('allows any subset of the eight approved project outputs during implementation', () => {
+    expect(validatePublishedRouteBoundary([
+      'index.html',
+      'projects/mcp-python-sdk.html',
+      'projects/aider.html',
+    ])).toEqual([])
+  })
+
+  it('still rejects unapproved projects and every lab or capstone output', () => {
+    expect(validatePublishedRouteBoundary([
+      'projects/unreviewed.html',
+      'projects/private/notes.html',
+      'projects.html',
+      'labs/index.html',
+      'capstone/index.html',
+    ])).toEqual(expect.arrayContaining([
+      expect.stringContaining('projects/unreviewed.html'),
+      expect.stringContaining('projects/private/notes.html'),
+      expect.stringContaining('projects.html'),
+      expect.stringContaining('labs/index.html'),
+      expect.stringContaining('capstone/index.html'),
+    ]))
   })
 })
 

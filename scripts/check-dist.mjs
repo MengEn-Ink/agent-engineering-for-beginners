@@ -38,6 +38,27 @@ const forbiddenCourseMarkers = ['/projects/', '/labs/', '标记已读', '加入�
 const siteOrigin = 'https://mengen-ink.github.io'
 const siteBase = '/agent-engineering-for-beginners'
 
+export const approvedProjectFiles = new Set([
+  'projects/index.html',
+  'projects/mcp-python-sdk.html',
+  'projects/aider.html',
+  'projects/openhands.html',
+  'projects/agent-benchmarks.html',
+  'projects/dify.html',
+  'projects/crewai.html',
+  'projects/history-autogpt-flowise.html',
+])
+
+export function validatePublishedRouteBoundary(relativeFiles) {
+  const forbidden = relativeFiles.filter((file) =>
+    /^(?:labs|capstone)(?:\.html|[\\/])/u.test(file)
+    || (/^projects(?:\.html|[\\/])/u.test(file) && !approvedProjectFiles.has(file)),
+  )
+  return forbidden.length === 0
+    ? []
+    : [`构建产物包含未批准项目、实验或综合实战页面：${forbidden.join(', ')}`]
+}
+
 function listFiles(root) {
   if (!existsSync(root)) return []
   return readdirSync(root).flatMap((entry) => {
@@ -96,10 +117,7 @@ export function validateDist(distPath) {
   const relativeFiles = listFiles(distPath).map((file) => relative(distPath, file))
   const leaked = relativeFiles.filter((file) => file.split(/[\\/]/).includes('superpowers'))
   if (leaked.length > 0) errors.push(`构建产物泄露 superpowers 页面：${leaked.join(', ')}`)
-  const unpublished = relativeFiles.filter((file) => /^(?:projects|labs)(?:\.html|[\\/])/u.test(file))
-  if (unpublished.length > 0) {
-    errors.push(`构建产物包含未发布项目或实验页面：${unpublished.join(', ')}`)
-  }
+  errors.push(...validatePublishedRouteBoundary(relativeFiles))
   if (!relativeFiles.includes('index.html')) errors.push('构建产物缺少 index.html')
 
   const coursePath = join(distPath, 'course', 'index.html')
