@@ -21,6 +21,8 @@ Coding Agent 的环境比聊天复杂：仓库里有多层说明、生成文件�
 
 <AgentLoop />
 
+<InterviewQuestion id="iq-13-a" />
+
 ## 工程上到底发生了什么
 
 Coding Agent 同时操作三种状态：代码状态、执行状态和协作状态。代码状态包括分支、提交和工作树；执行状态包括命令、测试和构建；协作状态包括需求、评审意见和不允许覆盖的用户修改。
@@ -79,6 +81,8 @@ Coding Agent 同时操作三种状态：代码状态、执行状态和协作状�
 ### 最终证据
 
 交付包包含仓库与提交、变更文件、关键差异、红绿测试记录、构建结果、未验证项、风险和回滚方式。PR 页面只是载体，证据必须能从命令和代码重现。
+
+<InterviewQuestion id="iq-13-b" />
 
 ## 可复制模板
 
@@ -170,5 +174,7 @@ Agent 生成的设计文档同样需要事实边界。描述当前能力时核�
 <PracticeBlock title="修一个重复提交缺陷" prompt="表单在网络超时后可能重复创建记录。为 Coding Agent 写出探索、失败测试、实现、回归和交付步骤。" hint="先确认客户端重试、服务端幂等和数据库唯一约束各自行为。" answer="记录仓库与状态；复现超时后的双请求；写失败测试证明同一幂等键只产生一条记录；服务端在事务内查询或使用唯一约束返回既有结果；运行目标与相关测试；检查 diff 无凭证和无关改动；提交时说明超时场景与回滚。" />
 
 代码交付以验证证据为准。
+
+<InterviewQuestion id="iq-13-c" />
 
 来源：[source:anthropic-claude-code-best-practices] [Anthropic · Claude Code best practices](https://code.claude.com/docs/en/best-practices)；[source:github-copilot-cloud-agent] [GitHub Docs · Copilot cloud agent](https://docs.github.com/en/copilot/concepts/agents/cloud-agent/about-cloud-agent)；[source:anthropic-agent-sdk] [Anthropic · Building agents with the Claude Agent SDK](https://www.anthropic.com/engineering/building-agents-with-the-claude-agent-sdk)。

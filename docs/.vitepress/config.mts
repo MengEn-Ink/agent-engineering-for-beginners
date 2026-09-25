@@ -51,6 +51,7 @@ export default defineConfig({
       { text: '开始阅读', link: '/preface' },
       { text: '交付型案例', link: '/case-study/delivery-agent' },
       { text: '术语表', link: '/appendix/glossary' },
+      { text: '面试题', link: '/appendix/interview' },
     ],
     sidebar: [
       {
@@ -85,6 +86,7 @@ export default defineConfig({
           { text: '延伸阅读', link: '/appendix/reading' },
           { text: '应用选型矩阵', link: '/appendix/application-matrix' },
           { text: '章节与方案模板', link: '/appendix/chapter-template' },
+          { text: '42 道面试题', link: '/appendix/interview' },
         ],
       },
     ],

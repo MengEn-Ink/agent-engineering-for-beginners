@@ -11,6 +11,8 @@ import DecisionLadder from './components/DecisionLadder.vue'
 import MemoryLayers from './components/MemoryLayers.vue'
 import EvidencePyramid from './components/EvidencePyramid.vue'
 import RiskMatrix from './components/RiskMatrix.vue'
+import InterviewQuestion from './components/InterviewQuestion.vue'
+import InterviewIndex from './components/InterviewIndex.vue'
 import './style.css'
 
 export default {
@@ -27,5 +29,7 @@ export default {
     app.component('MemoryLayers', MemoryLayers)
     app.component('EvidencePyramid', EvidencePyramid)
     app.component('RiskMatrix', RiskMatrix)
+    app.component('InterviewQuestion', InterviewQuestion)
+    app.component('InterviewIndex', InterviewIndex)
   },
 } satisfies Theme

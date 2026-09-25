@@ -677,3 +677,48 @@ describe('interview registry', () => {
     expect(interviewQuestions.filter((item: { role: string }) => item.role === '产品')).toHaveLength(12)
   })
 })
+
+describe('interview placement', () => {
+  it('renders accessible answer cards and a linked index', () => {
+    const cardPath = 'docs/.vitepress/theme/components/InterviewQuestion.vue'
+    const indexPath = 'docs/.vitepress/theme/components/InterviewIndex.vue'
+    expect(existsSync(cardPath)).toBe(true)
+    expect(existsSync(indexPath)).toBe(true)
+
+    const card = readFileSync(cardPath, 'utf8')
+    for (const marker of ['<details', ':id="question.id"', '30 秒回答', '面试官追问', '高分要点', '常见失分点']) {
+      expect(card).toContain(marker)
+    }
+    const index = readFileSync(indexPath, 'utf8')
+    expect(index).toContain('interviewQuestions')
+    expect(index).toContain('#${question.id}')
+  })
+
+  it('places two questions in the chapter body and one after the exercise', () => {
+    for (let chapter = 1; chapter <= 14; chapter += 1) {
+      const file = [...expandedChapterFiles, ...applicationChapterFiles][chapter - 1]
+      const text = readFileSync(file, 'utf8')
+      const prefix = String(chapter).padStart(2, '0')
+      const markers = ['a', 'b', 'c'].map(
+        (suffix) => `<InterviewQuestion id="iq-${prefix}-${suffix}" />`,
+      )
+      for (const marker of markers) expect(text.split(marker)).toHaveLength(2)
+      const exercise = text.indexOf('## 练习')
+      expect(text.indexOf(markers[0])).toBeGreaterThan(0)
+      expect(text.indexOf(markers[0])).toBeLessThan(exercise)
+      expect(text.indexOf(markers[1])).toBeLessThan(exercise)
+      expect(text.indexOf(markers[2])).toBeGreaterThan(exercise)
+    }
+  })
+
+  it('publishes the interview index route without duplicating answers', () => {
+    const pagePath = 'docs/appendix/interview.md'
+    expect(existsSync(pagePath)).toBe(true)
+    const page = readFileSync(pagePath, 'utf8')
+    expect(page).toContain('<InterviewIndex />')
+    expect(page).not.toContain('<InterviewQuestion')
+
+    const config = readFileSync('docs/.vitepress/config.mts', 'utf8')
+    expect(config).toContain('/appendix/interview')
+  })
+})

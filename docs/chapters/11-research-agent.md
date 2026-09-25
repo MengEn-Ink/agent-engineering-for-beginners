@@ -21,6 +21,8 @@ description: 把“搜到很多”升级为“问题清楚、来源独立、主�
 
 <EvidencePyramid />
 
+<InterviewQuestion id="iq-11-a" />
+
 ## 工程上到底发生了什么
 
 研究流程可以拆成六类状态：问题定义、问题树、查询计划、来源记录、主张记录和综合结论。搜索工具只负责发现候选来源；阅读工具提取原文与上下文；证据库保存主张和出处；综合器只能使用已经登记的证据。
@@ -83,6 +85,8 @@ description: 把“搜到很多”升级为“问题清楚、来源独立、主�
 ### 最终证据
 
 交付物包含主张—证据表、来源索引、查询范围、未确认清单、访问日期和报告版本。每个关键结论至少由一条适当的一手来源，或两条真正独立的可信工程来源支撑。
+
+<InterviewQuestion id="iq-11-b" />
 
 ## 可复制模板
 
@@ -170,5 +174,7 @@ Anthropic 公布的多 Agent 研究系统强调并行搜索和协调，同时也
 <PracticeBlock title="核验一个市场增长主张" prompt="研究‘某类 AI 工具市场正在高速增长’，设计问题树、正反查询、来源门槛和最终证据。" hint="先定义市场口径、地区、时间和增长指标，再找原始统计与方法。" answer="把主张拆为规模、增速、驱动和预测；优先监管/统计、公司披露和有方法说明的研究；追踪媒体共同上游；搜索下滑、退出和口径争议；结论分别写历史事实、原因推断和未来预测；缺乏独立来源时标记证据不足。" />
 
 研究结论需要持续复核。
+
+<InterviewQuestion id="iq-11-c" />
 
 来源：[source:anthropic-multi-agent-research] [Anthropic · Multi-agent research system](https://www.anthropic.com/engineering/multi-agent-research-system)；[source:google-adk-evaluation] [Google ADK · Evaluate agents](https://google.github.io/adk-docs/evaluate/)；[source:anthropic-effective-agents] [Anthropic · Building effective agents](https://www.anthropic.com/research/building-effective-agents)。

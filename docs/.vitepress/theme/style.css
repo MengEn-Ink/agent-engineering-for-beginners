@@ -686,6 +686,152 @@ summary {
   background: var(--reading-bg);
 }
 
+.interview-question {
+  margin: 2rem 0;
+  scroll-margin-top: calc(var(--vp-nav-height) + 24px);
+}
+
+.interview-question details {
+  border-block: 1px solid var(--reading-rule);
+  background: var(--reading-bg);
+}
+
+.interview-question summary {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.32fr) 1fr auto;
+  gap: 1rem;
+  align-items: center;
+  min-height: 64px;
+  padding: 0.8rem 0;
+  cursor: pointer;
+  list-style: none;
+}
+
+.interview-question summary::-webkit-details-marker {
+  display: none;
+}
+
+.interview-question summary::after {
+  grid-column: 3;
+  grid-row: 1;
+  content: '+';
+  color: var(--reading-link);
+  font-family: var(--vp-font-family-mono);
+  font-size: 1.2rem;
+}
+
+.interview-question details[open] summary::after {
+  content: '−';
+}
+
+.interview-question summary:focus-visible {
+  border-radius: 2px;
+  outline: 3px solid var(--reading-link);
+  outline-offset: 4px;
+}
+
+.interview-kicker,
+.interview-meta {
+  color: var(--reading-text-soft);
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+}
+
+.interview-question summary strong {
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+.interview-meta {
+  padding-right: 1.8rem;
+  white-space: nowrap;
+}
+
+.interview-answer {
+  padding: 0.25rem 0 1.25rem min(25%, 10rem);
+}
+
+.interview-answer h4 {
+  margin: 1.1rem 0 0.35rem;
+  color: var(--reading-text-soft);
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.76rem;
+  letter-spacing: 0.05em;
+}
+
+.interview-answer p,
+.interview-answer li {
+  font-size: 0.96rem;
+  line-height: 1.72;
+}
+
+.interview-index section {
+  margin-top: 3rem;
+}
+
+.interview-index ol {
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--reading-rule);
+  list-style: none;
+}
+
+.interview-index li {
+  margin: 0;
+}
+
+.interview-index a {
+  display: grid;
+  grid-template-columns: 6rem 1fr auto;
+  gap: 1rem;
+  align-items: baseline;
+  padding: 0.9rem 0;
+  border-bottom: 1px solid var(--reading-rule);
+  color: var(--reading-text);
+  text-decoration: none;
+}
+
+.interview-index a:hover,
+.interview-index a:focus-visible {
+  color: var(--reading-link);
+  background: var(--reading-bg-soft);
+}
+
+.interview-index a span,
+.interview-index a small {
+  color: var(--reading-text-soft);
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.72rem;
+}
+
+@media (max-width: 700px) {
+  .interview-question summary,
+  .interview-index a {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+  }
+
+  .interview-question summary::after {
+    position: absolute;
+    right: 0;
+  }
+
+  .interview-question summary {
+    position: relative;
+    padding-right: 2rem;
+  }
+
+  .interview-meta {
+    padding-right: 0;
+  }
+
+  .interview-answer {
+    padding-left: 0;
+  }
+}
+
 @media (max-width: 900px) {
   .book-hero {
     grid-template-columns: 1fr;

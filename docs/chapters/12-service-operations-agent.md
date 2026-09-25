@@ -21,6 +21,8 @@ description: 在政策、情绪、业务动作和人工队列之间，设计可�
 
 <DecisionLadder />
 
+<InterviewQuestion id="iq-12-a" />
+
 ## 工程上到底发生了什么
 
 服务任务可以分为四层：理解、知识、决策和执行。理解负责识别意图、对象和情绪；知识层检索政策与产品资料；决策层判断流程和风险；执行层调用真实业务工具。把四层混在一个 Prompt 里，会让模型既当政策库、又当审批人、又当收银员。
@@ -78,6 +80,8 @@ description: 在政策、情绪、业务动作和人工队列之间，设计可�
 ### 最终证据
 
 信息咨询以引用的政策版本和回答摘要为证；业务动作以对象 ID、前后状态、金额、批准和回执为证；接管以队列 ID、负责人、上下文包和服务时限为证。
+
+<InterviewQuestion id="iq-12-b" />
 
 ## 可复制模板
 
@@ -167,5 +171,7 @@ description: 在政策、情绪、业务动作和人工队列之间，设计可�
 <PracticeBlock title="设计一次延误处理" prompt="用户的生日礼物延误，明天必须收到。设计 Agent 的查询、选项、权限、接管和证据。" hint="不要先承诺送达；先查物流事实、可选配送和退款政策。" answer="确认订单归属并查询实时物流；说明当前事实和不确定性；提供改派、自取、退款草稿等真实可行选项；高额补偿或特殊承诺升级人工；动作后返回订单/草稿 ID 与状态；若物流来源冲突，明确标记并接管。" />
 
 服务承诺必须能够兑现。
+
+<InterviewQuestion id="iq-12-c" />
 
 来源：[source:openai-practical-agents-guide] [OpenAI · A practical guide to building agents](https://cdn.openai.com/business-guides-and-resources/a-practical-guide-to-building-agents.pdf)；[source:openai-agents-sdk] [OpenAI Agents SDK](https://openai.github.io/openai-agents-python/)；[source:anthropic-effective-agents] [Anthropic · Building effective agents](https://www.anthropic.com/research/building-effective-agents)。

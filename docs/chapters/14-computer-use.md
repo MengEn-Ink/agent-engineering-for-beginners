@@ -21,6 +21,8 @@ Computer Use 不是“万能 API”。它更像让 Agent 进入一个会移动�
 
 <RiskMatrix />
 
+<InterviewQuestion id="iq-14-a" />
+
 ## 工程上到底发生了什么
 
 一次可靠交互至少包含：观察当前环境，定位目标，判断动作风险，执行一个动作，等待页面稳定，再验证业务结果。DOM 可提供结构和标签，截图提供视觉关系，网络记录提供真实请求；三者互补，不能只信其中一个。
@@ -83,6 +85,8 @@ Computer Use 不是“万能 API”。它更像让 Agent 进入一个会移动�
 ### 最终证据
 
 保存动作前后 URL、页面标题、目标语义、风险等级、批准记录、网络/业务回执和最终状态。临时截图只保留必要区域并按策略删除；不能用一张“看起来成功”的截图替代对象状态。
+
+<InterviewQuestion id="iq-14-b" />
 
 ## 可复制模板
 
@@ -169,5 +173,7 @@ Computer Use 不是“万能 API”。它更像让 Agent 进入一个会移动�
 <PracticeBlock title="设计一个后台表单 Agent" prompt="Agent 要在旧后台创建活动草稿，页面可能弹出推广浮层，提交按钮旁边有删除按钮。请设计观察、定位、批准和证据。" hint="优先语义定位，提交前总览字段，页面变化后重新观察。" answer="限制目标域名和账号；按 label 填写字段；每次弹窗后重新 snapshot；提交前展示活动名称、时间和受众；只创建草稿，不发布；点击后等待 URL/成功状态并查询草稿 ID；删除按钮不授权；记录前后状态并清理会话。" />
 
 每次交互都必须重新确认状态。
+
+<InterviewQuestion id="iq-14-c" />
 
 来源：[source:anthropic-computer-use] [Anthropic · Computer use tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/computer-use-tool)；[source:openai-computer-use] [OpenAI · Computer use](https://developers.openai.com/api/docs/guides/tools-computer-use)；[source:mcp-spec] [MCP Specification](https://modelcontextprotocol.io/specification/2025-03-26)。
