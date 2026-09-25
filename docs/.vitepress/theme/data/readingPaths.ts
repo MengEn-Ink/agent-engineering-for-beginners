@@ -51,7 +51,7 @@ export const readingPaths: ReadingPath[] = [
     id: 'interview',
     title: '面试冲刺',
     summary: '先补术语，再按高频系统设计主题复习，最后进入 42 道题的训练。',
-    pace: '10 站 · 适合分 3 次复习',
+    pace: '11 站 · 适合分 3 次复习',
     steps: [
       { path: '/appendix/glossary', title: '术语表', why: '先把容易混淆的概念说清' },
       { path: '/appendix/interview', title: '42 道面试题', why: '了解题型与自己的薄弱区' },

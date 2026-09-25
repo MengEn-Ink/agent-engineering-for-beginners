@@ -84,7 +84,11 @@ onUnmounted(() => window.removeEventListener(learningStateEvent, refresh))
         <strong>{{ activePath.title }}</strong>
       </div>
       <p>{{ completedCount }} / {{ activePath.steps.length }} 站完成</p>
-      <progress :value="completedCount" :max="activePath.steps.length">
+      <progress
+        :value="completedCount"
+        :max="activePath.steps.length"
+        aria-label="当前路线阅读进度"
+      >
         {{ completedCount }} / {{ activePath.steps.length }}
       </progress>
     </div>
