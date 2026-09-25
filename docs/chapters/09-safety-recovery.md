@@ -186,4 +186,4 @@ Computer Use Agent 还要面对视觉误识别和界面变化。点击前读取�
 
 同时记录被安全门拒绝的请求。拒绝突然增加，可能是攻击，也可能是业务流程改变或工具契约漂移。安全门既要坚定，也要可解释、可运营，避免所有异常最终都靠人工猜。
 
-来源：[source:openai-agents-sdk] [OpenAI Agents SDK · Guardrails](https://openai.github.io/openai-agents-python/guardrails/)；[source:mcp-spec] [MCP Specification](https://modelcontextprotocol.io/specification/2025-03-26)；[source:pydantic-ai-repository] [Pydantic AI](https://github.com/pydantic/pydantic-ai)；[source:delivery-patterns] 交付型案例推演依据。
+来源：[source:openai-agents-sdk] [OpenAI Agents SDK · Guardrails](https://openai.github.io/openai-agents-python/guardrails/)；[source:mcp-spec] [MCP Specification 2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28)；[source:pydantic-ai-repository] [Pydantic AI](https://github.com/pydantic/pydantic-ai)；[source:delivery-patterns] 交付型案例推演依据。

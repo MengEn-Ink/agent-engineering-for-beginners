@@ -13,7 +13,9 @@ description: 本书如何选择、分级和交叉核对 Agent 工程资料。
 
 - [Anthropic · Building effective agents](https://www.anthropic.com/engineering/building-effective-agents)：workflow 与 agent 的区分、简单优先、常见组合模式。
 - [Anthropic · Building agents with the Claude Agent SDK](https://claude.com/blog/building-agents-with-the-claude-agent-sdk)：上下文、行动、验证与循环。
-- [Model Context Protocol Specification](https://modelcontextprotocol.io/specification/2025-03-26)：协议角色和核心原语。
+- [Model Context Protocol Specification 2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28)：协议角色、核心原语与当前版本边界。
+- [Agent2Agent Protocol Specification](https://a2a-protocol.org/v1.0.1/specification/)：独立 Agent 系统的发现、消息、任务与制品交付。
+- [NIST · AI Agent Standards Initiative](https://www.nist.gov/artificial-intelligence/ai-agent-standards-initiative)：Agent 互操作、身份、授权、安全和评测的标准化方向。
 - [OpenAI Agents SDK](https://openai.github.io/openai-agents-python/)：agent、handoff、guardrail、session 与 tracing。
 - [Google ADK · Evaluate agents](https://adk.dev/evaluate/)：轨迹、响应、安全与多轮评测。
 - [Microsoft Research · AutoGen v0.4](https://www.microsoft.com/en-us/research/blog/autogen-v0-4-reimagining-the-foundation-of-agentic-ai-for-scale-extensibility-and-robustness/)：Core、AgentChat、Extensions 分层。

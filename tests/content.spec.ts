@@ -335,6 +335,107 @@ describe('source freshness schema', () => {
   })
 })
 
+describe('living handbook frontier', () => {
+  const frontierPages = [
+    'docs/radar/index.md',
+    'docs/radar/2026-09.md',
+    'docs/frontier/context-engineering.md',
+    'docs/frontier/interoperability-identity.md',
+    'docs/frontier/durable-execution.md',
+    'docs/frontier/agent-security-evaluation.md',
+  ]
+
+  it('publishes the radar and four frontier routes in the site navigation', () => {
+    const config = readFileSync('docs/.vitepress/config.mts', 'utf8')
+    expect(frontierPages.filter((page) => !existsSync(page))).toEqual([])
+
+    for (const route of [
+      '/radar/',
+      '/radar/2026-09',
+      '/frontier/context-engineering',
+      '/frontier/interoperability-identity',
+      '/frontier/durable-execution',
+      '/frontier/agent-security-evaluation',
+    ]) {
+      expect(config).toContain(route)
+    }
+  })
+
+  it('labels each radar item with status, maturity, impact, decision and evidence', () => {
+    const radar = readFileSync('docs/radar/2026-09.md', 'utf8')
+    expect(radar.match(/^## \d{4}-\d{2}-\d{2} · /gmu)).toHaveLength(6)
+    for (const field of ['状态', '成熟度', '影响章节', '当前决定', 'A级证据']) {
+      expect(radar.match(new RegExp(`\\*\\*${field}：\\*\\*`, 'gu'))).toHaveLength(6)
+    }
+    expect(radar).toContain('watch')
+    expect(radar).toContain('adopt')
+    expect(radar).toContain('revise')
+  })
+
+  it('gives every frontier page stable principles and explicit review boundaries', () => {
+    for (const page of frontierPages.slice(2)) {
+      const text = readFileSync(page, 'utf8')
+      for (const heading of [
+        '## 先看稳定原则',
+        '## 当前前沿',
+        '## 版本与成熟度',
+        '## 架构图',
+        '## 失败边界',
+        '## 影响章节',
+        '## 复核计划',
+        '## 来源',
+      ]) {
+        expect(text, page).toContain(heading)
+      }
+      expect(text, page).toMatch(/\[source:[a-z0-9-]+\]/u)
+    }
+  })
+
+  it('registers the first-party frontier evidence with versions and impact paths', () => {
+    const data = parse(readFileSync('sources/source-index.yml', 'utf8')) as {
+      source_defaults: Record<string, unknown>
+      sources: Array<Record<string, unknown>>
+    }
+    const sources = new Map(
+      data.sources.map((raw) => {
+        const source = { ...data.source_defaults, ...raw }
+        return [source.id, source]
+      }),
+    )
+
+    const requirements = new Map([
+      ['mcp-spec', '/frontier/interoperability-identity'],
+      ['a2a-spec', '/frontier/interoperability-identity'],
+      ['a2a-release', '/frontier/interoperability-identity'],
+      ['nist-agentic-ai', '/frontier/agent-security-evaluation'],
+      ['nist-agent-hijacking', '/frontier/agent-security-evaluation'],
+      ['anthropic-managed-agents', '/frontier/durable-execution'],
+      ['anthropic-context-engineering', '/frontier/context-engineering'],
+      ['otel-agent-observability', '/frontier/agent-security-evaluation'],
+      ['owasp-agentic-top-10', '/frontier/agent-security-evaluation'],
+    ])
+
+    for (const [id, impactPath] of requirements) {
+      const source = sources.get(id) as Record<string, unknown> | undefined
+      expect(source, id).toBeDefined()
+      expect(source?.grade, id).toBe('A')
+      expect(source?.version, id).toEqual(expect.any(String))
+      expect(source?.impact_chapters, id).toContain(impactPath)
+    }
+    expect(sources.get('a2a-release')?.version).toBe('v1.0.1')
+  })
+
+  it('separates MCP tool interoperability from A2A agent interoperability', () => {
+    const chapter = readFileSync('docs/chapters/04-tools-mcp.md', 'utf8')
+    expect(chapter).toContain('MCP 2026-07-28')
+    expect(chapter).toContain('A2A v1.0.1')
+    expect(chapter).toContain('工具与上下文')
+    expect(chapter).toContain('Agent 与 Agent')
+    expect(chapter).toContain('兼容')
+    expect(chapter).toContain('[source:a2a-spec]')
+  })
+})
+
 describe('public-boundary validator', () => {
   it('flags local paths, credentials and internal product identifiers', async () => {
     const validatorPath = 'scripts/validate-content.mjs'

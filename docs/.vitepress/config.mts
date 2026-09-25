@@ -50,6 +50,7 @@ export default defineConfig({
     nav: [
       { text: '开始阅读', link: '/preface' },
       { text: '交付型案例', link: '/case-study/delivery-agent' },
+      { text: '前沿雷达', link: '/radar/' },
       { text: '术语表', link: '/appendix/glossary' },
       { text: '面试题', link: '/appendix/interview' },
     ],
@@ -77,6 +78,17 @@ export default defineConfig({
       {
         text: '案例研究',
         items: [{ text: '交付型 Agent 的质量门', link: '/case-study/delivery-agent' }],
+      },
+      {
+        text: '活教材 · 前沿层',
+        items: [
+          { text: '前沿雷达', link: '/radar/' },
+          { text: '2026 年 9 月更新', link: '/radar/2026-09' },
+          { text: 'Context Engineering', link: '/frontier/context-engineering' },
+          { text: 'Agent 互操作与身份', link: '/frontier/interoperability-identity' },
+          { text: '长时运行与恢复', link: '/frontier/durable-execution' },
+          { text: 'Agent 安全评测', link: '/frontier/agent-security-evaluation' },
+        ],
       },
       {
         text: '随手查',

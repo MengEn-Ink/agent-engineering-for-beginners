@@ -178,4 +178,4 @@ Computer Use 不是“万能 API”。它更像让 Agent 进入一个会移动�
 
 <InterviewQuestion id="iq-14-c" />
 
-来源：[source:anthropic-computer-use] [Anthropic · Computer use tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/computer-use-tool)；[source:openai-computer-use] [OpenAI · Computer use](https://developers.openai.com/api/docs/guides/tools-computer-use)；[source:mcp-spec] [MCP Specification](https://modelcontextprotocol.io/specification/2025-03-26)。
+来源：[source:anthropic-computer-use] [Anthropic · Computer use tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/computer-use-tool)；[source:openai-computer-use] [OpenAI · Computer use](https://developers.openai.com/api/docs/guides/tools-computer-use)；[source:mcp-spec] [MCP Specification 2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28)。

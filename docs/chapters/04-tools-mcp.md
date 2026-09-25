@@ -45,6 +45,14 @@ MCP 采用 Host、Client、Server 的结构。Server 可以暴露三类核心原
 
 可以把 MCP 想成 USB-C：接口统一了，接上的是充电器、摄像头还是一块会冒烟的未知设备，仍然需要识别、授权和隔离。协议解决互操作，安全来自额外设计。
 
+### MCP 2026-07-28 与 A2A v1.0.1：别把两种互操作混成一种
+
+本书当前核对的是 **MCP 2026-07-28**。它继续围绕 Host、Client、Server 以及 Tools、Resources、Prompts 展开，并推进无状态协议核心、扩展和授权相关设计。这里的版本日期是规范快照，不代表所有 SDK、Server 和 Host 已经同时升级。生产系统应记录协商版本、实际启用的扩展和兼容测试结果；连接成功只能证明双方能通信，不能证明每项语义都兼容。
+
+MCP 主要处理 Agent 如何连接**工具与上下文**。**A2A v1.0.1** 处理的是独立的 **Agent 与 Agent** 系统如何发现能力、交换消息、管理任务和交付制品。它们可以组合，却不能互相替代：一个研究 Agent 可以通过 A2A 接受客服 Agent 的委托，再通过 MCP 读取获准的知识库。身份、业务授权、可转委托范围和最终结果验证仍是系统自己的责任。
+
+> 简单记法：MCP 更像“给工作者接上合规工具箱”，A2A 更像“两个承包团队约定怎样交接任务”。工具箱接口统一，不代表团队有权替你签字；任务能交接，也不代表接收方自动继承全部权限。
+
 ### 权限应靠能力发放，而不是靠口头提醒
 
 与其在 Prompt 里写“绝对不要删除重要文件”，不如只给只读工具，或让删除工具只能处理特定目录并要求人工批准。模型指令是软约束，工具权限是硬边界。高风险动作还应带幂等键、金额上限、目标白名单和审计记录。
@@ -175,4 +183,4 @@ approval: 提交草稿前不需要；执行退款前需要
 
 工具决定 Agent 能碰什么，契约决定它怎样碰，权限决定碰到哪一步。MCP 让连接更标准，却不会替系统承担安全责任。先把工具做小、做清楚、做可验证，再谈“让 Agent 自由发挥”。
 
-来源：[source:mcp-spec] [Model Context Protocol Specification](https://modelcontextprotocol.io/specification/2025-03-26)；[source:openai-agents-sdk] [OpenAI Agents SDK](https://openai.github.io/openai-agents-python/)；[source:pydantic-ai-repository] [Pydantic AI](https://github.com/pydantic/pydantic-ai)。
+来源：[source:mcp-spec] [Model Context Protocol Specification 2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28)；[source:a2a-spec] [Agent2Agent Protocol Specification](https://a2a-protocol.org/v1.0.1/specification/)；[source:openai-agents-sdk] [OpenAI Agents SDK](https://openai.github.io/openai-agents-python/)；[source:pydantic-ai-repository] [Pydantic AI](https://github.com/pydantic/pydantic-ai)。

@@ -35,6 +35,90 @@ sources:
     status: watch
     impact_chapters: ['04', '09', '/frontier/interoperability-identity']
     note: 核对 Host、Client、Server 及 Tools、Resources、Prompts；新版本变化进入 Radar，人工确认后回写正文。
+  - id: a2a-spec
+    title: Agent2Agent Protocol Specification
+    publisher: A2A Project / Linux Foundation
+    url: https://a2a-protocol.org/v1.0.1/specification/
+    grade: A
+    accessed: '2026-09-25'
+    version: '1.0'
+    watch_url: https://a2a-protocol.org/latest/specification/
+    status: watch
+    impact_chapters: ['07', '/frontier/interoperability-identity']
+    note: 核对独立 Agent 系统之间的发现、消息、任务、制品与扩展；不把 A2A 当成工具调用或自动授权协议。
+  - id: a2a-release
+    title: A2A v1.0.1 release
+    publisher: A2A Project / Linux Foundation
+    url: https://github.com/a2aproject/A2A/releases/tag/v1.0.1
+    grade: A
+    accessed: '2026-09-25'
+    version: v1.0.1
+    watch_url: https://github.com/a2aproject/A2A/releases/latest
+    status: watch
+    impact_chapters: ['07', '/frontier/interoperability-identity']
+    note: 核对本书采用的 A2A 规范发布版本；协议线上标识使用 major.minor，补丁号不应被当作兼容性边界。
+  - id: nist-agentic-ai
+    title: AI Agent Standards Initiative
+    publisher: NIST
+    url: https://www.nist.gov/artificial-intelligence/ai-agent-standards-initiative
+    grade: A
+    accessed: '2026-09-25'
+    version: rolling
+    watch_url: https://www.nist.gov/agentic-ai
+    status: watch
+    impact_chapters: ['07', '09', '10', '/frontier/interoperability-identity', '/frontier/agent-security-evaluation']
+    note: 核对 NIST 在 Agent 互操作、身份、授权、安全与评测方面的标准化方向；倡议不等同于已经发布的强制标准。
+  - id: nist-agent-hijacking
+    title: Strengthening AI Agent Hijacking Evaluations
+    publisher: NIST CAISI
+    url: https://www.nist.gov/news-events/news/2025/01/technical-blog-strengthening-ai-agent-hijacking-evaluations
+    grade: A
+    accessed: '2026-09-25'
+    version: rolling
+    status: watch
+    impact_chapters: ['08', '09', '/frontier/agent-security-evaluation']
+    note: 核对 Agent 劫持评测应持续更新、按任务衡量攻击后果并覆盖自适应攻击；不把单轮拦截率当完整安全结论。
+  - id: anthropic-managed-agents
+    title: 'Scaling Managed Agents: Decoupling the brain from the hands'
+    publisher: Anthropic Engineering
+    url: https://www.anthropic.com/engineering/managed-agents
+    grade: A
+    accessed: '2026-09-25'
+    version: rolling
+    status: watch
+    impact_chapters: ['05', '06', '09', '10', '/frontier/durable-execution']
+    note: 学习长时 Agent 的模型与运行环境解耦、稳定接口和托管执行模式；这是供应商工程实践，不是通用协议标准。
+  - id: anthropic-context-engineering
+    title: Effective context engineering for AI agents
+    publisher: Anthropic Engineering
+    url: https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents
+    grade: A
+    accessed: '2026-09-25'
+    version: rolling
+    status: watch
+    impact_chapters: ['03', '05', '08', '/frontier/context-engineering']
+    note: 核对有限上下文中的检索、压缩、隔离与按需加载策略；文章提供工程方法，不构成跨模型的固定阈值。
+  - id: otel-agent-observability
+    title: AI Agent Observability - Evolving Standards and Best Practices
+    publisher: OpenTelemetry
+    url: https://opentelemetry.io/blog/2025/ai-agent-observability/
+    grade: A
+    accessed: '2026-09-25'
+    version: Development
+    watch_url: https://raw.githubusercontent.com/open-telemetry/semantic-conventions-genai/main/docs/gen-ai/gen-ai-agent-spans.md
+    status: watch
+    impact_chapters: ['08', '10', '/frontier/agent-security-evaluation']
+    note: 核对 Agent 可观测性语义约定的演进方向；相关约定仍在变化，字段名不可被写成稳定兼容承诺。
+  - id: owasp-agentic-top-10
+    title: OWASP Top 10 for Agentic Applications
+    publisher: OWASP GenAI Security Project
+    url: https://genai.owasp.org/2025/12/09/owasp-top-10-for-agentic-applications-the-benchmark-for-agentic-security-in-the-age-of-autonomous-ai/
+    grade: A
+    accessed: '2026-09-25'
+    version: '2026'
+    status: watch
+    impact_chapters: ['09', '10', '/frontier/agent-security-evaluation']
+    note: 用于建立 Agent 风险检查面和红队样本分类；Top 10 是风险框架，不是合规认证或完整威胁模型。
   - id: openai-agents-sdk
     title: OpenAI Agents SDK for Python
     publisher: OpenAI
