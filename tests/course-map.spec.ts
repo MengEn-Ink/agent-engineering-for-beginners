@@ -9,6 +9,7 @@ import {
   courseItems,
   courseStages,
   currentCourseStage,
+  publishedCourseItems,
   projectCourseProgress,
   validateCourseMap,
 } from '../docs/.vitepress/theme/data/courseMap'
@@ -97,6 +98,38 @@ describe('course graph', () => {
       { itemId: 'preface', stageId: 'foundation', prerequisites: ['chapter-01-ai-native'], outcome: 'a', evidence: 'a' },
       { itemId: 'chapter-01-ai-native', stageId: 'foundation', prerequisites: ['preface'], outcome: 'b', evidence: 'b' },
     ], courseStages)).toContain('Prerequisite cycle: chapter-01-ai-native -> preface -> chapter-01-ai-native')
+  })
+
+  it('rejects inherited Object prototype keys as unknown content IDs', () => {
+    for (const itemId of ['toString', 'constructor', '__proto__']) {
+      const items = [
+        { itemId, stageId: 'foundation' as const, prerequisites: [], outcome: 'a', evidence: 'a' },
+      ]
+      const stages = [
+        { id: 'foundation' as const, order: 1, title: 'a', purpose: 'a', availability: 'published' as const, itemIds: [itemId] },
+      ]
+      expect(validateCourseMap(items, stages)).toContain(`Unknown content item: ${itemId}`)
+    }
+  })
+
+  it('keeps exported graph data and returned stage references immutable', () => {
+    const initialProgress = projectCourseProgress([])
+    const current = currentCourseStage([])
+
+    expect(Object.isFrozen(courseStages)).toBe(true)
+    expect(Object.isFrozen(courseStages[0])).toBe(true)
+    expect(Object.isFrozen(courseStages[0].itemIds)).toBe(true)
+    expect(Object.isFrozen(courseItems)).toBe(true)
+    expect(Object.isFrozen(courseItems[0])).toBe(true)
+    expect(Object.isFrozen(courseItems[0].prerequisites)).toBe(true)
+    expect(Object.isFrozen(publishedCourseItems)).toBe(true)
+    expect(Object.isFrozen(current)).toBe(true)
+
+    expect(() => {
+      (current as { title: string }).title = 'mutated'
+    }).toThrow(TypeError)
+    expect(currentCourseStage([])?.title).toBe('基础认知')
+    expect(projectCourseProgress([])).toEqual(initialProgress)
   })
 
   it('selects the first incomplete published stage and handles 20/20', () => {

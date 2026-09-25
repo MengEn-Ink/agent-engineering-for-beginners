@@ -10,20 +10,20 @@ export type CourseStageId =
   | 'capstone'
 
 export interface CourseItem {
-  itemId: string
-  stageId: CourseStageId
-  prerequisites: string[]
-  outcome: string
-  evidence: string
+  readonly itemId: string
+  readonly stageId: CourseStageId
+  readonly prerequisites: readonly string[]
+  readonly outcome: string
+  readonly evidence: string
 }
 
 export interface CourseStage {
-  id: CourseStageId
-  order: number
-  title: string
-  purpose: string
-  availability: 'published' | 'relationship-only'
-  itemIds: string[]
+  readonly id: CourseStageId
+  readonly order: number
+  readonly title: string
+  readonly purpose: string
+  readonly availability: 'published' | 'relationship-only'
+  readonly itemIds: readonly string[]
 }
 
 export interface CourseProgress {
@@ -32,16 +32,30 @@ export interface CourseProgress {
   stages: Array<{ id: CourseStageId; completed: number; total: number }>
 }
 
-export const courseStages: CourseStage[] = [
+function freezeCourseStages(stages: CourseStage[]): readonly CourseStage[] {
+  return Object.freeze(stages.map((stage) => Object.freeze({
+    ...stage,
+    itemIds: Object.freeze([...stage.itemIds]),
+  })))
+}
+
+function freezeCourseItems(items: CourseItem[]): readonly CourseItem[] {
+  return Object.freeze(items.map((item) => Object.freeze({
+    ...item,
+    prerequisites: Object.freeze([...item.prerequisites]),
+  })))
+}
+
+export const courseStages = freezeCourseStages([
   { id: 'foundation', order: 1, title: '基础认知', purpose: '分清控制权与 Agent 循环', availability: 'published', itemIds: ['preface', 'chapter-01-ai-native', 'chapter-02-workflow-agent', 'chapter-03-react'] },
   { id: 'mechanisms', order: 2, title: '核心机制', purpose: '组装工具、上下文、状态与协作', availability: 'published', itemIds: ['chapter-04-tools-mcp', 'frontier-context-engineering', 'chapter-05-state-memory', 'chapter-06-loop-graph', 'chapter-07-multi-agent', 'frontier-interoperability-identity'] },
   { id: 'engineering', order: 3, title: '生产工程', purpose: '建立评测、安全、恢复与上线能力', availability: 'published', itemIds: ['chapter-08-evaluation', 'chapter-09-safety-recovery', 'chapter-10-production', 'frontier-durable-execution', 'frontier-agent-security-evaluation'] },
   { id: 'applications', order: 4, title: '应用模式', purpose: '理解四类 Agent 的适用与失败边界', availability: 'published', itemIds: ['chapter-11-research-agent', 'chapter-12-service-operations-agent', 'chapter-13-coding-agent', 'chapter-14-computer-use'] },
   { id: 'projects', order: 5, title: '项目拆解', purpose: '从已发布案例观察工程质量门', availability: 'published', itemIds: ['case-delivery-agent'] },
   { id: 'capstone', order: 6, title: '综合实战', purpose: '在后续独立阶段组合 Python Lab 与交付型后端 Agent', availability: 'relationship-only', itemIds: [] },
-]
+])
 
-export const courseItems: CourseItem[] = [
+export const courseItems = freezeCourseItems([
   { itemId: 'preface', stageId: 'foundation', prerequisites: [], outcome: '说清 Agent 工程课程解决什么问题，以及学习顺序为何这样安排', evidence: '一张个人学习目标与已有基础清单' },
   { itemId: 'chapter-01-ai-native', stageId: 'foundation', prerequisites: ['preface'], outcome: '区分 AI-Enhanced 与 AI-Native，并划分模型和确定性代码责任', evidence: '一张 AI Native 改造画布' },
   { itemId: 'chapter-02-workflow-agent', stageId: 'foundation', prerequisites: ['chapter-01-ai-native'], outcome: '为具体任务选择 Prompt、Workflow 或 Agent', evidence: '一份控制方式选择单' },
@@ -62,15 +76,15 @@ export const courseItems: CourseItem[] = [
   { itemId: 'chapter-13-coding-agent', stageId: 'applications', prerequisites: ['chapter-04-tools-mcp', 'chapter-08-evaluation', 'chapter-09-safety-recovery'], outcome: '约束仓库理解、修改、测试和交付证据', evidence: '一份 Coding Agent 任务与验证契约' },
   { itemId: 'chapter-14-computer-use', stageId: 'applications', prerequisites: ['chapter-04-tools-mcp', 'chapter-09-safety-recovery'], outcome: '为界面操作设计观察、权限和最终证据', evidence: '一张 Computer Use 风险与证据闭环' },
   { itemId: 'case-delivery-agent', stageId: 'projects', prerequisites: ['chapter-08-evaluation', 'chapter-09-safety-recovery', 'chapter-10-production'], outcome: '把评测、安全和生产门禁组合到一个交付型案例', evidence: '一份可复核的质量门评审记录' },
-]
+])
 
-export const publishedCourseItems = courseItems.filter((item) =>
+export const publishedCourseItems = Object.freeze(courseItems.filter((item) =>
   courseStages.find((stage) => stage.id === item.stageId)?.availability === 'published',
-)
+))
 
-export const courseItemById = Object.fromEntries(
+export const courseItemById = Object.freeze(Object.fromEntries(
   courseItems.map((item) => [item.itemId, item]),
-) as Record<string, CourseItem>
+)) as Readonly<Record<string, CourseItem>>
 
 export function projectCourseProgress(completedRoutes: string[]): CourseProgress {
   const completed = new Set(completedRoutes.map(normalizeLearningPath))
@@ -100,14 +114,14 @@ export function currentCourseStage(completedRoutes: string[]): CourseStage | nul
   return current ? (courseStages.find((stage) => stage.id === current.id) ?? null) : null
 }
 
-export function validateCourseMap(items: CourseItem[], stages: CourseStage[]): string[] {
+export function validateCourseMap(items: readonly CourseItem[], stages: readonly CourseStage[]): string[] {
   const errors: string[] = []
   const stageById = new Map(stages.map((stage) => [stage.id, stage]))
   const itemCounts = new Map<string, number>()
 
   for (const item of items) {
     itemCounts.set(item.itemId, (itemCounts.get(item.itemId) ?? 0) + 1)
-    if (!contentById[item.itemId]) errors.push(`Unknown content item: ${item.itemId}`)
+    if (!Object.hasOwn(contentById, item.itemId)) errors.push(`Unknown content item: ${item.itemId}`)
 
     const stage = stageById.get(item.stageId)
     if (!stage) {
