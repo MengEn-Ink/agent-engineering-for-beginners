@@ -57,7 +57,7 @@ Hermes Agent 与 OpenClaw 只进入项目总览的“前沿高权限观察区”
 
 ### 方案 B：按工程问题组织六个核心拆解（采用）
 
-每页回答一个稳定工程问题，并允许一个页面包含两个明确分工的仓库。正文采用 Markdown，机器可校验的版本、许可证、维护状态、源码入口和调用链放入集中数据。它既保留叙事能力，又能阻止链接和版本在多处漂移。
+每页回答一个稳定工程问题，并允许一个页面包含两个明确分工的仓库。正文采用 Markdown，机器可校验的版本、许可证、仓库状态、教学层级、源码入口和调用链放入集中数据。它既保留叙事能力，又能阻止链接和版本在多处漂移。
 
 ### 方案 C：把全部内容生成自结构化数据
 
@@ -82,7 +82,7 @@ Hermes Agent 与 OpenClaw 只进入项目总览的“前沿高权限观察区”
 
 - `/projects/` 是索引，不复制六篇正文；它展示学习目标、先修、状态和入口。
 - 六个核心页面是 `kind: 'project'` 的公开 `CourseItem`。
-- 历史页也是 `kind: 'project'` 的内容记录，但 `catalogTier: 'historical'`，不进入 `courseMap` 或完成度。
+- 历史页也是 `kind: 'project'` 的内容记录，但其项目索引记录使用 `catalog_tier: historical`，不进入 `courseMap` 或完成度。
 - `/labs/`、`/capstone/` 与任何“开始实验”入口继续不存在并返回 404。
 - `/projects` 与 `/projects/`、每个 clean URL 与尾斜杠形式都必须能由预览和 Pages 正确解析。
 
@@ -134,7 +134,14 @@ Hermes Agent 与 OpenClaw 只进入项目总览的“前沿高权限观察区”
 
 页面身份继续由 `contentRegistry` 唯一提供 `itemId / route / title / navTitle / kind`。项目专属事实进入 `sources/project-index.yml`，只通过 `page_item_id` 引用页面，不重复 route 或标题。
 
-建议 schema：
+设计把两个容易混淆的概念拆成正交轴：
+
+- `repository_status` 只描述上游生命周期，可取 `active | archived | eol`；
+- `catalog_tier` 只描述本书教学定位，可取 `core | historical | watch-only`。
+
+`repository_status` 不能由本书是否推荐反推。AutoGPT 是 `active + historical`，Hermes Agent 与 OpenClaw 是 `active + watch-only`；Flowise 是 `eol + historical`，并以 `archived: true` 记录 GitHub 的归档事实。
+
+以下完整示例同时规定 `pages` 的八条权威记录；实现不得改名、删项或临场重组：
 
 ```yaml
 schema_version: 1
@@ -142,10 +149,54 @@ defaults:
   verified_at: '2026-09-26'
   review_by: '2026-10-26'
 pages:
+  - page_item_id: projects-index
+    catalog_tier: core
+    subjects: [mcp-spec, mcp-python-sdk, aider, openhands-canvas, openhands-sdk, swe-bench, tau2-bench, dify, crewai, autogpt, flowise, hermes-agent, openclaw]
+    interview_question_ids: []
+    counted_in_course: false
+    primary_chain_id: null
+  - page_item_id: project-mcp-python-sdk
+    catalog_tier: core
+    subjects: [mcp-spec, mcp-python-sdk]
+    interview_question_ids: [iq-04-a, iq-04-b, iq-04-c]
+    counted_in_course: true
+    primary_chain_id: mcp-tool-call
   - page_item_id: project-aider
-    tier: core
+    catalog_tier: core
     subjects: [aider]
     interview_question_ids: [iq-13-a, iq-13-b, iq-13-c]
+    counted_in_course: true
+    primary_chain_id: aider-repo-to-verified-edit
+  - page_item_id: project-openhands
+    catalog_tier: core
+    subjects: [openhands-canvas, openhands-sdk]
+    interview_question_ids: [iq-09-b, iq-10-a, iq-13-c]
+    counted_in_course: true
+    primary_chain_id: openhands-canvas-to-workspace-event
+  - page_item_id: project-agent-benchmarks
+    catalog_tier: core
+    subjects: [swe-bench, tau2-bench]
+    interview_question_ids: [iq-08-a, iq-08-b, iq-08-c]
+    counted_in_course: true
+    primary_chain_id: benchmark-task-to-score
+  - page_item_id: project-dify
+    catalog_tier: core
+    subjects: [dify]
+    interview_question_ids: [iq-02-b, iq-06-a, iq-10-a]
+    counted_in_course: true
+    primary_chain_id: dify-request-to-graph-events
+  - page_item_id: project-crewai
+    catalog_tier: core
+    subjects: [crewai]
+    interview_question_ids: [iq-07-a, iq-07-b, iq-07-c]
+    counted_in_course: true
+    primary_chain_id: crewai-kickoff-to-task-output
+  - page_item_id: project-history-autogpt-flowise
+    catalog_tier: historical
+    subjects: [autogpt, flowise]
+    interview_question_ids: [iq-02-b, iq-07-c, iq-10-a]
+    counted_in_course: false
+    primary_chain_id: autogpt-flowise-evolution
 subjects:
   - id: aider
     canonical_repo: Aider-AI/aider
@@ -153,17 +204,26 @@ subjects:
     pin_kind: release
     pinned_ref: v0.86.0
     pinned_commit: a4be6ccd87ebaa59b361f3f028d116ce1761b626
-    maintenance: active
-    license_expression: Apache-2.0
-    license_path: LICENSE.txt
-    license_scope: repository
+    repository_status: active
+    archived: false
+    catalog_tier: core
+    license_summary: Apache-2.0 repository license; third-party assets still require file-level review
+    license_scopes:
+      - expression: Apache-2.0
+        path_or_glob: '**'
+        scope: repository code and documentation unless a file states otherwise
+        note: Preserve notices and separately review logos, trademarks, and third-party files.
     watch_url: https://github.com/Aider-AI/aider/releases/latest
     entrypoints:
       - aider/main.py
       - aider/coders/base_coder.py
 ```
 
-`project-index.yml` 只包含公开事实和固定源码路径。页面中的解释性段落仍在 Markdown；组件从索引渲染固定版本、维护状态、许可证、源码入口和升级日期。
+`project-index.yml` 只包含公开事实和固定源码路径。页面中的解释性段落仍在 Markdown；组件从索引渲染固定版本、仓库状态、教学层级、许可证、源码入口和升级日期。
+
+`projects-index` 引用全部 13 个 subject，是唯一展示 watch-only 条目的页面。`hermes-agent` 与 `openclaw` 的 subject 级 `catalog_tier` 必须为 `watch-only`，且它们不得出现在其他七条 page 记录、`courseMap` 或 `readingPaths` 中。
+
+page 级 `catalog_tier: core` 表示该页面属于主项目目录，不等于计入课程；是否计分只由 `counted_in_course` 决定。因此 `projects-index` 是核心总览但不计分，六个核心拆解同时满足 `catalog_tier: core` 与 `counted_in_course: true`。
 
 ### 7.2 字段不变量
 
@@ -173,30 +233,51 @@ subjects:
 - `pinned_ref` 用于人类识别；`pin_kind` 明确是 `release`、`tag` 或 `commit`。
 - 一个 ref 若存在，远端解析结果必须等于 `pinned_commit`。
 - `entrypoints` 必须在固定 commit 中存在；每个核心页面至少 3 个、最多 8 个。
-- `maintenance` 只能是 `active`、`watch-only`、`historical`、`archived-eol`。
-- 许可证按具体文件与目录作用域记录。`license_expression` 不确定时使用项目内定义的 `LicenseRef-*`，不能伪造 SPDX。
+- `repository_status` 只能是 `active`、`archived` 或 `eol`；`archived` 是独立布尔事实，允许表达“已归档且 EOL”。
+- `repository_status: active` 必须搭配 `archived: false`；`repository_status: archived` 必须搭配 `archived: true`；`repository_status: eol` 可按 GitHub 实际归档状态搭配布尔值。
+- subject 的 `catalog_tier` 只能是 `core`、`historical` 或 `watch-only`；page 的 `catalog_tier` 只能是 `core` 或 `historical`。
+- `license_summary` 必须是非空字符串；`license_scopes` 必须是非空数组，每项至少包含 `expression / path_or_glob / scope / note`。
+- 混合许可按目录、文件或贡献范围拆成多条 `license_scopes`。不得使用一个 `AND` 表达“不同目录分别适用不同许可”。
+- `LicenseRef-*` 只用于项目自定义或无法准确写成 SPDX 的条款，必须在 `note` 中链接或解释项目原始许可文件。
 - `interview_question_ids` 只能引用现有 42 题，页面不得创建新答案副本。
+- 八个 page 记录都必须包含 `page_item_id / catalog_tier / subjects / interview_question_ids / counted_in_course / primary_chain_id`；只有 `projects-index.primary_chain_id` 可以为 `null`。
 - `verified_at <= review_by`，到期只改变复核状态，不自动改正文。
 
 ## 8. 初始固定版本与许可证基线
 
 下表是设计日核验的初始 pin。实施时如果上游已发布新版本，不自动追新；先比较差异，再由人工决定更新设计 pin 或保留当前教学基线。
 
-| subject ID | canonical repo | pinned ref | pinned commit | 维护状态 | 许可证边界 |
-| --- | --- | --- | --- | --- | --- |
-| `mcp-spec` | `modelcontextprotocol/modelcontextprotocol` | `2026-07-28` | `5f5440bb26a62e2cf3440b92da5a667efa03b267` | active | 仓库处于 MIT → Apache-2.0 过渡；新代码与规范贡献 Apache-2.0，普通文档（不含规范）CC-BY-4.0，未重许可旧贡献仍为 MIT |
-| `mcp-python-sdk` | `modelcontextprotocol/python-sdk` | `v2.2.0` | `9972c21aa42054fb1450c5fc614761ed11847ec6` | active | MIT，仍需逐文件排除第三方素材 |
-| `aider` | `Aider-AI/aider` | `v0.86.0` | `a4be6ccd87ebaa59b361f3f028d116ce1761b626` | active | Apache-2.0 |
-| `openhands-canvas` | `OpenHands/OpenHands` | `v1.24.0` | `7dc6805406ea3c76cb4a3ce407c3c72d481b0ac6` | active | MIT；本仓库现在主要是 Agent Canvas 和编排层 |
-| `openhands-sdk` | `OpenHands/software-agent-sdk` | `v1.49.6` | `fcc102a697874d54a357e36004e02c95040dbdc0` | active | MIT；Canvas 同版本依赖 `@openhands/typescript-client@1.49.6` |
-| `swe-bench` | `SWE-bench/SWE-bench` | `v5.0.1` | `87ab1f6ced28f75ba73ca899dc759b019310944a` | active | MIT；该 ref 是 tag，不冒充 GitHub Release |
-| `tau2-bench` | `sierra-research/tau2-bench` | `v1.0.1` | `fc0055dc4e0a316c3f83133267fbd6faaa770992` | active | MIT |
-| `dify` | `langgenius/dify` | `1.17.1` | `8387590ace4a094de812b7847fc6a4c3a27cd52b` | active | `LicenseRef-Dify-Modified-Apache-2.0`：多租户、前端 Logo/版权与外观专利有附加条件 |
-| `crewai` | `crewAIInc/crewAI` | `1.15.22` | `7a01af27912c2b142d8bac70d1894343f8b91bd1` | active | MIT；源码已采用 `lib/crewai/...` monorepo 路径 |
-| `autogpt` | `Significant-Gravitas/AutoGPT` | `autogpt-platform-beta-v0.8.1` | `ead8f943f981ea650285eee3020c8ff0e7eda94d` | historical | 混合许可：`autogpt_platform/` 为 PolyForm Shield，其余列明范围为 MIT |
-| `flowise` | `FlowiseAI/Flowise` | `flowise@3.1.4` | `a65f81bb43ef66d3ce734bf0dff4223ae8041c95` | archived-eol | 混合许可：enterprise 目录与显式标记文件为商业许可，其余为 Apache-2.0；2026-08-31 EOL |
-| `hermes-agent` | `NousResearch/hermes-agent` | `v2026.9.24` | `f97608f178d1ffeca59860195ab7da295f7c8e5f` | watch-only | MIT；仅做长期自主能力与权限风险观察 |
-| `openclaw` | `openclaw/openclaw` | `v2026.9.6` | `eb377ac59e6c9fd6c7705028034812becf00271b` | watch-only | MIT，另有 `THIRD_PARTY_NOTICES.md`；仅做高权限个人 Agent 风险观察 |
+| subject ID | canonical repo | pinned ref | pinned commit | repository_status | archived | catalog_tier | license_summary |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `mcp-spec` | `modelcontextprotocol/modelcontextprotocol` | `2026-07-28` | `5f5440bb26a62e2cf3440b92da5a667efa03b267` | active | false | core | 贡献级 MIT → Apache-2.0 过渡，普通文档另有 CC-BY-4.0 |
+| `mcp-python-sdk` | `modelcontextprotocol/python-sdk` | `v2.2.0` | `9972c21aa42054fb1450c5fc614761ed11847ec6` | active | false | core | MIT，仍需逐文件排除第三方素材 |
+| `aider` | `Aider-AI/aider` | `v0.86.0` | `a4be6ccd87ebaa59b361f3f028d116ce1761b626` | active | false | core | Apache-2.0 |
+| `openhands-canvas` | `OpenHands/OpenHands` | `v1.24.0` | `7dc6805406ea3c76cb4a3ce407c3c72d481b0ac6` | active | false | core | MIT；本仓库现在主要是 Agent Canvas 和编排层 |
+| `openhands-sdk` | `OpenHands/software-agent-sdk` | `v1.49.6` | `fcc102a697874d54a357e36004e02c95040dbdc0` | active | false | core | MIT；Canvas 同版本依赖 `@openhands/typescript-client@1.49.6` |
+| `swe-bench` | `SWE-bench/SWE-bench` | `v5.0.1` | `87ab1f6ced28f75ba73ca899dc759b019310944a` | active | false | core | MIT；该 ref 是 tag，不冒充 GitHub Release |
+| `tau2-bench` | `sierra-research/tau2-bench` | `v1.0.1` | `fc0055dc4e0a316c3f83133267fbd6faaa770992` | active | false | core | MIT |
+| `dify` | `langgenius/dify` | `1.17.1` | `8387590ace4a094de812b7847fc6a4c3a27cd52b` | active | false | core | 修改版 Apache-2.0，含多租户、前端标识与外观专利条件 |
+| `crewai` | `crewAIInc/crewAI` | `1.15.22` | `7a01af27912c2b142d8bac70d1894343f8b91bd1` | active | false | core | MIT；源码已采用 `lib/crewai/...` monorepo 路径 |
+| `autogpt` | `Significant-Gravitas/AutoGPT` | `autogpt-platform-beta-v0.8.1` | `ead8f943f981ea650285eee3020c8ff0e7eda94d` | active | false | historical | 按目录分为 PolyForm Shield 与 MIT |
+| `flowise` | `FlowiseAI/Flowise` | `flowise@3.1.4` | `a65f81bb43ef66d3ce734bf0dff4223ae8041c95` | eol | true | historical | 按目录与显式文件分为商业许可与 Apache-2.0；2026-08-31 EOL |
+| `hermes-agent` | `NousResearch/hermes-agent` | `v2026.9.24` | `f97608f178d1ffeca59860195ab7da295f7c8e5f` | active | false | watch-only | MIT；只做长期自主能力与权限风险观察 |
+| `openclaw` | `openclaw/openclaw` | `v2026.9.6` | `eb377ac59e6c9fd6c7705028034812becf00271b` | active | false | watch-only | MIT，另有 `THIRD_PARTY_NOTICES.md`；只做高权限个人 Agent 风险观察 |
+
+### 8.1 特殊许可证的 `license_scopes`
+
+| subject ID | expression | path_or_glob | scope | note |
+| --- | --- | --- | --- | --- |
+| `mcp-spec` | `Apache-2.0` | `**` | 新代码与规范贡献，以及已取得重许可同意的贡献 | 这是贡献级适用范围，不能仅凭文件路径推断全部历史内容 |
+| `mcp-spec` | `MIT` | `**` | 尚未取得重许可同意的历史贡献 | 引用前需追踪具体文件与历史 |
+| `mcp-spec` | `CC-BY-4.0` | `docs/**` | 普通文档贡献，不含规范 | 规范仍按仓库过渡许可处理 |
+| `dify` | `LicenseRef-Dify-Modified-Apache-2.0` | `**` | 仓库代码与内容 | 多租户服务、`web/` 前端 Logo/版权与外观专利受附加条件约束 |
+| `autogpt` | `PolyForm-Shield-1.0.0` | `autogpt_platform/**` | 平台目录代码与内容 | 不得把平台目录写成 MIT |
+| `autogpt` | `MIT` | `**` | classic 与 LICENSE 明列的其他部分 | 更具体的 `autogpt_platform/**` PolyForm scope 优先；文件若有独立声明，以文件声明为准 |
+| `flowise` | `LicenseRef-Flowise-Commercial` | `packages/server/src/enterprise/**` | enterprise 目录 | 商业许可，不作为可自由复制素材 |
+| `flowise` | `LicenseRef-Flowise-Commercial` | `packages/server/src/IdentityManager.ts` | 当前许可文件点名的显式商业许可文件 | 扫描到其他显式商业声明时必须新增独立 scope，否则校验失败 |
+| `flowise` | `Apache-2.0` | `**` | 其余未受限内容 | 更具体的 commercial scope 优先；第三方组件仍服从各自原始许可 |
+
+`license_scopes` 使用“最具体路径优先”规则；两个同等具体的 scope 重叠且 expression 不同时，校验失败。MCP 的许可过渡属于贡献级而非纯路径级，任何直接复制都必须进入人工 provenance 审核，不能仅靠 glob 自动放行。
 
 ## 9. 核心页面固定模板
 
@@ -204,7 +285,7 @@ subjects:
 
 1. **30 秒结论**：这个项目解决什么，不解决什么；
 2. **为什么选它**：与课程哪一章连接，以及为什么不是按 Star 排名；
-3. **版本与边界卡**：canonical repo、固定 ref/SHA、核验日期、维护状态、许可证作用域；
+3. **版本与边界卡**：canonical repo、固定 ref/SHA、核验日期、仓库状态、教学层级、许可证作用域；
 4. **原创架构图**：只画本页会追踪的组件，标明“源码事实”和“本书归纳”；
 5. **唯一纵向调用链**：从一个入口追到结果或评分，步骤有稳定编号；
 6. **关键源码入口**：3–8 个固定 commit 链接，写清文件职责与本页使用的符号；
@@ -323,7 +404,7 @@ subjects:
 
 ### 11.1 AutoGPT / Flowise 历史页
 
-历史页仍记录固定 commit、维护状态、许可证和关键路径，但不使用核心页的“推荐采用”语气。页面回答：
+历史页仍记录固定 commit、仓库状态、教学层级、许可证和关键路径，但不使用核心页的“推荐采用”语气。页面回答：
 
 - 当时解决了什么真实问题；
 - 哪些架构模式仍值得学习；
@@ -351,7 +432,7 @@ AutoGPT 只追踪 `classic/original_autogpt/autogpt/app/main.py`、`agents/agent
 建议最小组件：
 
 - `ProjectOverview.vue`：从项目索引生成核心、历史与 watch-only 三组入口；
-- `ProjectMeta.vue`：渲染固定版本、维护状态、许可证和核验日期；
+- `ProjectMeta.vue`：分别渲染固定版本、仓库状态、教学层级、许可证和核验日期；
 - `ProjectCallChain.vue`：把结构化步骤渲染成有序列表与原创关系图；
 - `ProjectSourceLinks.vue`：生成固定 SHA 的源码链接和路径说明。
 
@@ -436,7 +517,7 @@ Markdown（解释、反例、练习、生产边界）
 - **页面引用未知 subject/item：** 构建失败并打印 ID。
 - **固定源码路径不存在：** 每周巡检标记 `project_review_required`；合并前的显式在线核验必须通过。
 - **上游发布新版本：** 页面继续诚实展示固定版本；Radar/Issue 提醒人工比较，不自动改 pin。
-- **仓库归档或迁移：** 不删除旧页；更新维护状态、canonical 地址和迁移说明后再发布。
+- **仓库归档或迁移：** 不删除旧页；分别更新 `repository_status`、`archived`、canonical 地址和迁移说明后再发布，不能自动改变 `catalog_tier`。
 - **许可证变化：** 立即阻止新增直接素材；原创解释页可以保留，但必须复核已有代码短引与 provenance。
 - **GitHub 限流或网络失败：** 记为瞬时/网络错误并有限重试，不能算 healthy；静态站仍使用已核验数据构建。
 - **项目体量过大：** 只保留本设计的一条纵向链，其他子系统放在“本页没有覆盖”中，不扩写成框架手册。
@@ -451,7 +532,7 @@ Markdown（解释、反例、练习、生产边界）
 - 六个核心页、一个总览和一个历史页均存在；每页 `project-id` 与 registry、项目索引一致。
 - 六个核心页各包含模板 13 个部分、一个主调用链、3–8 个固定源码入口和至少一个失败边界。
 - 页面所有源码链接使用 40 位固定 commit；不存在 `blob/main/` 或 `blob/master/`。
-- 许可证、维护状态和设计日 pin 与第 8 节逐项一致。
+- 许可证、仓库状态、教学层级和设计日 pin 与第 8 节逐项一致。
 - 页面引用的面试题 ID 全部存在于现有 42 题；题目数组、答案和分布不变。
 - AutoGPT/Flowise 只在历史页，Hermes/OpenClaw 只在 watch-only 区；它们不进入 CourseItem 或 readingPaths。
 - 不使用 Star、下载量或榜单名次证明工程质量；不声称本书取得官方 benchmark 成绩。
@@ -479,7 +560,7 @@ Markdown（解释、反例、练习、生产边界）
 - 1440px 与 390px、浅色与深色分别检查总览和至少两个复杂页面。
 - 页面无横向溢出；调用链、源码路径和版本卡在 390px 可读。
 - 键盘可依次访问项目导航、固定源码和相关面试题，焦点清晰。
-- 读屏能读出项目分类、维护状态、固定版本、调用链顺序和风险说明。
+- 读屏能分别读出项目教学层级、仓库状态、固定版本、调用链顺序和风险说明。
 - 无 JavaScript 时八个页面的核心内容和链接完整可用。
 - 打印 PDF 包含全部调用链与源码入口，不遗漏折叠内容。
 - 控制台、资源请求和内部链接无错误。
