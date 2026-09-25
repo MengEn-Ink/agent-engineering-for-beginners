@@ -12,6 +12,34 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parse } from 'yaml'
 
+const expandedChapterFiles = [
+  'docs/chapters/01-ai-native.md',
+  'docs/chapters/02-workflow-agent.md',
+  'docs/chapters/03-react.md',
+  'docs/chapters/04-tools-mcp.md',
+  'docs/chapters/05-state-memory.md',
+  'docs/chapters/06-loop-graph.md',
+  'docs/chapters/07-multi-agent.md',
+  'docs/chapters/08-evaluation.md',
+  'docs/chapters/09-safety-recovery.md',
+  'docs/chapters/10-production.md',
+]
+
+const applicationChapterFiles = [
+  'docs/chapters/11-research-agent.md',
+  'docs/chapters/12-service-operations-agent.md',
+  'docs/chapters/13-coding-agent.md',
+  'docs/chapters/14-computer-use.md',
+]
+
+function contentCharacterCount(markdown: string) {
+  return markdown
+    .replace(/^---[\s\S]*?---\s*/u, '')
+    .replace(/<!--[\s\S]*?-->/gu, '')
+    .replace(/\s/gu, '')
+    .length
+}
+
 describe('book scaffold', () => {
   it('declares the public title and all ten chapter routes', () => {
     const configPath = 'docs/.vitepress/config.mts'
@@ -23,6 +51,126 @@ describe('book scaffold', () => {
 
     for (let chapter = 1; chapter <= 10; chapter += 1) {
       expect(config).toContain(`/chapters/${String(chapter).padStart(2, '0')}-`)
+    }
+  })
+})
+
+describe('complete handbook scope', () => {
+  const requiredModules = [
+    '## 本章先回答什么',
+    '## 工程上到底发生了什么',
+    '## 设计步骤',
+    '## 案例与失败边界',
+    '## 可复制',
+    '## 练习',
+    '来源：',
+  ]
+  const optionalModules = [
+    '## 先讲个故事',
+    '## 交付型 Agent 连续案例',
+    '## 应用切片',
+    '## 失败实验',
+    '## 方案对比',
+    '## 成本与性能',
+    '## 实施清单',
+    '## 扩展阅读',
+  ]
+
+  it('ships fourteen substantive chapters in the approved size ranges', () => {
+    let total = 0
+
+    for (const chapter of expandedChapterFiles) {
+      expect(existsSync(chapter)).toBe(true)
+      const count = contentCharacterCount(readFileSync(chapter, 'utf8'))
+      expect(count, chapter).toBeGreaterThanOrEqual(4_700)
+      expect(count, chapter).toBeLessThanOrEqual(6_000)
+      total += count
+    }
+
+    for (const chapter of applicationChapterFiles) {
+      expect(existsSync(chapter)).toBe(true)
+      const count = contentCharacterCount(readFileSync(chapter, 'utf8'))
+      expect(count, chapter).toBeGreaterThanOrEqual(4_500)
+      expect(count, chapter).toBeLessThanOrEqual(5_500)
+      total += count
+    }
+
+    expect(total).toBeGreaterThanOrEqual(65_000)
+    expect(total).toBeLessThanOrEqual(82_000)
+  })
+
+  it('gives every chapter seven core modules and two topic-driven modules', () => {
+    for (const chapter of [...expandedChapterFiles, ...applicationChapterFiles]) {
+      expect(existsSync(chapter)).toBe(true)
+      const text = readFileSync(chapter, 'utf8')
+      for (const module of requiredModules) expect(text, chapter).toContain(module)
+      const optionalCount = optionalModules.filter((module) => text.includes(module)).length
+      expect(optionalCount, chapter).toBeGreaterThanOrEqual(2)
+      expect(text, chapter).toMatch(/<(AgentLoop|SystemStack|DeliveryCase|DecisionLadder|MemoryLayers|EvidencePyramid|RiskMatrix)\s*\/>/)
+    }
+  })
+})
+
+describe('reading theme', () => {
+  it('uses quiet light and dark reading tokens', () => {
+    const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
+    expect(style).toContain('--reading-bg: #fcfcfa')
+    expect(style).toContain('--reading-text: #202632')
+    expect(style).toContain('--reading-bg: #17191d')
+    expect(style).toContain('--reading-text: #eceef2')
+    expect(style).toContain('color-scheme: dark')
+  })
+
+  it('removes the global grid and fixed reading background', () => {
+    const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
+    const bodyRule = style.match(/body\s*\{([\s\S]*?)\}/u)?.[1] ?? ''
+    expect(bodyRule).not.toContain('background-image')
+    expect(style).not.toContain('background-attachment: fixed')
+    expect(style).toContain('.book-hero::before')
+  })
+
+  it('sets a readable measure, type rhythm and accessible focus behavior', () => {
+    const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
+    expect(style).toContain('max-width: 720px')
+    expect(style).toContain('font-size: 17.5px')
+    expect(style).toContain('line-height: 1.9')
+    expect(style).toContain('text-wrap: balance')
+    expect(style).toContain('text-wrap: pretty')
+    expect(style).toContain('scroll-margin-top:')
+    expect(style).toContain(':focus-visible')
+    expect(style).not.toContain('.VPDoc > div > * {')
+  })
+})
+
+describe('learning components', () => {
+  const components = [
+    'ChapterLead',
+    'CaseThread',
+    'PracticeBlock',
+    'ChecklistBlock',
+    'DecisionLadder',
+    'MemoryLayers',
+    'EvidencePyramid',
+    'RiskMatrix',
+  ]
+
+  it('registers every reusable learning component', () => {
+    const theme = readFileSync('docs/.vitepress/theme/index.ts', 'utf8')
+    for (const component of components) {
+      const path = `docs/.vitepress/theme/components/${component}.vue`
+      expect(existsSync(path)).toBe(true)
+      expect(theme).toContain(`'${component}'`)
+    }
+  })
+
+  it('uses native disclosure and accessible diagram descriptions', () => {
+    expect(readFileSync('docs/.vitepress/theme/components/PracticeBlock.vue', 'utf8')).toContain(
+      '<details',
+    )
+    for (const component of ['DecisionLadder', 'MemoryLayers', 'EvidencePyramid', 'RiskMatrix']) {
+      const source = readFileSync(`docs/.vitepress/theme/components/${component}.vue`, 'utf8')
+      expect(source).toContain('role="img"')
+      expect(source).toContain('aria-label=')
     }
   })
 })
