@@ -13,6 +13,14 @@ import EvidencePyramid from './components/EvidencePyramid.vue'
 import RiskMatrix from './components/RiskMatrix.vue'
 import InterviewQuestion from './components/InterviewQuestion.vue'
 import InterviewIndex from './components/InterviewIndex.vue'
+import NativeShift from './components/NativeShift.vue'
+import ToolBoundary from './components/ToolBoundary.vue'
+import GraphFlow from './components/GraphFlow.vue'
+import MultiAgentHandoff from './components/MultiAgentHandoff.vue'
+import ResearchPipeline from './components/ResearchPipeline.vue'
+import ServiceEscalation from './components/ServiceEscalation.vue'
+import CodingLoop from './components/CodingLoop.vue'
+import BrowserEvidence from './components/BrowserEvidence.vue'
 import './style.css'
 
 export default {
@@ -31,5 +39,13 @@ export default {
     app.component('RiskMatrix', RiskMatrix)
     app.component('InterviewQuestion', InterviewQuestion)
     app.component('InterviewIndex', InterviewIndex)
+    app.component('NativeShift', NativeShift)
+    app.component('ToolBoundary', ToolBoundary)
+    app.component('GraphFlow', GraphFlow)
+    app.component('MultiAgentHandoff', MultiAgentHandoff)
+    app.component('ResearchPipeline', ResearchPipeline)
+    app.component('ServiceEscalation', ServiceEscalation)
+    app.component('CodingLoop', CodingLoop)
+    app.component('BrowserEvidence', BrowserEvidence)
   },
 } satisfies Theme

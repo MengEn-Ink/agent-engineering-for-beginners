@@ -19,7 +19,7 @@ description: 角色变多会带来专业化，也会带来交接、冲突、成�
 
 有效协作必须有可交付接口：勘察者报告门宽和路线；搬运者按路线执行；安全员只在碰撞风险时叫停。每个角色拥有不同信息或工具，交接物能被下一位验证。
 
-<SystemStack />
+<MultiAgentHandoff />
 
 <InterviewQuestion id="iq-07-a" />
 

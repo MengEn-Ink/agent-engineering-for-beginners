@@ -21,6 +21,8 @@ Graph 的价值不是让架构图更像地铁，而是让重要分支从 Prompt 
 
 <AgentLoop />
 
+<GraphFlow />
+
 <InterviewQuestion id="iq-06-a" />
 
 ## 工程上到底发生了什么

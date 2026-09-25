@@ -106,7 +106,7 @@ describe('complete handbook scope', () => {
       for (const module of requiredModules) expect(text, chapter).toContain(module)
       const optionalCount = optionalModules.filter((module) => text.includes(module)).length
       expect(optionalCount, chapter).toBeGreaterThanOrEqual(2)
-      expect(text, chapter).toMatch(/<(AgentLoop|SystemStack|DeliveryCase|DecisionLadder|MemoryLayers|EvidencePyramid|RiskMatrix)\s*\/>/)
+      expect(text, chapter).toMatch(/<(AgentLoop|SystemStack|DeliveryCase|DecisionLadder|MemoryLayers|EvidencePyramid|RiskMatrix|NativeShift|ToolBoundary|GraphFlow|MultiAgentHandoff|ResearchPipeline|ServiceEscalation|CodingLoop|BrowserEvidence)\s*\/>/)
     }
   })
 })
@@ -406,7 +406,7 @@ describe('chapter contracts', () => {
       const text = readFileSync(chapter, 'utf8')
       expect(text.replace(/\s/g, '').length).toBeGreaterThan(900)
       expect(text).toContain('## 先讲个故事')
-      expect(text).toMatch(/<(AgentLoop|SystemStack|DeliveryCase)\s*\/>/)
+      expect(text).toMatch(/<(AgentLoop|SystemStack|DeliveryCase|DecisionLadder|MemoryLayers|EvidencePyramid|RiskMatrix|NativeShift|ToolBoundary|GraphFlow|MultiAgentHandoff|ResearchPipeline|ServiceEscalation|CodingLoop|BrowserEvidence)\s*\/>/)
       expect(text).toContain('## 工程上到底发生了什么')
       expect(text).toContain('## 别踩这些坑')
       expect(text).toContain('## 三道小测')
@@ -720,5 +720,72 @@ describe('interview placement', () => {
 
     const config = readFileSync('docs/.vitepress/config.mts', 'utf8')
     expect(config).toContain('/appendix/interview')
+  })
+})
+
+describe('visual explanations', () => {
+  const newDiagrams = [
+    'NativeShift',
+    'ToolBoundary',
+    'GraphFlow',
+    'MultiAgentHandoff',
+    'ResearchPipeline',
+    'ServiceEscalation',
+    'CodingLoop',
+    'BrowserEvidence',
+  ]
+  const allDiagrams = [
+    'AgentLoop',
+    'SystemStack',
+    'DeliveryCase',
+    'DecisionLadder',
+    'MemoryLayers',
+    'EvidencePyramid',
+    'RiskMatrix',
+    ...newDiagrams,
+  ]
+
+  it('registers eight new diagrams with conclusions and preserved semantics', () => {
+    const theme = readFileSync('docs/.vitepress/theme/index.ts', 'utf8')
+    for (const component of newDiagrams) {
+      const path = `docs/.vitepress/theme/components/${component}.vue`
+      expect(existsSync(path)).toBe(true)
+      expect(theme).toContain(`'${component}'`)
+      const source = readFileSync(path, 'utf8')
+      expect(source).toContain('<figure')
+      expect(source).toContain('<figcaption>')
+      expect(source).toContain('aria-label=')
+      expect(source).toContain('不要误解')
+      expect(source).not.toContain('role="img"')
+    }
+  })
+
+  it('places exactly twenty-two explanatory visuals across fourteen chapters', () => {
+    const pattern = new RegExp(`<(${allDiagrams.join('|')})\\s*/>`, 'g')
+    let total = 0
+    for (const chapter of [...expandedChapterFiles, ...applicationChapterFiles]) {
+      const matches = readFileSync(chapter, 'utf8').match(pattern) ?? []
+      expect(matches.length, chapter).toBeGreaterThanOrEqual(1)
+      total += matches.length
+    }
+    expect(total).toBe(22)
+  })
+
+  it('provides mobile reflow rules for every new diagram family', () => {
+    const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
+    for (const selector of [
+      '.native-shift',
+      '.tool-boundary',
+      '.graph-flow',
+      '.multi-agent-handoff',
+      '.research-pipeline',
+      '.service-escalation',
+      '.coding-loop',
+      '.browser-evidence',
+    ]) {
+      expect(style).toContain(selector)
+    }
+    expect(style).toContain('.visual-flow-list')
+    expect(style).toContain('grid-template-columns: 1fr')
   })
 })

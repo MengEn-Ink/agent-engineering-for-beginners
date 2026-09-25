@@ -19,7 +19,7 @@ Coding Agent 的环境比聊天复杂：仓库里有多层说明、生成文件�
 
 可靠的维修工先确认是哪套房、哪个阀门、漏水如何复现、墙内管路怎么走；修完后开水测试，再检查其他房间是否受影响。Coding Agent 的工程链同样是探索、计划、失败测试、最小修改、回归和差异审查。
 
-<AgentLoop />
+<CodingLoop />
 
 <InterviewQuestion id="iq-13-a" />
 

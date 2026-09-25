@@ -21,6 +21,8 @@ description: 把“搜到很多”升级为“问题清楚、来源独立、主�
 
 <EvidencePyramid />
 
+<ResearchPipeline />
+
 <InterviewQuestion id="iq-11-a" />
 
 ## 工程上到底发生了什么

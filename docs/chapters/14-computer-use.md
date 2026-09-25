@@ -21,6 +21,8 @@ Computer Use 不是“万能 API”。它更像让 Agent 进入一个会移动�
 
 <RiskMatrix />
 
+<BrowserEvidence />
+
 <InterviewQuestion id="iq-14-a" />
 
 ## 工程上到底发生了什么

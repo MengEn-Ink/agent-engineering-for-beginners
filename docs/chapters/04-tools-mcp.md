@@ -21,6 +21,8 @@ description: 工具让模型接触真实世界，契约与权限决定它能安�
 
 <SystemStack />
 
+<ToolBoundary />
+
 <InterviewQuestion id="iq-04-a" />
 
 ## 工程上到底发生了什么

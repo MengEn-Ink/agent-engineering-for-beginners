@@ -21,6 +21,8 @@ description: AI Native 不是给旧产品贴一层聊天框，而是重新安排
 
 <SystemStack />
 
+<NativeShift />
+
 <InterviewQuestion id="iq-01-a" />
 
 ## 工程上到底发生了什么
