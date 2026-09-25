@@ -921,9 +921,11 @@ describe('release configuration', () => {
     const fixtureDir = mkdtempSync(join(tmpdir(), 'agent-book-preview-'))
     mkdirSync(join(fixtureDir, 'assets'), { recursive: true })
     mkdirSync(join(fixtureDir, 'chapters'), { recursive: true })
+    mkdirSync(join(fixtureDir, 'paths'), { recursive: true })
     writeFileSync(join(fixtureDir, 'index.html'), '<h1>book</h1>')
     writeFileSync(join(fixtureDir, 'assets/app.js'), 'console.log("book")')
     writeFileSync(join(fixtureDir, 'chapters/01.html'), '<h1>chapter</h1>')
+    writeFileSync(join(fixtureDir, 'paths/index.html'), '<h1>reading paths</h1>')
 
     try {
       expect(resolvePreviewPath('/agent-engineering-for-beginners/', fixtureDir)).toBe(
@@ -934,6 +936,9 @@ describe('release configuration', () => {
       )
       expect(resolvePreviewPath('/agent-engineering-for-beginners/chapters/01', fixtureDir)).toBe(
         join(fixtureDir, 'chapters/01.html'),
+      )
+      expect(resolvePreviewPath('/agent-engineering-for-beginners/paths/', fixtureDir)).toBe(
+        join(fixtureDir, 'paths/index.html'),
       )
       expect(resolvePreviewPath('/agent-engineering-for-beginners/../../LICENSE', fixtureDir)).toBeNull()
     } finally {

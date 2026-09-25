@@ -28,9 +28,11 @@ export function resolvePreviewPath(requestPath, distRoot) {
   const hasExtension = extname(relativePath) !== ''
   const requestedFile = relativePath === ''
     ? 'index.html'
+    : relativePath.endsWith('/')
+      ? `${relativePath}index.html`
     : hasExtension
       ? relativePath
-      : `${relativePath.replace(/\/$/, '')}.html`
+      : `${relativePath}.html`
   const candidate = resolve(distPath, requestedFile)
 
   if (candidate !== distPath && !candidate.startsWith(`${distPath}${sep}`)) return null
