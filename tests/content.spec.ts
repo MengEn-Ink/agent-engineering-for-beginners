@@ -436,6 +436,145 @@ describe('living handbook frontier', () => {
   })
 })
 
+describe('chapter freshness', () => {
+  it('defines review metadata for fourteen chapters and four frontier topics', async () => {
+    const dataPath = 'docs/.vitepress/theme/data/chapterMeta.ts'
+    expect(existsSync(dataPath)).toBe(true)
+    const { chapterMeta } = await import(pathToFileURL(join(process.cwd(), dataPath)).href)
+
+    expect(chapterMeta).toHaveLength(18)
+    expect(new Set(chapterMeta.map((item: { path: string }) => item.path)).size).toBe(18)
+
+    const sourceData = parse(readFileSync('sources/source-index.yml', 'utf8')) as {
+      sources: Array<{ id: string }>
+    }
+    const sourceIds = new Set(sourceData.sources.map((source) => source.id))
+
+    for (const item of chapterMeta) {
+      expect(item.path).toMatch(/^\/(chapters|frontier)\//u)
+      expect(item.lastVerified).toMatch(/^\d{4}-\d{2}-\d{2}$/u)
+      expect(item.reviewBy).toMatch(/^\d{4}-\d{2}-\d{2}$/u)
+      expect(new Date(item.lastVerified).toString()).not.toBe('Invalid Date')
+      expect(new Date(item.reviewBy).toString()).not.toBe('Invalid Date')
+      expect(item.reviewBy >= item.lastVerified).toBe(true)
+      expect(['evergreen', 'evolving', 'frontier']).toContain(item.stability)
+      expect(item.versions.length).toBeGreaterThan(0)
+      expect(item.sourceIds.length).toBeGreaterThan(0)
+      expect(item.sourceIds.filter((id: string) => !sourceIds.has(id))).toEqual([])
+    }
+  })
+
+  it('renders one compact freshness block after every tracked page title', async () => {
+    const dataPath = 'docs/.vitepress/theme/data/chapterMeta.ts'
+    const { chapterMeta } = await import(pathToFileURL(join(process.cwd(), dataPath)).href)
+    const theme = readFileSync('docs/.vitepress/theme/index.ts', 'utf8')
+    const componentPath = 'docs/.vitepress/theme/components/ChapterFreshness.vue'
+    const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
+
+    expect(existsSync(componentPath)).toBe(true)
+    expect(theme).toContain("'ChapterFreshness'")
+    expect(style).toContain('.chapter-freshness')
+
+    for (const item of chapterMeta) {
+      const markdown = `docs${item.path}.md`
+      expect(existsSync(markdown), markdown).toBe(true)
+      const text = readFileSync(markdown, 'utf8')
+      const placements = text.match(/<ChapterFreshness\s+path="[^"]+"\s*\/>/gu) ?? []
+      expect(placements, markdown).toHaveLength(1)
+      expect(placements[0], markdown).toContain(`path="${item.path}"`)
+      expect(text.indexOf(placements[0]), markdown).toBeGreaterThan(text.indexOf('\n# '))
+    }
+  })
+
+  it('shows stable labels and calculates overdue state only in the browser', () => {
+    const component = readFileSync(
+      'docs/.vitepress/theme/components/ChapterFreshness.vue',
+      'utf8',
+    )
+    for (const label of ['常青', '持续演进', '前沿观察', '最后核验', '下次复核', '版本关注']) {
+      expect(component).toContain(label)
+    }
+    expect(component).toContain('onMounted')
+    expect(component).toContain('需要复核')
+    expect(component).toContain('<time')
+  })
+})
+
+describe('local reading paths and progress', () => {
+  it('defines beginner, engineering and interview paths with valid public routes', async () => {
+    const dataPath = 'docs/.vitepress/theme/data/readingPaths.ts'
+    expect(existsSync(dataPath)).toBe(true)
+    const { readingPaths } = await import(pathToFileURL(join(process.cwd(), dataPath)).href)
+
+    expect(readingPaths.map((path: { id: string }) => path.id)).toEqual([
+      'beginner',
+      'engineering',
+      'interview',
+    ])
+    for (const path of readingPaths) {
+      expect(path.title).toEqual(expect.any(String))
+      expect(path.summary).toEqual(expect.any(String))
+      expect(path.steps.length).toBeGreaterThanOrEqual(8)
+      for (const step of path.steps) {
+        expect(step.path).toMatch(/^\/(chapters|appendix)\//u)
+        expect(existsSync(`docs${step.path}.md`), step.path).toBe(true)
+        expect(step.title).toEqual(expect.any(String))
+      }
+    }
+  })
+
+  it('keeps progress, bookmarks and path selection in guarded browser storage', () => {
+    const statePath = 'docs/.vitepress/theme/data/learningState.ts'
+    expect(existsSync(statePath)).toBe(true)
+    const state = readFileSync(statePath, 'utf8')
+
+    for (const key of [
+      'agent-handbook:path',
+      'agent-handbook:progress',
+      'agent-handbook:bookmarks',
+    ]) {
+      expect(state).toContain(key)
+    }
+    expect(state).toContain("typeof window === 'undefined'")
+    expect(state).toContain('try {')
+    expect(state).not.toContain('fetch(')
+  })
+
+  it('publishes an interactive path page and global chapter controls', () => {
+    const config = readFileSync('docs/.vitepress/config.mts', 'utf8')
+    const theme = readFileSync('docs/.vitepress/theme/index.ts', 'utf8')
+    const pathsPage = 'docs/paths/index.md'
+    const pathsComponent = 'docs/.vitepress/theme/components/ReadingPaths.vue'
+    const progressComponent = 'docs/.vitepress/theme/components/ReadingProgress.vue'
+
+    expect(config).toContain('/paths/')
+    expect(existsSync(pathsPage)).toBe(true)
+    expect(readFileSync(pathsPage, 'utf8')).toContain('<ReadingPaths />')
+    expect(existsSync(pathsComponent)).toBe(true)
+    expect(existsSync(progressComponent)).toBe(true)
+    expect(theme).toContain("'ReadingPaths'")
+    expect(theme).toContain('ReadingProgress')
+    expect(theme).toContain("'doc-after'")
+
+    const pathsSource = readFileSync(pathsComponent, 'utf8')
+    const progressSource = readFileSync(progressComponent, 'utf8')
+    expect(pathsSource).toContain('清除本地记录')
+    expect(pathsSource).toContain('window.confirm')
+    expect(pathsSource).toContain('aria-pressed')
+    expect(progressSource).toContain('标记已读')
+    expect(progressSource).toContain('加入书签')
+    expect(progressSource).toContain('仅存于当前浏览器')
+  })
+
+  it('styles local controls for touch and narrow screens', () => {
+    const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
+    for (const selector of ['.reading-paths', '.reading-progress', '.path-step', '.reading-action']) {
+      expect(style).toContain(selector)
+    }
+    expect(style).toMatch(/\.reading-action[\s\S]*?min-height:\s*44px/u)
+  })
+})
+
 describe('public-boundary validator', () => {
   it('flags local paths, credentials and internal product identifiers', async () => {
     const validatorPath = 'scripts/validate-content.mjs'

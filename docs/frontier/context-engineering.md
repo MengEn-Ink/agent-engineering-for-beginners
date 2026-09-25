@@ -5,6 +5,8 @@ description: 在有限上下文里选择、压缩、隔离和验证真正有用�
 
 # Context Engineering：不是把所有东西塞进窗口
 
+<ChapterFreshness path="/frontier/context-engineering" />
+
 上下文是 Agent 此刻能够看到的工作台。它包含系统规则、用户目标、工具说明、检索资料、任务状态和中间产物。工作台越满不一定越聪明；关键是让当前决策看到最少而充分、来源清楚、仍然有效的信息。
 
 ## 先看稳定原则

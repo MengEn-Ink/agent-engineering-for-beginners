@@ -5,6 +5,8 @@ description: 当 Agent 通过截图、鼠标和键盘操作界面，状态识别
 
 # Computer Use：看见页面，不等于理解页面
 
+<ChapterFreshness path="/chapters/14-computer-use" />
+
 Computer Use 让模型像人一样看屏幕、移动鼠标、输入键盘，能操作没有 API 的旧系统。它把自动化范围迅速扩大，也把视觉误识别、页面变化、提示注入和不可逆点击带进执行链。一个按钮离另一个按钮只有几十像素，错误就不再只是文字。
 
 ## 本章先回答什么

@@ -5,6 +5,8 @@ description: 用任务后果、重复攻击、权限边界和可观测证据评�
 
 # Agent 安全评测：别只测它会不会说“不”
 
+<ChapterFreshness path="/frontier/agent-security-evaluation" />
+
 Agent 安全不是问模型十次“请泄露密码”看它拒绝几次。真正的攻击会藏在网页、邮件、工具返回和共享文件里，目标是改变 Agent 的计划、窃取数据或诱导高影响工具调用。评测必须观察最终任务后果，而不只是某一条回复。
 
 ## 先看稳定原则

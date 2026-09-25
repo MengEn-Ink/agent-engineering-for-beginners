@@ -50,6 +50,7 @@ export default defineConfig({
     nav: [
       { text: '开始阅读', link: '/preface' },
       { text: '交付型案例', link: '/case-study/delivery-agent' },
+      { text: '阅读路径', link: '/paths/' },
       { text: '前沿雷达', link: '/radar/' },
       { text: '术语表', link: '/appendix/glossary' },
       { text: '面试题', link: '/appendix/interview' },
@@ -93,6 +94,7 @@ export default defineConfig({
       {
         text: '随手查',
         items: [
+          { text: '三条阅读路径', link: '/paths/' },
           { text: '术语表', link: '/appendix/glossary' },
           { text: '方案评审清单', link: '/appendix/review-checklist' },
           { text: '延伸阅读', link: '/appendix/reading' },

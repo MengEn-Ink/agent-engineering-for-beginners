@@ -1,5 +1,6 @@
 import DefaultTheme from 'vitepress/theme'
 import type { Theme } from 'vitepress'
+import { h } from 'vue'
 import AgentLoop from './components/AgentLoop.vue'
 import DeliveryCase from './components/DeliveryCase.vue'
 import SystemStack from './components/SystemStack.vue'
@@ -21,10 +22,16 @@ import ResearchPipeline from './components/ResearchPipeline.vue'
 import ServiceEscalation from './components/ServiceEscalation.vue'
 import CodingLoop from './components/CodingLoop.vue'
 import BrowserEvidence from './components/BrowserEvidence.vue'
+import ChapterFreshness from './components/ChapterFreshness.vue'
+import ReadingPaths from './components/ReadingPaths.vue'
+import ReadingProgress from './components/ReadingProgress.vue'
 import './style.css'
 
 export default {
   extends: DefaultTheme,
+  Layout: () => h(DefaultTheme.Layout, null, {
+    'doc-after': () => h(ReadingProgress),
+  }),
   enhanceApp({ app }) {
     app.component('AgentLoop', AgentLoop)
     app.component('DeliveryCase', DeliveryCase)
@@ -47,5 +54,8 @@ export default {
     app.component('ServiceEscalation', ServiceEscalation)
     app.component('CodingLoop', CodingLoop)
     app.component('BrowserEvidence', BrowserEvidence)
+    app.component('ChapterFreshness', ChapterFreshness)
+    app.component('ReadingPaths', ReadingPaths)
+    app.component('ReadingProgress', ReadingProgress)
   },
 } satisfies Theme
