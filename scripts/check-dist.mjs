@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
-import { join, relative, resolve } from 'node:path'
+import { join, posix, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const courseStages = [
@@ -49,11 +49,27 @@ export const approvedProjectFiles = new Set([
   'projects/history-autogpt-flowise.html',
 ])
 
+function normalizePublishedOutputPath(file) {
+  if (
+    file.includes('\0')
+    || file.startsWith('/')
+    || file.startsWith('\\')
+    || /^[A-Za-z]:/u.test(file)
+  ) {
+    return null
+  }
+
+  const normalized = posix.normalize(file.replace(/\\/gu, '/'))
+  return normalized === '..' || normalized.startsWith('../') ? null : normalized
+}
+
 export function validatePublishedRouteBoundary(relativeFiles) {
-  const forbidden = relativeFiles.filter((file) =>
-    /^(?:labs|capstone)(?:\.html|[\\/])/u.test(file)
-    || (/^projects(?:\.html|[\\/])/u.test(file) && !approvedProjectFiles.has(file)),
-  )
+  const forbidden = relativeFiles.filter((file) => {
+    const normalized = normalizePublishedOutputPath(file)
+    return normalized === null
+      || /^(?:labs|capstone)(?:\.html|\/)/u.test(normalized)
+      || (/^projects(?:\.html|\/)/u.test(normalized) && !approvedProjectFiles.has(normalized))
+  })
   return forbidden.length === 0
     ? []
     : [`构建产物包含未批准项目、实验或综合实战页面：${forbidden.join(', ')}`]

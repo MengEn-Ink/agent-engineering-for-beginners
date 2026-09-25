@@ -1010,6 +1010,17 @@ describe('publish boundary', () => {
 })
 
 describe('progressive project publication boundary', () => {
+  const approvedProjectOutputs = [
+    'projects/index.html',
+    'projects/mcp-python-sdk.html',
+    'projects/aider.html',
+    'projects/openhands.html',
+    'projects/agent-benchmarks.html',
+    'projects/dify.html',
+    'projects/crewai.html',
+    'projects/history-autogpt-flowise.html',
+  ]
+
   it('allows any subset of the eight approved project outputs during implementation', () => {
     expect(validatePublishedRouteBoundary([
       'index.html',
@@ -1018,19 +1029,52 @@ describe('progressive project publication boundary', () => {
     ])).toEqual([])
   })
 
+  it('allows every approved project output with POSIX and Windows separators', () => {
+    for (const output of approvedProjectOutputs) {
+      expect(validatePublishedRouteBoundary([output])).toEqual([])
+      expect(validatePublishedRouteBoundary([output.replaceAll('/', '\\')])).toEqual([])
+    }
+    expect(validatePublishedRouteBoundary(['projects\\aider.html'])).toEqual([])
+    expect(validatePublishedRouteBoundary(['./projects/aider.html'])).toEqual([])
+  })
+
   it('still rejects unapproved projects and every lab or capstone output', () => {
     expect(validatePublishedRouteBoundary([
       'projects/unreviewed.html',
       'projects/private/notes.html',
+      './projects/unreviewed.html',
+      'tmp/../projects/unreviewed.html',
+      'projects/../labs/index.html',
+      '../projects/aider.html',
+      'tmp/../../projects/mcp-python-sdk.html',
       'projects.html',
       'labs/index.html',
       'capstone/index.html',
     ])).toEqual(expect.arrayContaining([
       expect.stringContaining('projects/unreviewed.html'),
       expect.stringContaining('projects/private/notes.html'),
+      expect.stringContaining('./projects/unreviewed.html'),
+      expect.stringContaining('tmp/../projects/unreviewed.html'),
+      expect.stringContaining('projects/../labs/index.html'),
+      expect.stringContaining('../projects/aider.html'),
+      expect.stringContaining('tmp/../../projects/mcp-python-sdk.html'),
       expect.stringContaining('projects.html'),
       expect.stringContaining('labs/index.html'),
       expect.stringContaining('capstone/index.html'),
+    ]))
+  })
+
+  it('rejects absolute paths, Windows drive paths, and NUL bytes', () => {
+    expect(validatePublishedRouteBoundary([
+      '/projects/aider.html',
+      '\\\\server\\share\\projects\\aider.html',
+      'C:\\projects\\aider.html',
+      'projects/\0aider.html',
+    ])).toEqual(expect.arrayContaining([
+      expect.stringContaining('/projects/aider.html'),
+      expect.stringContaining('\\\\server\\share\\projects\\aider.html'),
+      expect.stringContaining('C:\\projects\\aider.html'),
+      expect.stringContaining('projects/\0aider.html'),
     ]))
   })
 })
