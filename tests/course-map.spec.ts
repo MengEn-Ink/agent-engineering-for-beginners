@@ -13,6 +13,11 @@ import {
   projectCourseProgress,
   validateCourseMap,
 } from '../docs/.vitepress/theme/data/courseMap'
+import {
+  learningStorageKeys,
+  normalizeCourseRoute,
+  readCourseProgress,
+} from '../docs/.vitepress/theme/data/learningState'
 
 const expectedIds = [
   'course', 'paths', 'preface',
@@ -137,5 +142,40 @@ describe('course graph', () => {
     const allRoutes = expectedCourseItems.map(({ itemId }) => getContentItem(itemId).route)
     expect(projectCourseProgress(allRoutes)).toMatchObject({ completed: 20, total: 20 })
     expect(currentCourseStage(allRoutes)).toBeNull()
+  })
+})
+
+describe('course progress input', () => {
+  const origin = 'https://mengen-ink.github.io'
+
+  it('normalizes only same-origin handbook routes', () => {
+    expect(normalizeCourseRoute('/agent-engineering-for-beginners/chapters/01-ai-native/?x=1#top', origin)).toBe('/chapters/01-ai-native')
+    expect(normalizeCourseRoute('/agent-engineering-for-beginners/chapters/01-ai-native.html', origin)).toBe('/chapters/01-ai-native')
+    expect(normalizeCourseRoute('/agent-engineering-for-beginners/paths/index.html', origin)).toBe('/paths')
+    expect(normalizeCourseRoute('https://mengen-ink.github.io/agent-engineering-for-beginners/chapters/01-ai-native', origin)).toBe('/chapters/01-ai-native')
+    expect(normalizeCourseRoute('https://evil.example/agent-engineering-for-beginners/chapters/01-ai-native', origin)).toBeNull()
+    expect(normalizeCourseRoute('/agent-engineering-for-beginners/%E0%A4%A', origin)).toBeNull()
+
+    const normalizedRegistryRoutes = contentItems.map((item) =>
+      normalizeCourseRoute(item.route, origin),
+    )
+    expect(normalizedRegistryRoutes.every(Boolean)).toBe(true)
+    expect(new Set(normalizedRegistryRoutes).size).toBe(contentItems.length)
+  })
+
+  it('reads only progress and distinguishes available, corrupt and blocked', () => {
+    const values = new Map([[learningStorageKeys.progress, '["/chapters/01-ai-native"]'], [learningStorageKeys.bookmarks, '{broken']])
+    const requested: string[] = []
+    const storage = {
+      getItem(key: string) { requested.push(key); return values.get(key) ?? null },
+    }
+    expect(readCourseProgress(storage)).toEqual({ status: 'available', completed: ['/chapters/01-ai-native'] })
+    expect(requested).toEqual([learningStorageKeys.progress])
+
+    values.set(learningStorageKeys.progress, '{broken')
+    expect(readCourseProgress(storage)).toEqual({ status: 'corrupt', completed: null })
+
+    expect(readCourseProgress({ getItem() { throw new Error('blocked') } })).toEqual({ status: 'blocked', completed: null })
+    expect(values.get(learningStorageKeys.progress)).toBe('{broken')
   })
 })

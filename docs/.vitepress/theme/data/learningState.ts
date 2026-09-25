@@ -14,6 +14,15 @@ export interface LearningState {
   bookmarks: string[]
 }
 
+export type CourseProgressRead =
+  | { status: 'available'; completed: string[] }
+  | { status: 'corrupt'; completed: null }
+  | { status: 'blocked'; completed: null }
+
+export interface ReadOnlyStorage {
+  getItem(key: string): string | null
+}
+
 export function emptyLearningState(): LearningState {
   return { selectedPath: 'beginner', completed: [], bookmarks: [] }
 }
@@ -82,10 +91,54 @@ export function clearLearningState(storage = browserStorage()): boolean {
   }
 }
 
+export function normalizeCourseRoute(
+  raw: string,
+  origin = typeof window === 'undefined' ? 'https://mengen-ink.github.io' : window.location.origin,
+  base = '/agent-engineering-for-beginners',
+): string | null {
+  try {
+    const expectedOrigin = new URL(origin).origin
+    const url = new URL(raw, `${expectedOrigin}/`)
+    if (url.origin !== expectedOrigin) return null
+
+    let path = decodeURIComponent(url.pathname).replace(/\/{2,}/gu, '/')
+    const normalizedBase = `/${base.replace(/^\/+|\/+$/gu, '')}`
+    if (path === normalizedBase) path = '/'
+    else if (path.startsWith(`${normalizedBase}/`)) path = path.slice(normalizedBase.length)
+    path = path.replace(/\/index(?:\.html)?\/?$/u, '/')
+    path = path.replace(/\.html$/u, '')
+    if (path !== '/') path = path.replace(/\/$/u, '')
+    return path || '/'
+  } catch {
+    return null
+  }
+}
+
+// Preserve the existing string-returning API until Tasks 4 and 6 migrate
+// current consumers to registry IDs and nullable course normalization.
 export function normalizeLearningPath(path: string): string {
-  const withoutBase = path.replace(/^\/agent-engineering-for-beginners/u, '')
-  const withoutQuery = withoutBase.split(/[?#]/u)[0].replace(/\.html$/u, '')
-  if (withoutQuery === '/') return '/'
-  return withoutQuery.replace(/\/$/u, '')
+  return normalizeCourseRoute(path) ?? path
+}
+
+export function readCourseProgress(
+  storage: ReadOnlyStorage | null = browserStorage(),
+): CourseProgressRead {
+  if (!storage) return { status: 'blocked', completed: null }
+  let raw: string | null
+  try {
+    raw = storage.getItem(learningStorageKeys.progress)
+  } catch {
+    return { status: 'blocked', completed: null }
+  }
+  if (raw === null) return { status: 'available', completed: [] }
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== 'string')) {
+      return { status: 'corrupt', completed: null }
+    }
+    return { status: 'available', completed: parsed }
+  } catch {
+    return { status: 'corrupt', completed: null }
+  }
 }
 
