@@ -106,6 +106,7 @@ The existing `case-delivery-agent` follows those six. `projects-index` and `proj
 After this plan is approved and before Task 1, create the isolated implementation branch from the approved baseline:
 
 ```bash
+set -e
 git fetch origin --prune
 git worktree add /Users/bytedance/work/agent-engineering-for-beginners/.trae/worktrees/open-source-project-dissections -b feat/open-source-project-dissections 815d7613ca639d462979b1e57024eafd897e176b
 git -C /Users/bytedance/work/agent-engineering-for-beginners/.trae/worktrees/open-source-project-dissections status --short --branch
@@ -147,6 +148,7 @@ import { describe, expect, it } from 'vitest'
 import {
   parseProjectCatalog,
   validateProjectCatalog,
+  validateProjectCatalogIntegration,
 } from '../scripts/project-catalog.mjs'
 
 const sha = 'a'.repeat(40)
@@ -248,13 +250,26 @@ describe('project catalog schema', () => {
       'Page project-aider references unknown chain: missing-chain',
       'Chain aider-chain step entry references an undeclared entrypoint: aider/missing.py',
     ]))
+    expect(validateProjectCatalogIntegration(validCatalog, {
+      contentRegistryText: "export const contentItems = [{ id: 'other' }]",
+      interviewQuestionsText: "question('iq-other', 1, 'x', '工程', '基础', 'x', 'x', [], [], 'x')",
+    })).toEqual([
+      'Project page is missing from contentRegistry: project-aider',
+      'Project page project-aider references unknown interview question: iq-13-a',
+    ])
+    expect(validateProjectCatalogIntegration(validCatalog, {
+      contentRegistryText: "export const contentItems = [{ id: 'project-aider' }]",
+      interviewQuestionsText: "question('iq-13-a', 13, 'x', '工程', '基础', 'x', 'x', [], [], 'x')",
+    })).toEqual([])
   })
 
   it('requires complete chains, unique steps, and page-owned subjects', () => {
     const broken = structuredClone(validCatalog)
+    broken.chains[0].label = '   '
     broken.pages[0].subjects = []
     broken.chains[0].steps.push({ ...broken.chains[0].steps[0] })
     expect(validateProjectCatalog(broken)).toEqual(expect.arrayContaining([
+      'Chain aider-chain requires non-empty label',
       'Chain aider-chain has duplicate step ID: entry',
       'Chain aider-chain step entry subject is not owned by page: aider',
     ]))
@@ -440,6 +455,9 @@ export function validateProjectCatalog(data) {
     for (const field of ['id', 'page_item_id', 'label', 'reading_hint', 'misconception', 'steps']) {
       if (!Object.hasOwn(chain, field)) errors.push(`Chain ${chain?.id ?? '<unknown>'} is missing ${field}`)
     }
+    for (const field of ['id', 'page_item_id', 'label', 'reading_hint', 'misconception']) {
+      if (!nonEmpty(chain[field])) errors.push(`Chain ${chain?.id ?? '<unknown>'} requires non-empty ${field}`)
+    }
     const page = pageById.get(chain.page_item_id)
     if (!page) errors.push(`Chain ${chain.id} references unknown page: ${chain.page_item_id}`)
     if (!Array.isArray(chain.steps) || chain.steps.length === 0) errors.push(`Chain ${chain.id} requires non-empty steps`)
@@ -477,6 +495,29 @@ export function validateProjectCatalog(data) {
   return errors
 }
 
+export function validateProjectCatalogIntegration(data, { contentRegistryText, interviewQuestionsText }) {
+  const errors = []
+  const contentIds = new Set(Array.from(
+    contentRegistryText.matchAll(/\{\s*id:\s*'([^']+)'/gu),
+    (match) => match[1],
+  ))
+  const questionIds = new Set(Array.from(
+    interviewQuestionsText.matchAll(/question\(\s*'([^']+)'/gu),
+    (match) => match[1],
+  ))
+  for (const page of data.pages ?? []) {
+    if (!contentIds.has(page.page_item_id)) {
+      errors.push(`Project page is missing from contentRegistry: ${page.page_item_id}`)
+    }
+    for (const questionId of page.interview_question_ids ?? []) {
+      if (!questionIds.has(questionId)) {
+        errors.push(`Project page ${page.page_item_id} references unknown interview question: ${questionId}`)
+      }
+    }
+  }
+  return errors
+}
+
 export function validateProjectCatalogFile(path) {
   if (!existsSync(path)) return ['Missing sources/project-index.yml']
   try {
@@ -503,6 +544,7 @@ Create `scripts/project-catalog.d.mts` so later TypeScript modules do not import
 ```ts
 export function parseProjectCatalog(text: string): unknown
 export function validateProjectCatalog(data: unknown): string[]
+export function validateProjectCatalogIntegration(data: unknown, sources: { contentRegistryText: string; interviewQuestionsText: string }): string[]
 export function validateProjectCatalogFile(path: string): string[]
 export function loadProjectCatalog(path: string): unknown
 ```
@@ -518,7 +560,7 @@ pnpm vitest run tests/project-catalog.spec.ts -t 'project catalog schema'
 pnpm test && pnpm validate && pnpm build
 ```
 
-Expected: 6 focused tests pass, followed by a green full suite, validation, and production build.
+Expected: 7 focused tests pass, followed by a green full suite, validation, and production build.
 
 - [ ] **Step 5: Commit the parser**
 
@@ -540,6 +582,7 @@ git commit -m "feat: validate project catalog contracts"
 Start the real-catalog section with a guarded load. This makes the first RED an assertion failure rather than a top-level `ENOENT` suite error:
 
 ```ts
+import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { parse } from 'yaml'
 import { validateBook } from '../scripts/validate-content.mjs'
@@ -603,6 +646,31 @@ const expectedSubjectFacts = {
   'hermes-agent': ['NousResearch/hermes-agent', 'v2026.9.24', 'f97608f178d1ffeca59860195ab7da295f7c8e5f', 'active', false, 'watch-only', 'LICENSE:821556e6336796450ab852d375117b48a4887e71d255794fd6318d99982a5ab6'],
   openclaw: ['openclaw/openclaw', 'v2026.9.6', 'eb377ac59e6c9fd6c7705028034812becf00271b', 'active', false, 'watch-only', 'LICENSE:73571b25326281d369087f469842c02444fe39faaecebda4d82ed21ff3a1c29d|THIRD_PARTY_NOTICES.md:c1d1bbc550feee74853eba104e347341569cbbbe37a9f77659993ca0766277d5'],
 }
+const expectedSubjectDigests = {
+  'mcp-spec': 'f4df5fedc2015571e0620bc41eae96039f148b01ea063d3bc3965df274bf3091',
+  'mcp-python-sdk': '3524c22e73fcad6dd1eea779c67087592236d9929bd67694ec8173f8f31b0786',
+  aider: 'c320cffa1ce96d7836d3ea4bd9072cb7dfcb769e0f6a870fc90ec13cd1072020',
+  'openhands-canvas': 'bc9f57fa9bcbc6dbae3575b9860770682d963ee7e37bdb10141a4421d57d56cc',
+  'openhands-sdk': 'abbec365cd40925f47866045793a26bd5efcd714ca6e390a0b2cca08f2bc5220',
+  'swe-bench': '8e98b719e1f4b7a03056573715dea23a20040a5c78bc3178c2f4938429c01e51',
+  'tau2-bench': 'eb7a25bcdc5cd6fae243a1853f9f105ad0522f34b98f3c369009c98feafe0ab0',
+  dify: '23648ca88f27fd7f00badab56ecdfd1bc4757d0f54415c33f02f7694a4ed2eda',
+  crewai: 'aea49e8094a9fd3d4557e40789ce796e67888ee8c8e4c2bd3c420bceafcd163b',
+  autogpt: 'a62460707a1ef9b3b2aa9a963b5a0768bc225937fa0ec5819b45e4de860bbaf5',
+  flowise: 'caebd20bb0b22a1200cf58d7040cff4ede1ecca626edc3b3f5dc3c19fa848f33',
+  'hermes-agent': 'b1e7efda63633c8af2b155954e2a0145428c19795399837ac745f3681e0a66c4',
+  openclaw: '9eb64f3e66b9ca1449a291d1abcdd39493e1ab262467c7b86dceae6792bded62',
+}
+const expectedChainDigests = {
+  'mcp-tool-call': '433de30bddcbbe3117584050bbca33bcf6c99d239e1cda8d61f3d8ee5c596c95',
+  'aider-repo-to-verified-edit': 'c6c6b43eaf5eed9b5ba3fafbb9a70d56c91eedc3378dd645574ec8b0b825c14a',
+  'openhands-canvas-to-workspace-event': '6ee7c2a9660f5f8a0d8457ebf2707ebaea0f6367f9ac8eabffa69f825580c79d',
+  'benchmark-task-to-score': 'b7227cce3a43907b38fde1fbbde5548e0d148d6de88ddd9d3ecf5042b1876f49',
+  'dify-request-to-graph-events': '060d82f9c004cfb20a95ccf3a951383bb7715b47ba25abb1232dcfc9034b6a50',
+  'crewai-kickoff-to-task-output': '4a3711ad6debf20e72f0732a6719b0bf9a7e2ae9153cc141a8bb800eb9d9c058',
+  'autogpt-flowise-evolution': '2d20650faa158737e729becfdc9559ed3d1f419bbcffccf2977f4eb946d722df',
+}
+const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
 
 const projectCatalogPath = 'sources/project-index.yml'
 const catalog = existsSync(projectCatalogPath)
@@ -622,6 +690,8 @@ describe('real project catalog', () => {
       subject.repository_status, subject.archived, subject.catalog_tier,
       subject.license_sources.map((source: { path: string; sha256: string }) => `${source.path}:${source.sha256}`).join('|'),
     ]]))).toEqual(expectedSubjectFacts)
+    expect(Object.fromEntries(catalog.subjects.map((subject: { id: string }) => [subject.id, digest(subject)])))
+      .toEqual(expectedSubjectDigests)
     expect(Object.fromEntries(catalog.subjects.map((subject: { id: string; entrypoints: Array<{ path: string; symbol: string; responsibility: string }> }) => [subject.id, subject.entrypoints.map((entry) => entry.path)])))
       .toEqual(expectedEntrypoints)
     const sourceEntries = catalog.subjects.flatMap((subject: { entrypoints: Array<{ path: string; symbol: string; responsibility: string }> }) => subject.entrypoints)
@@ -633,6 +703,8 @@ describe('real project catalog', () => {
       chain.id,
       chain.steps.map((step) => `${step.id}:${step.subject_id}:${step.source_path}:${step.symbol}`),
     ]))).toEqual(expectedChains)
+    expect(Object.fromEntries(catalog.chains.map((chain: { id: string }) => [chain.id, digest(chain)])))
+      .toEqual(expectedChainDigests)
     expect(Object.fromEntries(catalog.pages.map((page: { page_item_id: string }) => {
       const { page_item_id: id, ...mapping } = page
       return [id, mapping]
@@ -677,6 +749,8 @@ describe('real project catalog', () => {
   })
 })
 ```
+
+The per-subject SHA-256 assertion covers the complete parsed subject object, including `pin_kind`, `license_summary`, ordered `license_scopes`, `watch_url`, `license_sources`, and every entrypoint `path/symbol/responsibility`. The per-chain digest covers `page_item_id`, label, reading hint, misconception, and every ordered step field; changing any value requires an intentional expected-digest review.
 
 - [ ] **Step 2: Run only the existence test and verify RED**
 
@@ -2085,10 +2159,11 @@ const requiredProjectHeadings = [
 
 function expectCoreProjectPage(path: string, projectId: string) {
   const text = readFileSync(path, 'utf8')
+  const h2s = Array.from(text.matchAll(/^## (.+)$/gmu), (match) => match[1])
   expect(text).toContain(`<ProjectMeta project-id="${projectId}" />`)
   expect(text).toContain(`<ProjectCallChain project-id="${projectId}" />`)
   expect(text).toContain(`<ProjectSourceLinks project-id="${projectId}" />`)
-  for (const heading of requiredProjectHeadings) expect(text, `${path}: ${heading}`).toContain(`## ${heading}`)
+  expect(h2s, path).toEqual(requiredProjectHeadings)
   expect(text).not.toMatch(/npm install|pip install|docker run|OPENAI_API_KEY|ANTHROPIC_API_KEY/u)
   expect(text).not.toMatch(/!\[[^\]]*\]\(https?:\/\//u)
 }
@@ -2691,12 +2766,19 @@ git commit -m "docs: dissect Dify and CrewAI"
 - Create: `docs/projects/index.md`
 - Create: `docs/projects/history-autogpt-flowise.md`
 - Modify: `docs/.vitepress/theme/data/contentRegistry.ts`
+- Modify: `scripts/validate-content.mjs`
 - Modify: `tests/course-map.spec.ts`
 - Modify: `tests/project-pages.spec.ts`
+- Create: `tests/project-ssr.spec.ts`
 
 - [ ] **Step 1: Write failing route, overview, and historical-boundary tests**
 
 ```ts
+import {
+  loadProjectCatalog,
+  validateProjectCatalogIntegration,
+} from '../scripts/project-catalog.mjs'
+
 const projectRouteRecords = [
   ['projects-index', '/projects/', '开源项目拆解', 'project'],
   ['project-mcp-python-sdk', '/projects/mcp-python-sdk', 'MCP 规范与 Python SDK', 'project'],
@@ -2722,6 +2804,14 @@ describe('project routes and catalog overview', () => {
     }
   })
 
+  it('cross-validates real page and interview IDs instead of a second runtime allowlist', () => {
+    const catalog = loadProjectCatalog('sources/project-index.yml')
+    expect(validateProjectCatalogIntegration(catalog, {
+      contentRegistryText: readFileSync('docs/.vitepress/theme/data/contentRegistry.ts', 'utf8'),
+      interviewQuestionsText: readFileSync('docs/.vitepress/theme/data/interviewQuestions.ts', 'utf8'),
+    })).toEqual([])
+  })
+
   it('publishes the overview and keeps watch-only items external-only', () => {
     const page = readFileSync('docs/projects/index.md', 'utf8')
     expect(page).toContain('<ProjectOverview />')
@@ -2742,11 +2832,65 @@ describe('project routes and catalog overview', () => {
 })
 ```
 
+Create `tests/project-ssr.spec.ts` to inspect real VitePress SSR output instead of component source text:
+
+```ts
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { execFileSync } from 'node:child_process'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+let outputRoot = ''
+const projectHtmlFiles = [
+  'projects/index.html',
+  'projects/mcp-python-sdk.html',
+  'projects/aider.html',
+  'projects/openhands.html',
+  'projects/agent-benchmarks.html',
+  'projects/dify.html',
+  'projects/crewai.html',
+  'projects/history-autogpt-flowise.html',
+]
+
+beforeAll(() => {
+  outputRoot = mkdtempSync(join(tmpdir(), 'project-ssr-'))
+  execFileSync('pnpm', ['exec', 'vitepress', 'build', 'docs', '--outDir', outputRoot], {
+    cwd: process.cwd(), stdio: 'pipe', encoding: 'utf8',
+  })
+}, 120_000)
+
+afterAll(() => rmSync(outputRoot, { recursive: true, force: true }))
+
+describe('actual project SSR', () => {
+  it('renders all eight approved routes', () => {
+    expect(projectHtmlFiles.filter((file) => !existsSync(join(outputRoot, file)))).toEqual([])
+  })
+
+  it('renders metadata, architecture, textual chains, and fixed sources into every dissection page', () => {
+    for (const file of projectHtmlFiles.slice(1)) {
+      const html = readFileSync(join(outputRoot, file), 'utf8')
+      for (const marker of [
+        'project-meta', 'project-architecture', 'project-call-chain', 'project-source-links',
+        '源码事实', '本书归纳', '仓库状态', '教学层级', '许可证边界', '失败边界',
+      ]) expect(html, `${file}: ${marker}`).toContain(marker)
+      expect(html, file).toMatch(/\b[0-9a-f]{40}\b/u)
+      expect(html, file).toMatch(/github\.com\/[^/]+\/[^/]+\/blob\/[0-9a-f]{40}\//u)
+      expect(html, file).toMatch(/role="img"[^>]+aria-label="本书原创架构关系图/u)
+      expect(html, file).toMatch(/<ol[^>]+role="list"[^>]+aria-label="[^"]*源码调用链文本版"/u)
+    }
+    const openhands = readFileSync(join(outputRoot, 'projects/openhands.html'), 'utf8')
+    expect(openhands).toContain('7dc6805406ea3c76cb4a3ce407c3c72d481b0ac6')
+    expect(openhands).toContain('fcc102a697874d54a357e36004e02c95040dbdc0')
+  })
+})
+```
+
 - [ ] **Step 2: Run tests and verify RED**
 
-Run: `pnpm vitest run tests/project-pages.spec.ts tests/course-map.spec.ts -t 'project routes|catalog overview'`
+Run: `pnpm vitest run tests/project-pages.spec.ts tests/course-map.spec.ts tests/project-ssr.spec.ts -t 'project routes|catalog overview|actual project SSR'`
 
-Expected: FAIL because the pages and registry records do not exist.
+Expected: FAIL because the pages and registry records do not exist; the integration test must report the eight missing `contentRegistry` page IDs rather than throwing.
 
 - [ ] **Step 3: Add the eight exact content records**
 
@@ -2871,21 +3015,53 @@ AutoGPT 检查 classic 与 platform 的边界和根许可证；Flowise 检查归
 比较图为本书原创重绘。事实来自固定 commit、根许可证和 Flowise 维护者公告，不复用项目截图、Logo 或第三方素材。
 ```
 
-- [ ] **Step 6: Run route, page, and build tests**
+- [ ] **Step 6: Wire the real integration check into `validateBook`**
+
+In `scripts/validate-content.mjs`, extend the Task 2 import to include `loadProjectCatalog` and `validateProjectCatalogIntegration`, then replace the Task 2 `validateBook` body with the complete integrated version below. Keeping the entire function here avoids an undefined `projectCatalogErrors` variable or a path computed outside `root`:
+
+```js
+import {
+  loadProjectCatalog,
+  validateProjectCatalogFile,
+  validateProjectCatalogIntegration,
+} from './project-catalog.mjs'
+
+export function validateBook(root = process.cwd(), options = {}) {
+  const sourcePath = join(root, 'sources/source-index.yml')
+  const projectCatalogPath = resolve(root, options.projectCatalogPath ?? 'sources/project-index.yml')
+  const projectCatalogErrors = validateProjectCatalogFile(projectCatalogPath)
+  const projectIntegrationErrors = projectCatalogErrors.length === 0
+    ? validateProjectCatalogIntegration(loadProjectCatalog(projectCatalogPath), {
+        contentRegistryText: readFileSync(resolve(root, 'docs/.vitepress/theme/data/contentRegistry.ts'), 'utf8'),
+        interviewQuestionsText: readFileSync(resolve(root, 'docs/.vitepress/theme/data/interviewQuestions.ts'), 'utf8'),
+      })
+    : []
+  return [
+    ...validateSourceRegistry(sourcePath),
+    ...projectCatalogErrors,
+    ...projectIntegrationErrors,
+    ...validatePublishedFiles(root),
+  ]
+}
+```
+
+This is the first task allowed to enable the integration check because all eight real registry IDs now exist. Task 10 later inserts provenance errors into the same return array without changing these integration semantics.
+
+- [ ] **Step 7: Run route, integration, page, and build tests**
 
 Run:
 
 ```bash
-pnpm vitest run tests/project-pages.spec.ts tests/course-map.spec.ts -t 'project routes|catalog overview'
+pnpm vitest run tests/project-pages.spec.ts tests/course-map.spec.ts -t 'project routes|catalog overview|cross-validates real page'
 pnpm test && pnpm validate && pnpm build
 ```
 
 Expected: content registry has 39 unique real routes; overview/history tests and build pass.
 
-- [ ] **Step 7: Commit the public catalog shell**
+- [ ] **Step 8: Commit the public catalog shell**
 
 ```bash
-git add docs/projects/index.md docs/projects/history-autogpt-flowise.md docs/.vitepress/theme/data/contentRegistry.ts tests/course-map.spec.ts tests/project-pages.spec.ts
+git add docs/projects/index.md docs/projects/history-autogpt-flowise.md docs/.vitepress/theme/data/contentRegistry.ts scripts/validate-content.mjs tests/course-map.spec.ts tests/project-pages.spec.ts tests/project-ssr.spec.ts
 git commit -m "feat: publish the project dissection catalog"
 ```
 
@@ -2911,10 +3087,24 @@ const projectCourseIds = [
   'project-agent-benchmarks', 'project-dify', 'project-crewai',
   'case-delivery-agent',
 ]
-const engineeringProjectTail = [
-  'project-mcp-python-sdk', 'project-aider', 'project-openhands',
-  'project-agent-benchmarks', 'project-dify', 'project-crewai',
-  'case-delivery-agent',
+const expectedEngineeringSteps = [
+  { itemId: 'chapter-02-workflow-agent', why: '避免一开始就过度 Agent 化' },
+  { itemId: 'chapter-03-react', why: '明确观察、停止与恢复' },
+  { itemId: 'chapter-04-tools-mcp', why: '缩小能力与权限边界' },
+  { itemId: 'chapter-05-state-memory', why: '让任务可恢复、信息可治理' },
+  { itemId: 'chapter-06-loop-graph', why: '把分支、汇合和错误边画出来' },
+  { itemId: 'chapter-08-evaluation', why: '同时看结果、轨迹、证据和成本' },
+  { itemId: 'chapter-09-safety-recovery', why: '处理幂等、补偿与接管' },
+  { itemId: 'chapter-10-production', why: '用灰度、SLO 和回滚保护上线' },
+  { itemId: 'chapter-13-coding-agent', why: '把工程原则放进真实仓库任务' },
+  { itemId: 'chapter-14-computer-use', why: '验证高不确定环境里的证据链' },
+  { itemId: 'project-mcp-python-sdk', why: '从协议读到官方 Python 实现' },
+  { itemId: 'project-aider', why: '把仓库上下文变成可审查补丁' },
+  { itemId: 'project-openhands', why: '理解大型 Coding Agent 的服务和执行边界' },
+  { itemId: 'project-agent-benchmarks', why: '把结果、环境、轨迹和评分连成证据链' },
+  { itemId: 'project-dify', why: '观察平台请求如何进入工作流图' },
+  { itemId: 'project-crewai', why: '用源码评估多 Agent 的收益与协调成本' },
+  { itemId: 'case-delivery-agent', why: '用质量门收束评测、安全与上线判断' },
 ]
 
 describe('project curriculum integration', () => {
@@ -2930,8 +3120,8 @@ describe('project curriculum integration', () => {
 
   it('extends only the engineering path to 17 stable steps', () => {
     const engineering = readingPathDefinitions.find((path) => path.id === 'engineering')!
-    expect(engineering.steps).toHaveLength(17)
-    expect(engineering.steps.slice(-7).map((step) => step.itemId)).toEqual(engineeringProjectTail)
+    expect(engineering.pace).toBe('17 站 · 建议边读边画调用链')
+    expect(engineering.steps).toEqual(expectedEngineeringSteps)
     expect(readingPathDefinitions.find((path) => path.id === 'beginner')?.steps).toHaveLength(8)
     expect(readingPathDefinitions.find((path) => path.id === 'interview')?.steps).toHaveLength(11)
     const tracked = new Set([
@@ -3123,6 +3313,25 @@ describe('project asset provenance', () => {
     expect(validateProvenanceFile('assets/provenance.yml', process.cwd())).toEqual([])
   })
 
+  it('rejects missing, object, and string assets instead of normalizing them to empty', () => {
+    const root = mkdtempSync(join(tmpdir(), 'project-assets-schema-'))
+    try {
+      mkdirSync(join(root, 'assets'), { recursive: true })
+      for (const [name, value] of [
+        ['missing.yml', 'schema_version: 1\n'],
+        ['object.yml', 'schema_version: 1\nassets: {}\n'],
+        ['string.yml', 'schema_version: 1\nassets: invalid\n'],
+      ]) {
+        const path = join(root, 'assets', name)
+        writeFileSync(path, value)
+        expect(validateProvenanceFile(path, root, provenanceCatalog))
+          .toContain('Asset provenance assets must be an array')
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('rejects an unregistered project asset', () => {
     const root = mkdtempSync(join(tmpdir(), 'project-assets-'))
     try {
@@ -3289,6 +3498,7 @@ export function validateProvenanceFile(
   const errors = []
   const assets = Array.isArray(data?.assets) ? data.assets : []
   if (data?.schema_version !== 1) errors.push('Asset provenance schema_version must be 1')
+  if (!Array.isArray(data?.assets)) errors.push('Asset provenance assets must be an array')
   let projectCatalog = catalog
   if (!projectCatalog) {
     try { projectCatalog = loadProjectCatalog(resolve(root, 'sources/project-index.yml')) }
@@ -3416,7 +3626,7 @@ git commit -m "feat: enforce project asset provenance"
 
 - [ ] **Step 1: Write failing project freshness tests**
 
-Append tests with injected fetch responses; never call GitHub in unit tests:
+Change the existing YAML import to `import { parse, stringify } from 'yaml'`. Then append tests with injected fetch responses; never call GitHub in unit tests:
 
 ```ts
 import {
@@ -3452,6 +3662,7 @@ describe('project freshness checker', () => {
   it('accepts matching canonical metadata, ref, commit, and entrypoints', async () => {
     const result = await checkProjectSubject(projectSubject, {
       retryAttempts: 1,
+      now: new Date('2026-09-26T00:00:00Z'),
       fetchImpl: async (url: string) => {
         if (url.endsWith('/commits/v0.86.0')) return { status: 200, url, json: async () => ({ sha: 'a'.repeat(40) }) }
         if (url.endsWith('/commits/main')) return { status: 200, url, json: async () => ({ sha: 'a'.repeat(40), commit: { committer: { date: '2026-09-26T00:00:00Z' } } }) }
@@ -3462,11 +3673,13 @@ describe('project freshness checker', () => {
       },
     })
     expect(result.findings).toEqual([])
+    expect(result.license_source_paths).toEqual(['LICENSE.txt'])
   })
 
   it('reports deterministic pin, path, canonical, archive, and release changes', async () => {
     const result = await checkProjectSubject(projectSubject, {
       retryAttempts: 1,
+      now: new Date('2026-09-26T00:00:00Z'),
       fetchImpl: async (url: string) => {
         if (url.endsWith('/commits/v0.86.0')) return { status: 200, url, json: async () => ({ sha: 'b'.repeat(40) }) }
         if (url.endsWith('/commits/main')) return { status: 200, url, json: async () => ({ sha: 'c'.repeat(40), commit: { committer: { date: '2026-09-27T00:00:00Z' } } }) }
@@ -3484,6 +3697,7 @@ describe('project freshness checker', () => {
   it('uses the default-branch HEAD commit rather than repository pushed_at', async () => {
     const result = await checkProjectSubject(projectSubject, {
       retryAttempts: 1,
+      now: new Date('2026-09-26T00:00:00Z'),
       fetchImpl: async (url: string) => {
         if (url.endsWith('/commits/v0.86.0')) return { status: 200, url, json: async () => ({ sha: 'a'.repeat(40) }) }
         if (url.endsWith('/commits/main')) return { status: 200, url, json: async () => ({ sha: 'c'.repeat(40), commit: { committer: { date: '2026-09-27T00:00:00Z' } } }) }
@@ -3496,15 +3710,33 @@ describe('project freshness checker', () => {
     expect(result.findings).toEqual(['project_update_available'])
   })
 
+  it('uses the shared Shanghai date boundary and escalates an expired review', async () => {
+    const result = await checkProjectSubject(projectSubject, {
+      retryAttempts: 1,
+      now: new Date('2026-10-26T16:30:00Z'),
+      fetchImpl: async (url: string) => {
+        if (url.endsWith('/commits/v0.86.0')) return { status: 200, url, json: async () => ({ sha: 'a'.repeat(40) }) }
+        if (url.endsWith('/commits/main')) return { status: 200, url, json: async () => ({ sha: 'a'.repeat(40), commit: { committer: { date: '2026-09-26T00:00:00Z' } } }) }
+        if (url.includes('/contents/LICENSE.txt')) return { status: 200, url, json: async () => ({ encoding: 'base64', content: Buffer.from(licenseText).toString('base64') }) }
+        if (url.includes('/contents/')) return { status: 200, url, json: async () => ({ path: 'aider/main.py' }) }
+        if (url.endsWith('/releases/latest')) return { status: 200, url, json: async () => ({ tag_name: 'v0.86.0' }) }
+        return { status: 200, url, json: async () => ({ full_name: 'Aider-AI/aider', archived: false, default_branch: 'main' }) }
+      },
+    })
+    expect(result.findings).toEqual(['project_review_due', 'project_review_required'])
+  })
+
   it('keeps HTTP, parse, and request failures explicit and non-healthy', async () => {
     const transient = await checkProjectSubject(projectSubject, {
       retryAttempts: 2,
       retryDelayMs: 0,
+      now: new Date('2026-09-26T00:00:00Z'),
       fetchImpl: async () => ({ status: 503, url: '', json: async () => ({}) }),
     })
     expect(transient.findings).toContain('project_transient_error')
     const network = await checkProjectSubject(projectSubject, {
       retryAttempts: 1,
+      now: new Date('2026-09-26T00:00:00Z'),
       fetchImpl: async () => { throw new Error('ECONNRESET') },
     })
     expect(network.findings).toContain('project_network_error')
@@ -3532,6 +3764,7 @@ describe('project freshness checker', () => {
   it('escalates a changed license digest to manual review', async () => {
     const result = await checkProjectSubject(projectSubject, {
       retryAttempts: 1,
+      now: new Date('2026-09-26T00:00:00Z'),
       fetchImpl: async (url: string) => {
         if (url.endsWith('/commits/v0.86.0')) return { status: 200, url, json: async () => ({ sha: 'a'.repeat(40) }) }
         if (url.endsWith('/commits/main')) return { status: 200, url, json: async () => ({ sha: 'a'.repeat(40), commit: { committer: { date: '2026-09-26T00:00:00Z' } } }) }
@@ -3549,6 +3782,7 @@ describe('project freshness checker', () => {
     await checkProjectSubject(projectSubject, {
       githubToken: 'read-token',
       retryAttempts: 1,
+      now: new Date('2026-09-26T00:00:00Z'),
       fetchImpl: async (url: string, init?: { headers?: Record<string, string> }) => {
         seen.set(url, init?.headers?.authorization)
         return { status: 200, url, json: async () => url.endsWith('/commits/v0.86.0')
@@ -3568,6 +3802,7 @@ describe('project freshness checker', () => {
         projectPath: join(outputRoot, 'missing-project-index.yml'),
         outputJson: join(outputRoot, 'project-freshness.json'),
         outputMarkdown: join(outputRoot, 'project-freshness.md'),
+        now: new Date('2026-09-26T00:00:00Z'),
         fetchImpl: async () => { throw new Error('must not fetch') },
       })
       expect(report.needs_review).toBe(true)
@@ -3579,17 +3814,17 @@ describe('project freshness checker', () => {
 
   it('builds a stable issue summary', () => {
     expect(buildProjectFreshnessReport([
-      { id: 'ok', findings: [] },
-      { id: 'changed', findings: ['project_update_available'] },
+      { id: 'ok', license_source_paths: ['LICENSE'], findings: [] },
+      { id: 'changed', license_source_paths: ['LICENSE'], findings: ['project_update_available'] },
     ], '2026-09-26T00:00:00.000Z').summary).toEqual({ total: 2, healthy: 1, needs_review: 1 })
     expect(isProjectReportBlocking(buildProjectFreshnessReport([
-      { id: 'update', findings: ['project_update_available'] },
+      { id: 'update', license_source_paths: ['LICENSE'], findings: ['project_update_available'] },
     ]))).toBe(false)
     expect(isProjectReportBlocking(buildProjectFreshnessReport([
-      { id: 'license', findings: ['project_review_required'] },
+      { id: 'license', license_source_paths: ['LICENSE'], findings: ['project_review_required'] },
     ]))).toBe(true)
     expect(isProjectReportBlocking(buildProjectFreshnessReport([
-      { id: 'network', findings: ['project_network_error'] },
+      { id: 'network', license_source_paths: ['LICENSE'], findings: ['project_network_error'] },
     ]))).toBe(true)
   })
 
@@ -3599,10 +3834,13 @@ describe('project freshness checker', () => {
     expect(workflow.jobs.scan.steps.find((step: any) => step.uses === 'actions/checkout@v4').with['persist-credentials']).toBe(false)
     expect(workflow.jobs.scan.steps.some((step: any) => step.run === 'pnpm projects:check')).toBe(true)
     expect(workflow.jobs.scan.steps.find((step: any) => step.uses === 'actions/upload-artifact@v4').with.path).toBe('reports/*freshness.*')
-    expect(workflow.jobs.report.permissions).toMatchObject({ contents: 'read', issues: 'write' })
+    expect(workflow.jobs.report.permissions).toEqual({ contents: 'read', issues: 'write' })
     expect(workflow.jobs.report.if).toContain('default_branch')
-    expect(workflow.jobs.report.steps.some((step: any) => step.uses === 'actions/checkout@v4')).toBe(false)
-    expect(workflow.jobs.report.steps.some((step: any) => /pnpm|npm|yarn/u.test(step.run ?? ''))).toBe(false)
+    expect(workflow.jobs.report.steps.map((step: any) => step.uses)).toEqual([
+      'actions/download-artifact@v4',
+      'actions/github-script@v7',
+    ])
+    expect(workflow.jobs.report.steps.every((step: any) => !Object.hasOwn(step, 'run'))).toBe(true)
     const reportScript = workflow.jobs.report.steps.find((step: any) => step.uses === 'actions/github-script@v7').with.script
     expect(reportScript).toContain('[Freshness] Source review required')
     expect(reportScript).toContain('[Freshness] Project review required')
@@ -3753,7 +3991,11 @@ export async function checkProjectSubject(subject, {
     }
   }
   if (subject.review_by < reviewDateInTimeZone(now)) requireReview(findings, 'project_review_due')
-  return { id: subject.id, findings: [...new Set(findings)] }
+  return {
+    id: subject.id,
+    license_source_paths: subject.license_sources.map((source) => source.path),
+    findings: [...new Set(findings)],
+  }
 }
 
 export function buildProjectFreshnessReport(results, generatedAt = new Date().toISOString()) {
@@ -3795,7 +4037,12 @@ export async function runProjectCheck({
   const schemaErrors = validateProjectCatalogFile(projectPath)
   let report
   if (schemaErrors.length > 0) {
-    report = buildProjectFreshnessReport([{ id: 'project-catalog', findings: ['project_schema_invalid'], schema_errors: schemaErrors }], now.toISOString())
+    report = buildProjectFreshnessReport([{
+      id: 'project-catalog',
+      license_source_paths: [],
+      findings: ['project_schema_invalid'],
+      schema_errors: schemaErrors,
+    }], now.toISOString())
   } else {
     const data = parse(readFileSync(projectPath, 'utf8'))
     const subjects = data.subjects.map((subject) => ({ ...data.defaults, ...subject }))
@@ -4005,7 +4252,9 @@ it('enforces the project page contract for every reading-only page', () => {
     expect(text, file).not.toMatch(/npm install|pip install|docker run|API_KEY/u)
     expect(text, file).not.toMatch(/!\[[^\]]*\]\(https?:\/\//u)
     if (coreIds.includes(id)) {
-      for (const heading of requiredProjectHeadings) expect(text, `${file}: ${heading}`).toContain(`## ${heading}`)
+      const h2s = Array.from(text.matchAll(/^## (.+)$/gmu), (match) => match[1])
+      expect(h2s, file).toEqual(requiredProjectHeadings)
+      expect(new Set(h2s).size, `${file}: duplicate H2`).toBe(requiredProjectHeadings.length)
       expect(text).toContain(`<ProjectMeta project-id="${id}" />`)
       expect(text).toContain(`<ProjectCallChain project-id="${id}" />`)
       expect(text).toContain(`<ProjectSourceLinks project-id="${id}" />`)
@@ -4014,6 +4263,15 @@ it('enforces the project page contract for every reading-only page', () => {
   const questionIds = new Set(interviewQuestions.map((question) => question.id))
   for (const page of projectCatalog.pages) {
     for (const id of page.interview_question_ids) expect(questionIds.has(id), `${page.page_item_id}:${id}`).toBe(true)
+    const route = getContentItem(page.page_item_id).route
+    const file = `docs${route.endsWith('/') ? `${route}index` : route}.md`
+    const text = readFileSync(file, 'utf8')
+    const actualLinks = Array.from(text.matchAll(/\]\((\/chapters\/[^)#]+#iq-[^)]+)\)/gu), (match) => match[1])
+    const expectedLinks = page.interview_question_ids.map((id) => {
+      const question = interviewQuestions.find((candidate) => candidate.id === id)!
+      return `${question.path}#${id}`
+    })
+    expect(actualLinks, page.page_item_id).toEqual(expectedLinks)
   }
 })
 ```
@@ -4022,22 +4280,11 @@ it('enforces the project page contract for every reading-only page', () => {
 
 Run: `pnpm vitest run tests/content.spec.ts tests/project-pages.spec.ts -t 'project publication boundary|project page contract'`
 
-Expected: FAIL because the progressive gate does not yet require all eight outputs and the course check still expects 20 links.
+Expected: FAIL only because the progressive gate does not yet require all eight approved outputs; the 26-link course contract already passes from Task 9.
 
-- [ ] **Step 3: Define exact route and output allowlists**
+- [ ] **Step 3: Require the complete approved output allowlist**
 
-In `scripts/check-dist.mjs`, extend `publishedCourseRoutes` with the six core project routes before the existing case route:
-
-```js
-'/projects/mcp-python-sdk',
-'/projects/aider',
-'/projects/openhands',
-'/projects/agent-benchmarks',
-'/projects/dify',
-'/projects/crewai',
-```
-
-Reuse `approvedProjectFiles` from Task 4 and add only the two classification sets:
+Do not modify `publishedCourseRoutes`; Task 9 already added the six project routes exactly once. Reuse `approvedProjectFiles` from Task 4 and add only the two classification sets:
 
 ```js
 const coreProjectFiles = new Set([
@@ -4157,9 +4404,21 @@ Insert after the course-map description:
 Run:
 
 ```bash
+set -e
 pnpm vitest run tests/project-pages.spec.ts -t 'project documentation handoff'
 pnpm test && pnpm validate && pnpm build
-GITHUB_TOKEN="$(gh auth token)" pnpm run sources:check -- --strict
+GITHUB_TOKEN="$(gh auth token)" pnpm sources:check
+node --input-type=module <<'NODE'
+import { readFileSync } from 'node:fs'
+const report = JSON.parse(readFileSync('reports/source-freshness.json', 'utf8'))
+const allowed = new Set(['repository_updated'])
+const blocking = report.results.flatMap((result) =>
+  result.findings.filter((finding) => !allowed.has(finding)).map((finding) => `${result.id}:${finding}`),
+)
+if (report.schema_errors?.length) blocking.push(...report.schema_errors.map((error) => `schema:${error}`))
+if (blocking.length) throw new Error(`Blocking source findings:\n${blocking.join('\n')}`)
+console.log(JSON.stringify(report.summary))
+NODE
 GITHUB_TOKEN="$(gh auth token)" pnpm run projects:check -- --strict
 git diff origin/main...HEAD --check
 git status --short
@@ -4169,7 +4428,7 @@ Expected:
 
 - all tests pass;
 - content, provenance, project schema, build, and dist gates pass;
-- source report contains the existing source inventory;
+- source report contains the existing source inventory and the explicit parser allows only `repository_updated`; every network, parse, HTTP, schema, redirect, version, or archive finding blocks release;
 - project report contains 13 subjects with no schema, canonical, pin-ref, entrypoint, license-source, or license-digest failure; ordinary update notices may remain non-blocking;
 - range diff check prints nothing;
 - only the intended README/test changes remain before commit.
@@ -4186,6 +4445,7 @@ git commit -m "docs: describe the project reading layer"
 Run `pnpm preview -- --port 4175` in a persistent terminal. In another terminal, run this accumulating matrix; it checks all 39 registered routes in both clean and trailing-slash forms instead of exiting on the first failure:
 
 ```bash
+set -e
 site_root='http://127.0.0.1:4175/agent-engineering-for-beginners'
 routes=(
   course paths preface
@@ -4221,6 +4481,7 @@ test "${#failures[@]}" -eq 0
 Then run the negative matrix:
 
 ```bash
+set -e
 failures=()
 for route in labs labs/example capstone capstone/example projects/unreviewed; do
   url="$site_root/$route/"
@@ -4237,10 +4498,10 @@ Expected: all positive variants return 200; every negative route returns 404; bo
 
 Use `agent-browser --session project-catalog-acceptance` and complete all checks:
 
-1. At 1440×1000 light, `/projects/` shows six core links, one historical link, two watch-only external subjects, no Lab action, and no page-level overflow.
-2. At 390×844 dark, open `/projects/openhands`, `/projects/agent-benchmarks`, and `/projects/history-autogpt-flowise`; verify `scrollWidth === innerWidth`, source paths wrap or scroll only inside their container, and focus uses a visible outline.
+1. At both 1440×1000 light and 390×844 dark, `/projects/` shows six core links, one historical link, two watch-only external subjects, no Lab action, and no page-level overflow.
+2. At 390×844 dark, open `/projects/openhands`, `/projects/agent-benchmarks`, and `/projects/history-autogpt-flowise`; at 1440×1000 light, repeat OpenHands and benchmarks. Verify `scrollWidth === innerWidth`, source paths wrap or scroll only inside their container, and focus uses a visible outline.
 3. Snapshot each complex page without `-i`; verify repository status, catalog tier, fixed ref/SHA, license scope, ordered call chain, “怎么看”, “不要误解”, failure boundary, and interview links are present in the accessibility tree.
-4. In a separate `project-catalog-nojs` session, run `agent-browser --session project-catalog-nojs network route "**/*.js" --abort` before opening a project page. Verify the same metadata, call chain, source links, and prose remain in server-rendered HTML.
+4. In a separate `project-catalog-nojs` session, run `agent-browser --session project-catalog-nojs network route "**/*.js" --abort` before opening a project page. Verify all eight routes: the overview must retain its core/history/watch-only taxonomy and safety boundary; the other seven pages must retain metadata, full SHA, license scope, call chain, source links, and failure boundary in server-rendered HTML.
 5. Confirm `.project-overview` and project pages contain no write controls, network-driven data loaders, login prompts, or model execution buttons.
 6. On each core page, click one fixed source link and confirm the destination URL contains the exact 40-character pinned commit, then return and re-snapshot before using another ref.
 7. Confirm console and page error lists are empty.
@@ -4248,6 +4509,7 @@ Use `agent-browser --session project-catalog-acceptance` and complete all checks
 Run the desktop overview check:
 
 ```bash
+set -e
 agent-browser --session project-catalog-acceptance set viewport 1440 1000
 agent-browser --session project-catalog-acceptance set media light
 agent-browser --session project-catalog-acceptance open http://127.0.0.1:4175/agent-engineering-for-beginners/projects/
@@ -4270,11 +4532,17 @@ agent-browser --session project-catalog-acceptance eval --stdin <<'EVALEOF'
 })()
 EVALEOF
 agent-browser --session project-catalog-acceptance screenshot /tmp/projects-index-1440-light.png --full
+agent-browser --session project-catalog-acceptance set viewport 390 844
+agent-browser --session project-catalog-acceptance set media dark
+agent-browser --session project-catalog-acceptance open http://127.0.0.1:4175/agent-engineering-for-beginners/projects/
+agent-browser --session project-catalog-acceptance eval 'if(document.documentElement.scrollWidth!==innerWidth)throw new Error(JSON.stringify({url:location.href,width:innerWidth,scrollWidth:document.documentElement.scrollWidth}));location.href'
+agent-browser --session project-catalog-acceptance screenshot /tmp/projects-index-390-dark.png --full
 ```
 
 Run the 390px dark checks for all complex layouts:
 
 ```bash
+set -e
 agent-browser --session project-catalog-acceptance set viewport 390 844
 agent-browser --session project-catalog-acceptance set media dark
 for route in projects/openhands projects/agent-benchmarks projects/history-autogpt-flowise; do
@@ -4295,17 +4563,34 @@ agent-browser --session project-catalog-acceptance open http://127.0.0.1:4175/ag
 agent-browser --session project-catalog-acceptance screenshot /tmp/project-openhands-390-dark.png --full
 agent-browser --session project-catalog-acceptance open http://127.0.0.1:4175/agent-engineering-for-beginners/projects/agent-benchmarks
 agent-browser --session project-catalog-acceptance screenshot /tmp/project-benchmarks-390-dark.png --full
+agent-browser --session project-catalog-acceptance set viewport 1440 1000
+agent-browser --session project-catalog-acceptance set media light
+for route in projects/openhands projects/agent-benchmarks; do
+  agent-browser --session project-catalog-acceptance open "http://127.0.0.1:4175/agent-engineering-for-beginners/$route"
+  agent-browser --session project-catalog-acceptance wait --load networkidle
+  agent-browser --session project-catalog-acceptance eval 'if(document.documentElement.scrollWidth!==innerWidth)throw new Error(JSON.stringify({url:location.href,width:innerWidth,scrollWidth:document.documentElement.scrollWidth}));location.href'
+done
+agent-browser --session project-catalog-acceptance open http://127.0.0.1:4175/agent-engineering-for-beginners/projects/openhands
+agent-browser --session project-catalog-acceptance screenshot /tmp/project-openhands-1440-light.png --full
+agent-browser --session project-catalog-acceptance open http://127.0.0.1:4175/agent-engineering-for-beginners/projects/agent-benchmarks
+agent-browser --session project-catalog-acceptance screenshot /tmp/project-benchmarks-1440-light.png --full
 ```
 
 Use actual keyboard events and collect the focused link text:
 
 ```bash
+set -e
 agent-browser --session project-catalog-acceptance open http://127.0.0.1:4175/agent-engineering-for-beginners/projects/
 agent-browser --session project-catalog-acceptance press Tab
 agent-browser --session project-catalog-acceptance press Enter
+agent-browser --session project-catalog-acceptance press Tab
+focus_log=$(mktemp)
 for step in $(seq 1 16); do
-  agent-browser --session project-catalog-acceptance eval 'JSON.stringify({tag:document.activeElement?.tagName,text:document.activeElement?.textContent?.trim(),outline:getComputedStyle(document.activeElement).outline})'
+  agent-browser --session project-catalog-acceptance eval 'const el=document.activeElement;const r={tag:el?.tagName,text:el?.textContent?.trim(),outline:getComputedStyle(el).outline};if(!["A","SUMMARY"].includes(r.tag)||r.outline.includes("none")||r.outline.startsWith("0px"))throw new Error(JSON.stringify(r));JSON.stringify(r)' >> "$focus_log"
   agent-browser --session project-catalog-acceptance press Tab
+done
+for label in 'MCP 规范与 Python SDK' 'Aider 源码拆解' 'OpenHands 源码拆解' 'Agent 评测基准' 'Dify 源码拆解' 'CrewAI 源码拆解' 'AutoGPT 与 Flowise' 'NousResearch/hermes-agent' 'openclaw/openclaw'; do
+  rg -Fq "$label" "$focus_log"
 done
 ```
 
@@ -4314,6 +4599,7 @@ Expected: focus follows DOM/visual order, reaches every internal project link an
 Verify all eight routes without JavaScript:
 
 ```bash
+set -e
 agent-browser --session project-catalog-nojs network route '**/*.js' --abort
 for route in projects/ projects/mcp-python-sdk projects/aider projects/openhands projects/agent-benchmarks projects/dify projects/crewai projects/history-autogpt-flowise; do
   agent-browser --session project-catalog-nojs open "http://127.0.0.1:4175/agent-engineering-for-beginners/$route"
@@ -4321,8 +4607,26 @@ for route in projects/ projects/mcp-python-sdk projects/aider projects/openhands
 (() => {
   const text = document.querySelector('.vp-doc')?.textContent ?? ''
   const anchors = document.querySelectorAll('.vp-doc a').length
-  if (!text.trim() || anchors === 0) throw new Error(JSON.stringify({ url: location.href, anchors, textLength: text.length }))
-  return JSON.stringify({ url: location.href, anchors, textLength: text.length })
+  const isIndex = location.pathname.endsWith('/projects/')
+  const required = isIndex
+    ? ['核心源码拆解', '历史反例', '前沿高权限观察区', '不是初学者默认安装步骤']
+    : ['固定版本', '仓库状态', '教学层级', '许可证边界', '源码事实', '本书归纳', '关键源码入口', '失败边界']
+  const missing = required.filter((item) => !text.includes(item))
+  const hasFullSha = isIndex || /\b[0-9a-f]{40}\b/u.test(text)
+  const pinnedSourceLinks = Array.from(document.querySelectorAll('.project-source-links a'))
+  const contract = isIndex ? {} : {
+    metadata: Boolean(document.querySelector('.project-meta')),
+    licenseScopes: document.querySelectorAll('.project-meta details li[role="listitem"]').length > 0,
+    callChain: document.querySelectorAll('.project-call-chain [role="listitem"]').length > 0,
+    sourceEntries: document.querySelectorAll('.project-source-links [role="listitem"]').length > 0,
+    pinnedSources: pinnedSourceLinks.length > 0 && pinnedSourceLinks.every((a) => /\/blob\/[0-9a-f]{40}\//u.test(a.href)),
+    interviewLinks: document.querySelectorAll('.vp-doc a[href*="#iq-"]').length > 0,
+  }
+  const invalidContract = Object.entries(contract).filter(([, valid]) => !valid).map(([key]) => key)
+  if (!text.trim() || anchors === 0 || missing.length || !hasFullSha || invalidContract.length) {
+    throw new Error(JSON.stringify({ url: location.href, anchors, missing, hasFullSha, invalidContract }))
+  }
+  return JSON.stringify({ url: location.href, anchors, missing, hasFullSha, invalidContract })
 })()
 EVALEOF
 done
@@ -4331,9 +4635,13 @@ done
 Finally run:
 
 ```bash
-agent-browser --session project-catalog-acceptance console
-agent-browser --session project-catalog-acceptance errors
-agent-browser --session project-catalog-acceptance network requests --status 400-599
+set -e
+test -z "$(agent-browser --session project-catalog-acceptance console)"
+test -z "$(agent-browser --session project-catalog-acceptance errors)"
+test -z "$(agent-browser --session project-catalog-acceptance network requests --status 400-599)"
+test -z "$(agent-browser --session project-catalog-nojs console)"
+test -z "$(agent-browser --session project-catalog-nojs errors)"
+test -z "$(agent-browser --session project-catalog-nojs network requests --status 400-599)"
 ```
 
 Expected: no console error, page error, or failed first-party request.
@@ -4342,8 +4650,11 @@ Save screenshots:
 
 ```text
 /tmp/projects-index-1440-light.png
+/tmp/projects-index-390-dark.png
 /tmp/project-openhands-390-dark.png
 /tmp/project-benchmarks-390-dark.png
+/tmp/project-openhands-1440-light.png
+/tmp/project-benchmarks-1440-light.png
 ```
 
 - [ ] **Step 8: Verify print output**
@@ -4351,6 +4662,7 @@ Save screenshots:
 Generate PDFs for `/projects/openhands` and `/projects/agent-benchmarks` while license details are closed on screen:
 
 ```bash
+set -e
 agent-browser --session project-catalog-acceptance open http://127.0.0.1:4175/agent-engineering-for-beginners/projects/openhands
 agent-browser --session project-catalog-acceptance eval 'JSON.stringify(Array.from(document.querySelectorAll(".project-meta details")).map((node)=>node.open))'
 agent-browser --session project-catalog-acceptance pdf /tmp/project-openhands.pdf
@@ -4362,6 +4674,7 @@ agent-browser --session project-catalog-acceptance pdf /tmp/project-benchmarks.p
 Both `eval` commands must return only `false` values. Extract and assert content with:
 
 ```bash
+set -e
 if command -v pdftotext >/dev/null 2>&1; then
   pdftotext /tmp/project-openhands.pdf /tmp/project-openhands.txt
   pdftotext /tmp/project-benchmarks.pdf /tmp/project-benchmarks.txt
@@ -4374,25 +4687,38 @@ for stem in ('project-openhands', 'project-benchmarks'):
     Path(f'/tmp/{stem}.txt').write_text(text, encoding='utf-8')
 PY
 fi
+node --input-type=module <<'NODE'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { parse } from 'yaml'
+const catalog = parse(readFileSync('sources/project-index.yml', 'utf8'))
+const subjects = Object.fromEntries(catalog.subjects.map((subject) => [subject.id, subject]))
+const chains = Object.fromEntries(catalog.chains.map((chain) => [chain.id, chain]))
+const pageIds = ['project-openhands', 'project-agent-benchmarks']
+const expected = Object.fromEntries(pageIds.map((pageId) => {
+  const page = catalog.pages.find((candidate) => candidate.page_item_id === pageId)
+  const chain = chains[page.primary_chain_id]
+  const values = page.subjects.flatMap((subjectId) => {
+    const subject = subjects[subjectId]
+    return [
+      subject.pinned_commit,
+      ...subject.entrypoints.flatMap((entry) => [entry.path, entry.symbol, entry.responsibility]),
+      ...subject.license_sources.map((source) => `${subject.canonical_url}/blob/${subject.pinned_commit}/${source.path}`),
+    ]
+  })
+  values.push(...chain.steps.flatMap((step) => [step.label, step.source_path, step.symbol, step.responsibility]))
+  return [pageId, [...new Set(values)]]
+}))
+writeFileSync('/tmp/project-pdf-expectations.json', JSON.stringify(expected))
+NODE
 python3 - <<'PY'
+import json
 from pathlib import Path
-checks = {
-    'project-openhands': [
-        '7dc6805406ea3c76cb4a3ce407c3c72d481b0ac6',
-        'fcc102a697874d54a357e36004e02c95040dbdc0',
-        'conversation_router.py', 'conversation.py', 'tool.py', 'workspace.py',
-        'Canvas conversation API', 'Event return',
-    ],
-    'project-benchmarks': [
-        '87ab1f6ced28f75ba73ca899dc759b019310944a',
-        'fc0055dc4e0a316c3f83133267fbd6faaa770992',
-        'run_evaluation.py', 'grading.py', 'simulation.py', 'evaluator.py',
-        'Instance and prediction', 'Evaluator and reward',
-    ],
-}
-for stem, required in checks.items():
+expected = json.loads(Path('/tmp/project-pdf-expectations.json').read_text(encoding='utf-8'))
+for page_id, required in expected.items():
+    stem = 'project-benchmarks' if page_id == 'project-agent-benchmarks' else page_id
     text = Path(f'/tmp/{stem}.txt').read_text(encoding='utf-8')
-    missing = [item for item in required if item not in text]
+    compact = ''.join(text.split())
+    missing = [item for item in required if ''.join(item.split()) not in compact]
     assert not missing, f'{stem} missing: {missing}'
     assert '许可证边界' not in text, f'{stem} printed the closed disclosure summary'
 PY
@@ -4405,9 +4731,19 @@ Expected: the PDFs contain complete primary chains, source paths, and full commi
 Run:
 
 ```bash
-find docs/.vitepress/dist -type f | rg '/(?:superpowers|labs|capstone)/'
-find docs/public/project-assets -type f 2>/dev/null
-rg -n "!\\[[^]]*\\]\\(https?://|<img[^>]+src=['\"]https?://" docs/projects
+set -e
+if find docs/.vitepress/dist -type f | rg -q '/(?:superpowers|labs|capstone)/'; then
+  echo 'unexpected private or future-stage output'
+  exit 1
+fi
+if [ -d docs/public/project-assets ] && find docs/public/project-assets -type f | grep -q .; then
+  echo 'unexpected direct project asset in the no-asset baseline'
+  exit 1
+fi
+if rg -n "!\\[[^]]*\\]\\(https?://|<img[^>]+src=['\"]https?://" docs/projects; then
+  echo 'unexpected remote image embedding'
+  exit 1
+fi
 git diff origin/main...HEAD --check
 git status --short --branch
 ```
@@ -4427,6 +4763,7 @@ Send Ctrl-C to the exact persistent preview terminal session, then rerun the `ls
 - [ ] **Step 11: Push the feature branch and request final review; do not merge**
 
 ```bash
+set -e
 git push -u origin feat/open-source-project-dissections
 ```
 
@@ -4444,6 +4781,7 @@ Send the final branch HEAD, commit list, test counts, real project freshness sum
 Run:
 
 ```bash
+set -e
 git fetch origin --prune
 git status --short --branch
 git diff origin/main...HEAD --check
@@ -4456,6 +4794,7 @@ Expected: clean worktree, empty range check, ancestor exit 0, and HEAD exactly m
 - [ ] **Step 2: Push the approved feature branch and fast-forward main**
 
 ```bash
+set -e
 git push -u origin feat/open-source-project-dissections
 git push origin feat/open-source-project-dissections:main
 git ls-remote origin refs/heads/main refs/heads/feat/open-source-project-dissections
@@ -4466,10 +4805,20 @@ Expected: both refs resolve to the same approved 40-character commit. Use a norm
 - [ ] **Step 3: Find and wait for the exact Pages run**
 
 ```bash
+set -e
 head_sha=$(git rev-parse HEAD)
-run_id=$(gh run list --repo MengEn-Ink/agent-engineering-for-beginners --branch main --workflow 'Deploy book to GitHub Pages' --limit 10 --json databaseId,headSha --jq ".[] | select(.headSha == \"$head_sha\") | .databaseId" | head -n 1)
+run_id=''
+for attempt in $(seq 1 12); do
+  run_id=$(gh run list --repo MengEn-Ink/agent-engineering-for-beginners --branch main --workflow 'Deploy book to GitHub Pages' --limit 10 --json databaseId,headSha --jq ".[] | select(.headSha == \"$head_sha\") | .databaseId" | head -n 1)
+  if [ -n "$run_id" ]; then break; fi
+  sleep 5
+done
 test -n "$run_id"
 gh run watch "$run_id" --repo MengEn-Ink/agent-engineering-for-beginners --exit-status
+run_sha=$(gh run view "$run_id" --repo MengEn-Ink/agent-engineering-for-beginners --json headSha --jq .headSha)
+run_conclusion=$(gh run view "$run_id" --repo MengEn-Ink/agent-engineering-for-beginners --json conclusion --jq .conclusion)
+test "$run_sha" = "$head_sha"
+test "$run_conclusion" = 'success'
 gh run view "$run_id" --repo MengEn-Ink/agent-engineering-for-beginners --json status,conclusion,headSha,url,jobs
 ```
 
@@ -4478,7 +4827,21 @@ Expected: build and deploy jobs both conclude `success`, and `headSha` equals th
 - [ ] **Step 4: Run the production HTTP matrix**
 
 ```bash
+set -e
 site_root='https://mengen-ink.github.io/agent-engineering-for-beginners'
+cdn_ready=0
+for attempt in $(seq 1 12); do
+  course_code=$(curl -L -sS -o /tmp/course-production.html -w '%{http_code}' "$site_root/course/")
+  projects_code=$(curl -L -sS -o /tmp/projects-production.html -w '%{http_code}' "$site_root/projects/")
+  if [ "$course_code" = '200' ] && [ "$projects_code" = '200' ] \
+    && rg -q '/agent-engineering-for-beginners/projects/aider' /tmp/course-production.html \
+    && rg -q '六个核心源码拆解' /tmp/projects-production.html; then
+    cdn_ready=1
+    break
+  fi
+  sleep 5
+done
+test "$cdn_ready" -eq 1
 routes=(
   course paths preface
   chapters/01-ai-native chapters/02-workflow-agent chapters/03-react
@@ -4520,6 +4883,7 @@ Expected: all 79 positive requests return 200, all five negative requests return
 - [ ] **Step 5: Run production browser and no-JavaScript checks**
 
 ```bash
+set -e
 agent-browser --session project-catalog-production set viewport 390 844
 agent-browser --session project-catalog-production set media dark
 agent-browser --session project-catalog-production open https://mengen-ink.github.io/agent-engineering-for-beginners/course/
@@ -4543,6 +4907,9 @@ for route in projects/openhands projects/agent-benchmarks projects/history-autog
   agent-browser --session project-catalog-production eval 'if(document.documentElement.scrollWidth!==innerWidth)throw new Error(JSON.stringify({url:location.href,width:innerWidth,scrollWidth:document.documentElement.scrollWidth}));location.href'
 done
 agent-browser --session project-catalog-production screenshot /tmp/project-history-production-390-dark.png --full
+agent-browser --session project-catalog-production open https://mengen-ink.github.io/agent-engineering-for-beginners/projects/
+agent-browser --session project-catalog-production eval 'const r={core:document.querySelectorAll("[aria-labelledby=project-core-title] a").length,history:document.querySelectorAll("[aria-labelledby=project-history-title] a").length,watch:document.querySelectorAll("[aria-labelledby=project-watch-title] > ul a").length,overflow:document.documentElement.scrollWidth-innerWidth};if(r.core!==6||r.history!==1||r.watch!==2||r.overflow!==0)throw new Error(JSON.stringify(r));JSON.stringify(r)'
+agent-browser --session project-catalog-production screenshot /tmp/projects-index-production-390-dark.png --full
 
 agent-browser --session project-catalog-production open https://mengen-ink.github.io/agent-engineering-for-beginners/paths/
 agent-browser --session project-catalog-production find role button click --name '工程实战'
@@ -4554,47 +4921,109 @@ agent-browser --session project-catalog-production set media light
 agent-browser --session project-catalog-production snapshot -s '.project-overview'
 agent-browser --session project-catalog-production eval 'const r={core:document.querySelectorAll("[aria-labelledby=project-core-title] a").length,history:document.querySelectorAll("[aria-labelledby=project-history-title] a").length,watch:document.querySelectorAll("[aria-labelledby=project-watch-title] > ul a").length,overflow:document.documentElement.scrollWidth-innerWidth};if(r.core!==6||r.history!==1||r.watch!==2||r.overflow!==0)throw new Error(JSON.stringify(r));JSON.stringify(r)'
 agent-browser --session project-catalog-production screenshot /tmp/projects-index-production-1440-light.png --full
+for route in projects/openhands projects/agent-benchmarks; do
+  agent-browser --session project-catalog-production open "https://mengen-ink.github.io/agent-engineering-for-beginners/$route"
+  agent-browser --session project-catalog-production wait --load networkidle
+  agent-browser --session project-catalog-production eval 'if(document.documentElement.scrollWidth!==innerWidth)throw new Error(JSON.stringify({url:location.href,width:innerWidth,scrollWidth:document.documentElement.scrollWidth}));location.href'
+done
+agent-browser --session project-catalog-production open https://mengen-ink.github.io/agent-engineering-for-beginners/projects/
 agent-browser --session project-catalog-production press Tab
 agent-browser --session project-catalog-production press Enter
+agent-browser --session project-catalog-production press Tab
+focus_log=$(mktemp)
 for step in $(seq 1 16); do
-  agent-browser --session project-catalog-production eval 'if(document.activeElement&&getComputedStyle(document.activeElement).outlineStyle==="none")throw new Error(`missing focus: ${document.activeElement.textContent}`);document.activeElement?.textContent?.trim()'
+  agent-browser --session project-catalog-production eval 'const el=document.activeElement;const r={tag:el?.tagName,text:el?.textContent?.trim(),outline:getComputedStyle(el).outline};if(!["A","SUMMARY"].includes(r.tag)||r.outline.includes("none")||r.outline.startsWith("0px"))throw new Error(JSON.stringify(r));JSON.stringify(r)' >> "$focus_log"
   agent-browser --session project-catalog-production press Tab
+done
+for label in 'MCP 规范与 Python SDK' 'Aider 源码拆解' 'OpenHands 源码拆解' 'Agent 评测基准' 'Dify 源码拆解' 'CrewAI 源码拆解' 'AutoGPT 与 Flowise' 'NousResearch/hermes-agent' 'openclaw/openclaw'; do
+  rg -Fq "$label" "$focus_log"
 done
 
 agent-browser --session project-catalog-production-nojs network route '**/*.js' --abort
 for route in projects/ projects/mcp-python-sdk projects/aider projects/openhands projects/agent-benchmarks projects/dify projects/crewai projects/history-autogpt-flowise; do
   agent-browser --session project-catalog-production-nojs open "https://mengen-ink.github.io/agent-engineering-for-beginners/$route"
-  agent-browser --session project-catalog-production-nojs eval 'const r={text:(document.querySelector(".vp-doc")?.textContent??"").length,links:document.querySelectorAll(".vp-doc a").length};if(r.text===0||r.links===0)throw new Error(JSON.stringify({url:location.href,...r}));JSON.stringify(r)'
+  agent-browser --session project-catalog-production-nojs eval --stdin <<'EVALEOF'
+(() => {
+  const text = document.querySelector('.vp-doc')?.textContent ?? ''
+  const anchors = document.querySelectorAll('.vp-doc a').length
+  const isIndex = location.pathname.endsWith('/projects/')
+  const required = isIndex
+    ? ['核心源码拆解', '历史反例', '前沿高权限观察区', '不是初学者默认安装步骤']
+    : ['固定版本', '仓库状态', '教学层级', '许可证边界', '源码事实', '本书归纳', '关键源码入口', '失败边界']
+  const missing = required.filter((item) => !text.includes(item))
+  const hasFullSha = isIndex || /\b[0-9a-f]{40}\b/u.test(text)
+  const pinnedSourceLinks = Array.from(document.querySelectorAll('.project-source-links a'))
+  const contract = isIndex ? {} : {
+    metadata: Boolean(document.querySelector('.project-meta')),
+    licenseScopes: document.querySelectorAll('.project-meta details li[role="listitem"]').length > 0,
+    callChain: document.querySelectorAll('.project-call-chain [role="listitem"]').length > 0,
+    sourceEntries: document.querySelectorAll('.project-source-links [role="listitem"]').length > 0,
+    pinnedSources: pinnedSourceLinks.length > 0 && pinnedSourceLinks.every((a) => /\/blob\/[0-9a-f]{40}\//u.test(a.href)),
+    interviewLinks: document.querySelectorAll('.vp-doc a[href*="#iq-"]').length > 0,
+  }
+  const invalidContract = Object.entries(contract).filter(([, valid]) => !valid).map(([key]) => key)
+  if (!text.trim() || anchors === 0 || missing.length || !hasFullSha || invalidContract.length) {
+    throw new Error(JSON.stringify({ url: location.href, anchors, missing, hasFullSha, invalidContract }))
+  }
+  return JSON.stringify({ url: location.href, anchors, missing, hasFullSha, invalidContract })
+})()
+EVALEOF
 done
 
 agent-browser --session project-catalog-production open https://mengen-ink.github.io/agent-engineering-for-beginners/projects/openhands
 agent-browser --session project-catalog-production pdf /tmp/project-openhands-production.pdf
 agent-browser --session project-catalog-production open https://mengen-ink.github.io/agent-engineering-for-beginners/projects/agent-benchmarks
 agent-browser --session project-catalog-production pdf /tmp/project-benchmarks-production.pdf
+node --input-type=module <<'NODE'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { parse } from 'yaml'
+const catalog = parse(readFileSync('sources/project-index.yml', 'utf8'))
+const subjects = Object.fromEntries(catalog.subjects.map((subject) => [subject.id, subject]))
+const chains = Object.fromEntries(catalog.chains.map((chain) => [chain.id, chain]))
+const expected = Object.fromEntries(['project-openhands', 'project-agent-benchmarks'].map((pageId) => {
+  const page = catalog.pages.find((candidate) => candidate.page_item_id === pageId)
+  const chain = chains[page.primary_chain_id]
+  const values = page.subjects.flatMap((subjectId) => {
+    const subject = subjects[subjectId]
+    return [
+      subject.pinned_commit,
+      ...subject.entrypoints.flatMap((entry) => [entry.path, entry.symbol, entry.responsibility]),
+      ...subject.license_sources.map((source) => `${subject.canonical_url}/blob/${subject.pinned_commit}/${source.path}`),
+    ]
+  })
+  values.push(...chain.steps.flatMap((step) => [step.label, step.source_path, step.symbol, step.responsibility]))
+  return [pageId, [...new Set(values)]]
+}))
+writeFileSync('/tmp/project-production-pdf-expectations.json', JSON.stringify(expected))
+NODE
 python3 - <<'PY'
+import json
 from pathlib import Path
 from pypdf import PdfReader
-checks = {
-    'project-openhands-production': ['7dc6805406ea3c76cb4a3ce407c3c72d481b0ac6', 'fcc102a697874d54a357e36004e02c95040dbdc0', 'Conversation', 'Tool execution', 'Event return'],
-    'project-benchmarks-production': ['87ab1f6ced28f75ba73ca899dc759b019310944a', 'fc0055dc4e0a316c3f83133267fbd6faaa770992', 'Container execution', 'Evaluator and reward'],
-}
-for stem, required in checks.items():
+expected = json.loads(Path('/tmp/project-production-pdf-expectations.json').read_text(encoding='utf-8'))
+for page_id, required in expected.items():
+    stem = 'project-benchmarks-production' if page_id == 'project-agent-benchmarks' else f'{page_id}-production'
     text = '\n'.join(page.extract_text() or '' for page in PdfReader(f'/tmp/{stem}.pdf').pages)
-    missing = [item for item in required if item not in text]
+    compact = ''.join(text.split())
+    missing = [item for item in required if ''.join(item.split()) not in compact]
     assert not missing, f'{stem} missing: {missing}'
     assert '许可证边界' not in text, f'{stem} printed the closed disclosure summary'
     Path(f'/tmp/{stem}.txt').write_text(text, encoding='utf-8')
 PY
-agent-browser --session project-catalog-production console
-agent-browser --session project-catalog-production errors
-agent-browser --session project-catalog-production network requests --status 400-599
+test -z "$(agent-browser --session project-catalog-production console)"
+test -z "$(agent-browser --session project-catalog-production errors)"
+test -z "$(agent-browser --session project-catalog-production network requests --status 400-599)"
+test -z "$(agent-browser --session project-catalog-production-nojs console)"
+test -z "$(agent-browser --session project-catalog-production-nojs errors)"
+test -z "$(agent-browser --session project-catalog-production-nojs network requests --status 400-599)"
 ```
 
-Expected: course map reports 26 links and 7 project items with zero overflow; engineering path reports 17 steps; project index reports 6 core, 1 history, 2 watch links; all eight no-JS pages have non-zero text and links; the inline Python block validates both PDFs; console, page error, and failed network lists are empty.
+Expected: course map reports 26 links and 7 project items with zero overflow; engineering path reports 17 steps; project index reports 6 core, 1 history, 2 watch links; the no-JS overview meets its taxonomy contract and the other seven no-JS pages retain metadata, full SHA, licenses, chain, source entries, and failure boundary; the inline Python block validates both PDFs; console, page error, and failed network lists are empty.
 
 - [ ] **Step 6: Report final evidence and close sessions**
 
 ```bash
+set -e
 agent-browser --session project-catalog-production close
 agent-browser --session project-catalog-production-nojs close
 git ls-remote origin refs/heads/main
@@ -4617,7 +5046,7 @@ Send the production site URL, `/projects/` URL, six core URLs, historical URL, c
 - [ ] All diagrams are original; direct assets, if any, have exact provenance records.
 - [ ] Source automation reports changes but never edits or publishes content.
 - [ ] 1440px, 390px, light, dark, keyboard, screen-reader tree, no-JS, and print checks pass.
-- [ ] `pnpm test`, `pnpm validate`, `pnpm build`, both strict freshness checks, and `git diff origin/main...HEAD --check` pass.
+- [ ] `pnpm test`, `pnpm validate`, `pnpm build`, source report policy parsing, strict project freshness, and `git diff origin/main...HEAD --check` pass.
 - [ ] Third-stage Python Lab and fourth-stage capstone remain absent.
 
 ## Delivery handoff
