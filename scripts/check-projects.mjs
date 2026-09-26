@@ -10,6 +10,9 @@ const retryable = new Set([408, 429, 500, 502, 503, 504])
 const shaPattern = /^[0-9a-f]{40}$/iu
 const maxSchemaErrors = 20
 const maxSchemaErrorLength = 240
+export const defaultProjectRetryBudgetMs = 120_000
+export const defaultProjectRetrySleepBudgetMs = 30_000
+const maxRequestAttempts = 3
 
 function responseHeader(response, name) {
   if (typeof response?.headers?.get === 'function') return response.headers.get(name)
@@ -18,32 +21,76 @@ function responseHeader(response, name) {
   return key ? String(response.headers[key]) : null
 }
 
-function nowMilliseconds(now) {
-  const value = typeof now === 'function' ? now() : now
+function timeMilliseconds(valueOrClock) {
+  const value = typeof valueOrClock === 'function' ? valueOrClock() : valueOrClock
   return value instanceof Date ? value.getTime() : new Date(value).getTime()
 }
 
-function headerDelayMs(response, now) {
+function headerDelayMs(response, clock) {
   const delays = []
   const retryAfter = responseHeader(response, 'retry-after')
   if (retryAfter !== null && retryAfter.trim() !== '') {
     const seconds = Number(retryAfter)
     const delay = Number.isFinite(seconds)
       ? seconds * 1_000
-      : Date.parse(retryAfter) - nowMilliseconds(now)
+      : Date.parse(retryAfter) - timeMilliseconds(clock)
     if (Number.isFinite(delay)) delays.push(Math.max(0, delay))
   }
   const resetHeader = responseHeader(response, 'x-ratelimit-reset')
   if (resetHeader !== null && resetHeader.trim() !== '') {
     const reset = Number(resetHeader)
-    if (Number.isFinite(reset)) delays.push(Math.max(0, (reset * 1_000) - nowMilliseconds(now)))
+    if (Number.isFinite(reset)) delays.push(Math.max(0, (reset * 1_000) - timeMilliseconds(clock)))
   }
   return delays.length > 0 ? Math.max(...delays) : null
 }
 
-function retryDelay(response, { attempt, retryDelayMs, maxRetryDelayMs, now }) {
-  const requested = headerDelayMs(response, now) ?? retryDelayMs * attempt
+function retryDelay(response, { attempt, retryDelayMs, maxRetryDelayMs, clock }) {
+  const requested = headerDelayMs(response, clock) ?? retryDelayMs * attempt
   return Math.min(Math.max(0, requested), maxRetryDelayMs)
+}
+
+function createRetryBudget(retryBudgetMs, retrySleepBudgetMs, clock) {
+  return {
+    deadlineMs: timeMilliseconds(clock) + retryBudgetMs,
+    remainingSleepMs: retrySleepBudgetMs,
+    exhausted: false,
+    clock,
+  }
+}
+
+function retryBudgetAllowsRequest(retryBudget) {
+  if (!retryBudget) return true
+  if (retryBudget.exhausted || timeMilliseconds(retryBudget.clock) >= retryBudget.deadlineMs) {
+    retryBudget.exhausted = true
+    return false
+  }
+  return true
+}
+
+function claimRetryDelay(retryBudget, delayMs) {
+  if (!retryBudget) return true
+  if (!retryBudgetAllowsRequest(retryBudget)) return false
+  const remainingWallMs = retryBudget.deadlineMs - timeMilliseconds(retryBudget.clock)
+  if (delayMs > retryBudget.remainingSleepMs || delayMs > remainingWallMs) {
+    retryBudget.exhausted = true
+    return false
+  }
+  retryBudget.remainingSleepMs -= delayMs
+  return true
+}
+
+function retryBudgetFailure(status = 0) {
+  return { status, data: null, failure: 'budget' }
+}
+
+function markExhaustedAfterFinalRetry(retryBudget) {
+  if (!retryBudget) return false
+  if (retryBudget.remainingSleepMs <= 0
+    || timeMilliseconds(retryBudget.clock) >= retryBudget.deadlineMs) {
+    retryBudget.exhausted = true
+    return true
+  }
+  return false
 }
 
 async function isRateLimited403(response) {
@@ -92,9 +139,13 @@ export async function requestProjectJson(url, {
   retryDelayMs = 250,
   maxRetryDelayMs = 60_000,
   now = new Date(),
+  clock = () => now,
   sleepImpl = (delayMs) => new Promise((done) => setTimeout(done, delayMs)),
+  retryBudget,
 } = {}) {
-  for (let attempt = 1; attempt <= retryAttempts; attempt += 1) {
+  const attemptLimit = Math.min(maxRequestAttempts, Math.max(1, Math.trunc(retryAttempts)))
+  for (let attempt = 1; attempt <= attemptLimit; attempt += 1) {
+    if (!retryBudgetAllowsRequest(retryBudget)) return retryBudgetFailure()
     try {
       const isGitHubApi = new URL(url).hostname === 'api.github.com'
       const response = await fetchImpl(url, {
@@ -106,16 +157,21 @@ export async function requestProjectJson(url, {
         },
       })
       const responseIsRetryable = retryable.has(response.status) || await isRateLimited403(response)
-      if (responseIsRetryable && attempt < retryAttempts) {
-        await sleepImpl(retryDelay(response, {
+      if (responseIsRetryable && attempt < attemptLimit) {
+        const delayMs = retryDelay(response, {
           attempt,
           retryDelayMs,
           maxRetryDelayMs,
-          now,
-        }))
+          clock,
+        })
+        if (!claimRetryDelay(retryBudget, delayMs)) return retryBudgetFailure(response.status)
+        await sleepImpl(delayMs)
         continue
       }
       if (response.status >= 400) {
+        if (responseIsRetryable && markExhaustedAfterFinalRetry(retryBudget)) {
+          return retryBudgetFailure(response.status)
+        }
         return {
           status: response.status,
           data: null,
@@ -125,26 +181,31 @@ export async function requestProjectJson(url, {
       try {
         return { status: response.status, data: await response.json(), failure: null }
       } catch {
-        if (attempt === retryAttempts) {
+        if (attempt === attemptLimit) {
+          if (markExhaustedAfterFinalRetry(retryBudget)) return retryBudgetFailure(response.status)
           return { status: response.status, data: null, failure: 'parse' }
         }
-        await sleepImpl(retryDelay(response, {
-          attempt,
-          retryDelayMs,
-          maxRetryDelayMs,
-          now,
-        }))
+        const delayMs = Math.min(retryDelayMs * attempt, maxRetryDelayMs)
+        if (!claimRetryDelay(retryBudget, delayMs)) return retryBudgetFailure(response.status)
+        await sleepImpl(delayMs)
       }
     } catch {
-      if (attempt === retryAttempts) return { status: 0, data: null, failure: 'network' }
-      await sleepImpl(Math.min(retryDelayMs * attempt, maxRetryDelayMs))
+      if (attempt === attemptLimit) {
+        if (markExhaustedAfterFinalRetry(retryBudget)) return retryBudgetFailure()
+        return { status: 0, data: null, failure: 'network' }
+      }
+      const delayMs = Math.min(retryDelayMs * attempt, maxRetryDelayMs)
+      if (!claimRetryDelay(retryBudget, delayMs)) return retryBudgetFailure()
+      await sleepImpl(delayMs)
     }
   }
   return { status: 0, data: null, failure: 'network' }
 }
 
 function recordFailure(findings, response) {
-  if (response.failure === 'transient') findings.push('project_transient_error')
+  if (response.failure === 'budget') {
+    findings.push('project_retry_budget_exhausted', 'project_transient_error')
+  } else if (response.failure === 'transient') findings.push('project_transient_error')
   else if (response.failure === 'network') findings.push('project_network_error')
   else if (response.failure === 'parse') findings.push('project_parse_error')
   else if (response.failure === 'http') findings.push('project_http_error')
@@ -160,6 +221,14 @@ function githubContentSha256(data) {
   return createHash('sha256').update(content).digest('hex')
 }
 
+function projectResult(subject, findings) {
+  return {
+    id: subject.id,
+    license_source_paths: subject.license_sources.map((source) => source.path),
+    findings: [...new Set(findings)],
+  }
+}
+
 export async function checkProjectSubject(subject, {
   fetchImpl = fetch,
   githubToken = process.env.GITHUB_TOKEN,
@@ -167,7 +236,9 @@ export async function checkProjectSubject(subject, {
   retryAttempts = 3,
   retryDelayMs = 250,
   maxRetryDelayMs = 60_000,
+  clock = () => now,
   sleepImpl = (delayMs) => new Promise((done) => setTimeout(done, delayMs)),
+  retryBudget,
 } = {}) {
   const api = `https://api.github.com/repos/${subject.canonical_repo}`
   const options = {
@@ -177,14 +248,22 @@ export async function checkProjectSubject(subject, {
     retryDelayMs,
     maxRetryDelayMs,
     now,
+    clock,
     sleepImpl,
+    retryBudget,
   }
   const findings = []
   let defaultBranch = null
 
+  if (!retryBudgetAllowsRequest(retryBudget)) {
+    recordFailure(findings, retryBudgetFailure())
+    return projectResult(subject, findings)
+  }
+
   const metadata = await requestProjectJson(api, options)
   if (metadata.failure) {
     recordFailure(findings, metadata)
+    if (metadata.failure === 'budget') return projectResult(subject, findings)
   } else {
     const metadataData = metadata.data
     defaultBranch = metadataData?.default_branch
@@ -209,6 +288,7 @@ export async function checkProjectSubject(subject, {
     const head = await requestProjectJson(`${api}/commits/${encodeURIComponent(defaultBranch)}`, options)
     if (head.failure) {
       recordFailure(findings, head)
+      if (head.failure === 'budget') return projectResult(subject, findings)
     } else {
       const headSha = head.data?.sha
       const headDate = head.data?.commit?.committer?.date
@@ -222,7 +302,10 @@ export async function checkProjectSubject(subject, {
   }
 
   const ref = await requestProjectJson(`${api}/commits/${encodeURIComponent(subject.pinned_ref)}`, options)
-  if (ref.failure) recordFailure(findings, ref)
+  if (ref.failure) {
+    recordFailure(findings, ref)
+    if (ref.failure === 'budget') return projectResult(subject, findings)
+  }
   else if (!isRecord(ref.data) || !validCommitSha(ref.data.sha)) {
     requireReview(findings, 'pinned_ref_response_invalid')
   } else if (ref.data.sha !== subject.pinned_commit) {
@@ -239,6 +322,7 @@ export async function checkProjectSubject(subject, {
       requireReview(findings, 'entrypoint_missing')
     } else if (entry.failure) {
       recordFailure(findings, entry)
+      if (entry.failure === 'budget') return projectResult(subject, findings)
     } else if (!isRecord(entry.data) || entry.data.path !== entrypoint.path) {
       requireReview(findings, 'entrypoint_response_invalid')
     }
@@ -256,6 +340,7 @@ export async function checkProjectSubject(subject, {
         requireReview(findings, 'license_source_missing')
       } else if (license.failure) {
         recordFailure(findings, license)
+        if (license.failure === 'budget') return projectResult(subject, findings)
       } else if (!isRecord(license.data)
         || license.data.path !== source.path
         || license.data.encoding !== 'base64'
@@ -276,6 +361,7 @@ export async function checkProjectSubject(subject, {
       requireReview(findings, 'project_release_missing')
     } else if (latest.failure) {
       recordFailure(findings, latest)
+      if (latest.failure === 'budget') return projectResult(subject, findings)
     } else {
       const validLatest = subject.pin_kind === 'tag'
         ? Array.isArray(latest.data) && isRecord(latest.data[0]) && nonEmpty(latest.data[0].name)
@@ -294,11 +380,7 @@ export async function checkProjectSubject(subject, {
   if (subject.review_by < reviewDateInTimeZone(now)) {
     requireReview(findings, 'project_review_due')
   }
-  return {
-    id: subject.id,
-    license_source_paths: subject.license_sources.map((source) => source.path),
-    findings: [...new Set(findings)],
-  }
+  return projectResult(subject, findings)
 }
 
 export function buildProjectFreshnessReport(results, generatedAt = new Date().toISOString()) {
@@ -322,6 +404,8 @@ const blockingFindings = new Set([
   'project_parse_error',
   'project_http_error',
   'project_schema_invalid',
+  'project_retry_budget_exhausted',
+  'project_scan_skipped_after_budget',
 ])
 
 export function isProjectReportBlocking(report) {
@@ -366,6 +450,9 @@ export async function runProjectCheck({
   retryAttempts = 3,
   retryDelayMs = 250,
   maxRetryDelayMs = 60_000,
+  retryBudgetMs = defaultProjectRetryBudgetMs,
+  retrySleepBudgetMs = defaultProjectRetrySleepBudgetMs,
+  clock = () => new Date(),
   sleepImpl = (delayMs) => new Promise((done) => setTimeout(done, delayMs)),
 } = {}) {
   const schemaErrors = validateProjectCatalogFile(projectPath)
@@ -380,8 +467,13 @@ export async function runProjectCheck({
   } else {
     const data = parse(readFileSync(projectPath, 'utf8'))
     const subjects = data.subjects.map((subject) => ({ ...data.defaults, ...subject }))
+    const retryBudget = createRetryBudget(retryBudgetMs, retrySleepBudgetMs, clock)
     const results = []
     for (const subject of subjects) {
+      if (!retryBudgetAllowsRequest(retryBudget)) {
+        results.push(projectResult(subject, ['project_scan_skipped_after_budget']))
+        continue
+      }
       results.push(await checkProjectSubject(subject, {
         fetchImpl,
         githubToken,
@@ -389,7 +481,9 @@ export async function runProjectCheck({
         retryAttempts,
         retryDelayMs,
         maxRetryDelayMs,
+        clock,
         sleepImpl,
+        retryBudget,
       }))
     }
     report = buildProjectFreshnessReport(results, now.toISOString())

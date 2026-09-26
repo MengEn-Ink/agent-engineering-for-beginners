@@ -785,6 +785,33 @@ describe('project freshness checker', () => {
     expect(recovered).toMatchObject({ failure: null, data: { full_name: 'example/repo' } })
   })
 
+  it('does not treat ordinary rate headers on a 200 parse failure as a retry delay', async () => {
+    let attempts = 0
+    const sleeps: number[] = []
+    const recovered = await requestProjectJson('https://api.github.com/repos/example/repo', {
+      retryAttempts: 2,
+      retryDelayMs: 10,
+      maxRetryDelayMs: 5_000,
+      now: new Date('2026-09-26T00:00:00Z'),
+      sleepImpl: async (delayMs: number) => { sleeps.push(delayMs) },
+      fetchImpl: async (url: string) => ({
+        status: 200,
+        url,
+        headers: new Headers({
+          'x-ratelimit-remaining': '4999',
+          'x-ratelimit-reset': String(Date.parse('2026-09-26T01:00:00Z') / 1000),
+        }),
+        json: async () => {
+          attempts += 1
+          if (attempts === 1) throw new Error('truncated json')
+          return { full_name: 'example/repo' }
+        },
+      }),
+    })
+    expect(sleeps).toEqual([10])
+    expect(recovered.failure).toBeNull()
+  })
+
   it('retries a rate-limited 403 and caps the reset-header delay', async () => {
     let attempts = 0
     const sleeps: number[] = []
@@ -921,6 +948,132 @@ describe('project freshness checker', () => {
     expect(attempts).toBe(1)
     expect(sleeps).toEqual([])
     expect(result).toMatchObject({ status: 403, failure: 'http' })
+  })
+
+  it('fuses a full scan when Retry-After exceeds the default 30 second sleep budget', async () => {
+    const outputRoot = mkdtempSync(join(tmpdir(), 'project-freshness-budget-'))
+    const sleeps: number[] = []
+    let requests = 0
+    try {
+      const report = await runProjectCheck({
+        outputJson: join(outputRoot, 'project-freshness.json'),
+        outputMarkdown: join(outputRoot, 'project-freshness.md'),
+        retryAttempts: 3,
+        maxRetryDelayMs: 60_000,
+        clock: () => new Date('2026-09-26T00:00:00Z'),
+        sleepImpl: async (delayMs: number) => { sleeps.push(delayMs) },
+        fetchImpl: async (url: string) => {
+          requests += 1
+          return {
+            status: 429,
+            url,
+            headers: new Headers({ 'retry-after': '3600' }),
+            json: async () => ({}),
+          }
+        },
+      })
+      expect(sleeps).toEqual([])
+      expect(requests).toBe(1)
+      expect(report.results).toHaveLength(13)
+      expect(report.results[0].findings).toEqual(expect.arrayContaining([
+        'project_retry_budget_exhausted',
+        'project_transient_error',
+      ]))
+      expect(report.results.slice(1).every((result: any) =>
+        result.findings.includes('project_scan_skipped_after_budget'))).toBe(true)
+      expect(isProjectReportBlocking(report)).toBe(true)
+    } finally {
+      rmSync(outputRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('creates a fresh retry budget for every run', async () => {
+    const outputRoot = mkdtempSync(join(tmpdir(), 'project-freshness-budget-reset-'))
+    const requestCounts: number[] = []
+    const sleepTotals: number[] = []
+    try {
+      for (let run = 0; run < 2; run += 1) {
+        let requests = 0
+        let slept = 0
+        const report = await runProjectCheck({
+          outputJson: join(outputRoot, `project-freshness-${run}.json`),
+          outputMarkdown: join(outputRoot, `project-freshness-${run}.md`),
+          retryAttempts: 2,
+          maxRetryDelayMs: 1_000,
+          retryBudgetMs: 1_000,
+          retrySleepBudgetMs: 1_000,
+          clock: () => new Date('2026-09-26T00:00:00Z'),
+          sleepImpl: async (delayMs: number) => { slept += delayMs },
+          fetchImpl: async (url: string) => {
+            requests += 1
+            return {
+              status: 429,
+              url,
+              headers: new Headers({ 'retry-after': '3600' }),
+              json: async () => ({}),
+            }
+          },
+        })
+        requestCounts.push(requests)
+        sleepTotals.push(slept)
+        expect(isProjectReportBlocking(report)).toBe(true)
+      }
+      expect(requestCounts).toEqual([2, 2])
+      expect(sleepTotals).toEqual([1_000, 1_000])
+    } finally {
+      rmSync(outputRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('checks the 120 second wall-clock budget before every request', async () => {
+    const outputRoot = mkdtempSync(join(tmpdir(), 'project-freshness-wall-budget-'))
+    let requests = 0
+    let clockMs = Date.parse('2026-09-26T00:00:00Z')
+    try {
+      const report = await runProjectCheck({
+        outputJson: join(outputRoot, 'project-freshness.json'),
+        outputMarkdown: join(outputRoot, 'project-freshness.md'),
+        clock: () => new Date(clockMs),
+        sleepImpl: async () => { throw new Error('must not sleep') },
+        fetchImpl: async (url: string) => {
+          requests += 1
+          clockMs += 120_000
+          return {
+            status: 200,
+            url,
+            headers: new Headers(),
+            json: async () => ({
+              full_name: 'modelcontextprotocol/modelcontextprotocol',
+              archived: false,
+              default_branch: 'main',
+            }),
+          }
+        },
+      })
+      expect(requests).toBe(1)
+      expect(report.results[0].findings).toEqual(expect.arrayContaining([
+        'project_retry_budget_exhausted',
+        'project_transient_error',
+      ]))
+      expect(report.results[1].findings).toEqual(['project_scan_skipped_after_budget'])
+    } finally {
+      rmSync(outputRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('caps each request at three attempts', async () => {
+    let attempts = 0
+    const result = await requestProjectJson('https://api.github.com/repos/example/repo', {
+      retryAttempts: 99,
+      retryDelayMs: 0,
+      sleepImpl: async () => {},
+      fetchImpl: async (url: string) => {
+        attempts += 1
+        return { status: 503, url, headers: new Headers(), json: async () => ({}) }
+      },
+    })
+    expect(attempts).toBe(3)
+    expect(result.failure).toBe('transient')
   })
 
   it('escalates a changed license digest to manual review', async () => {
