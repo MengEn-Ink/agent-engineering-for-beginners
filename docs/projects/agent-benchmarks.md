@@ -27,7 +27,7 @@ SWE-bench 的 v5.0.1 是 tag，不冒充 GitHub Release。页面只拆评测执�
 
 ## 唯一纵向调用链
 
-本页使用一个“任务到评分”的比较视图：左轨是 patch、容器、测试与 report；右轨从当前 `tau2` CLI 的 `run` 进入 `run_domain`、任务加载、单任务 simulation、orchestrator、环境工具、trajectory、evaluation 与 `reward_info`。两轨只比较证据结构，不暗示调用关系或数值高低。
+本页使用一个“任务到评分”的比较视图：左轨是 patch、容器、测试与 report；右轨从当前 `tau2` CLI 的 `main` 开始。`main` 注册局部 `run_command`，再把 `tau2 run` 分派到 `run_domain`、任务加载、单任务 simulation、orchestrator、环境工具、trajectory、evaluation 与 `reward_info`；`run_command` 不是可链接的顶层 symbol。两轨只比较证据结构，不暗示调用关系或数值高低。
 
 ## 关键源码入口
 
@@ -35,7 +35,7 @@ SWE-bench 的 v5.0.1 是 tag，不冒充 GitHub Release。页面只拆评测执�
 
 ## 一次请求的数据流
 
-SWE-bench 将实例和预测 patch 放入隔离环境，运行目标测试并由 grading 生成解决状态。τ²-bench 由当前 CLI 调用 batch runner，构建 agent、user、environment 与 orchestrator；simulation 保留 trajectory，evaluator 让 reward 按 basis 选择后相乘并形成 `reward_info`。ACTION 只有纳入 basis 时才是硬门禁，不能无条件覆盖其他 reward 分量。
+SWE-bench 将实例和预测 patch 放入隔离环境，运行目标测试并由 grading 生成解决状态。τ²-bench 由当前 CLI 调用 batch runner，构建 agent、user、environment 与 orchestrator；simulation 保留 trajectory。只有默认 `EvaluationType.ALL` 按 `task.reward_basis` 选择分量后相乘，ACTION 只有被选中时才是硬门禁；单项类型与 `*_IGNORE_BASIS` 各走自己的分支。early termination 返回 `0.0`，没有 criteria 时返回 `1.0`，这些短路结果不能冒充默认 ALL 分支的乘积。
 
 ## 阅读练习
 

@@ -23,11 +23,11 @@ Canvas v1.24.0 依赖 `@openhands/typescript-client@1.49.6`，与本页固定的
 
 <ProjectCallChain project-id="project-openhands" />
 
-图中最重要的边界是：Canvas `Message` 是客户端传输消息，SDK `MessageEvent` 才进入持久事件模型。Agent Server 直接调用 `LocalConversation`，SDK 决定动作并调用工具；Workspace 只是工具的 owner 与配置边界，是不在主调用链上的旁路，不是这条链的下一跳。
+图中最重要的边界是：Canvas `Message` 是客户端传输消息，SDK `MessageEvent` 才进入持久事件模型。Agent Server 直接调用 `LocalConversation`，SDK 决定动作并调用工具。Workspace 是工具构造与执行所消费的环境边界和配置来源，不是 tools 的 owner，也不是这条链的下一跳。
 
 ## 唯一纵向调用链
 
-从 `handleSendMessage` 与 `useSendMessage().send` 进入 WebSocket 后，`events_socket` 把消息交给 `EventService.send_message`，再由 `LocalConversation.send_message` 写入用户 `MessageEvent`。执行侧由 `EventService.run`、`LocalConversation.arun` 和 `Agent.astep` 推进；tool call 被转成 `ActionEvent`，执行结果形成 `Observation`。事件侧的持久化 append 先发生，之后才经 PubSub、`AsyncCallbackWrapper` 和 `_send_event` 回到 Canvas event store。图中的三条 track 不是一条跨异步边界的同步调用栈。
+从 `handleSendMessage` 与 `useSendMessage().send` 进入 WebSocket 后，`events_socket` 通过 `EventService.subscribe_to_events` 注册订阅，并把消息交给 `EventService.send_message`，后者直接调用 `LocalConversation.send_message` 写入用户 `MessageEvent`。`EventService.run` 只启动已有 conversation 的执行，不拥有订阅；执行侧再由 `LocalConversation.arun` 和 `Agent.astep` 推进，tool call 被转成 `ActionEvent`，工具结果形成 `Observation`。事件回流由 `LocalConversation.__init__` 组装的 callback 保证持久化 append 先发生，再依次经过 `AsyncCallbackWrapper.__call__`、EventService `_pub_sub`/PubSub、`_WebSocketSubscriber.__call__` 与 `_send_event` 回到 Canvas event store。图中的三条 track 不是一条跨异步边界的同步调用栈。
 
 ## 关键源码入口
 
@@ -35,13 +35,13 @@ Canvas v1.24.0 依赖 `@openhands/typescript-client@1.49.6`，与本页固定的
 
 ## 一次请求的数据流
 
-用户消息由 Canvas 发送到已有 conversation 的 Agent Server。Canvas Message 与 SDK event 不能混为一个对象：服务把消息交给 `LocalConversation`，agent 基于持久事件产生 `ActionEvent`，工具返回 `Observation`，`LocalConversation._on_event` 先追加持久事件，再异步发布给客户端。模型生成过程中的 streaming delta 不属于持久事件回流链，而是非持久旁路，也不能被当作已完成动作。权限、秘密和文件范围仍必须由工具及其 Workspace owner 实际限制。
+用户消息由 Canvas 发送到已有 conversation 的 Agent Server。Canvas Message 与 SDK event 不能混为一个对象：服务把消息交给 `LocalConversation`，agent 基于持久事件产生 `ActionEvent`，工具返回 `Observation`。持久化优先不是 `_on_event` 方法，而是 `LocalConversation.__init__` 组装的 default callback 先 append、caller callback 后执行。模型生成过程中的 streaming delta 不属于持久事件回流链，而是非持久旁路，也不能被当作已完成动作。权限、秘密和文件范围仍必须由工具构造与执行所消费的 Workspace 环境边界实际限制。
 
 ## 阅读练习
 
 1. 从 `handleSendMessage` 追到 `LocalConversation.send_message`，标出 Canvas Message 与 SDK `MessageEvent` 的转换点。
 2. 从 `_ahandle_tool_calls` 追到 `ToolDefinition.__call__`，区分 `ActionEvent` 与 `Observation`。
-3. 从 `LocalConversation._on_event` 追到 Canvas event store，解释为何持久追加与异步推送不能画成一个同步调用栈。
+3. 从 `LocalConversation.__init__` 的 callback 组合追到 Canvas event store，解释为何持久追加与异步推送不能画成一个同步调用栈。
 
 ## 失败边界
 
