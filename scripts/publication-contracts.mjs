@@ -1,7 +1,7 @@
 import { existsSync, lstatSync, readdirSync, statSync } from 'node:fs'
 import { join, posix, relative } from 'node:path'
 import parseSrcset from 'parse-srcset'
-import { parse, parseFragment } from 'parse5'
+import { parse, parseFragment, Tokenizer } from 'parse5'
 import postcss from 'postcss'
 import valueParser from 'postcss-value-parser'
 
@@ -11,11 +11,41 @@ const hiddenMarkdownHtmlElements = new Set([
   'code',
   'pre',
   'svg',
-  'publication-hidden',
 ])
-const hiddenResourceHtmlElements = new Set(['script', 'template', 'code', 'pre'])
+const hiddenResourceHtmlElements = new Set(['template'])
 const hiddenImageHtmlElements = new Set([...hiddenResourceHtmlElements, 'style'])
 const localImageBase = new URL('https://local.invalid/')
+const htmlNamespace = 'http://www.w3.org/1999/xhtml'
+const svgNamespace = 'http://www.w3.org/2000/svg'
+const fetchingLinkRels = new Set([
+  'icon', 'manifest', 'mask-icon', 'modulepreload', 'prefetch', 'preload', 'stylesheet',
+])
+const htmlResourceAttributes = new Map([
+  ['audio', ['src']],
+  ['embed', ['src']],
+  ['iframe', ['src']],
+  ['input', ['src']],
+  ['object', ['data']],
+  ['script', ['src']],
+  ['track', ['src']],
+  ['video', ['src', 'poster']],
+])
+const svgResourceHrefElements = new Set([
+  'animate',
+  'animatemotion',
+  'animatetransform',
+  'cursor',
+  'feimage',
+  'filter',
+  'lineargradient',
+  'mpath',
+  'pattern',
+  'radialgradient',
+  'script',
+  'set',
+  'textpath',
+  'use',
+])
 
 function attribute(node, name) {
   return node.attrs?.find((candidate) => candidate.name === name)?.value
@@ -64,6 +94,34 @@ function normalizeRenderedMarkdownHref(href) {
     : href
 }
 
+function htmlTagEvents(html) {
+  const events = []
+  const handler = {
+    onStartTag: (token) => events.push({ type: 'start', name: token.tagName, selfClosing: token.selfClosing }),
+    onEndTag: (token) => events.push({ type: 'end', name: token.tagName }),
+    onComment: () => {},
+    onDoctype: () => {},
+    onEof: () => {},
+    onCharacter: () => {},
+    onNullCharacter: () => {},
+    onWhitespaceCharacter: () => {},
+  }
+  new Tokenizer({ sourceCodeLocationInfo: false }, handler).write(html, true)
+  return events
+}
+
+function updateHiddenContainerStack(stack, html) {
+  for (const event of htmlTagEvents(html)) {
+    const name = event.name.toLowerCase()
+    if (event.type === 'start' && hiddenMarkdownHtmlElements.has(name) && !event.selfClosing) {
+      stack.push(name)
+    } else if (event.type === 'end' && hiddenMarkdownHtmlElements.has(name)) {
+      const index = stack.lastIndexOf(name)
+      if (index >= 0) stack.splice(index)
+    }
+  }
+}
+
 function hrefsWithin(roots, hiddenElements = hiddenHtmlElements) {
   return elementsWithin(roots, (node) => node.tagName === 'a', hiddenElements)
     .map((node) => attribute(node, 'href') ?? null)
@@ -95,25 +153,131 @@ function imageCandidatesWithin(roots, hiddenElements = hiddenImageHtmlElements) 
   })
 }
 
+function decodeCssEscapes(value) {
+  let decoded = ''
+  for (let index = 0; index < value.length; index += 1) {
+    if (value[index] !== '\\') {
+      decoded += value[index]
+      continue
+    }
+    index += 1
+    if (index >= value.length) return null
+    if (value[index] === '\n' || value[index] === '\f') continue
+    if (value[index] === '\r') {
+      if (value[index + 1] === '\n') index += 1
+      continue
+    }
+    if (/[0-9a-f]/iu.test(value[index])) {
+      const start = index
+      while (index + 1 < value.length && index - start < 5 && /[0-9a-f]/iu.test(value[index + 1])) {
+        index += 1
+      }
+      const codePoint = Number.parseInt(value.slice(start, index + 1), 16)
+      if (codePoint === 0 || codePoint > 0x10ffff || (codePoint >= 0xd800 && codePoint <= 0xdfff)) {
+        return null
+      }
+      decoded += String.fromCodePoint(codePoint)
+      if (/\s/u.test(value[index + 1] ?? '')) index += 1
+      continue
+    }
+    decoded += value[index]
+  }
+  return decoded
+}
+
 function cssFunctionValue(node) {
   const significant = (node.nodes ?? []).filter((child) =>
     child.type !== 'space' && child.type !== 'comment')
+  let value
   if (significant.length === 1 && ['string', 'word'].includes(significant[0].type)) {
-    return significant[0].value
+    value = significant[0].value
+  } else {
+    value = valueParser.stringify(node.nodes ?? []).trim()
   }
-  return valueParser.stringify(node.nodes ?? []).trim()
+  return decodeCssEscapes(value)
+}
+
+function imageSetResources(node) {
+  const groups = [[]]
+  for (const child of node.nodes ?? []) {
+    if (child.type === 'div' && child.value === ',') groups.push([])
+    else if (child.type !== 'space' && child.type !== 'comment') groups.at(-1).push(child)
+  }
+  return groups.flatMap((group) => {
+    const candidate = group[0]
+    if (!candidate) return [null]
+    if (candidate.type === 'string' || candidate.type === 'word') {
+      return [decodeCssEscapes(candidate.value)]
+    }
+    const functionName = candidate.type === 'function'
+      ? decodeCssEscapes(candidate.value)?.toLowerCase()
+      : null
+    return functionName === 'url' ? [cssFunctionValue(candidate)] : []
+  })
 }
 
 function extractCssValueResources(value) {
-  const resources = []
-  valueParser(value).walk((node) => {
-    if (node.type === 'function' && node.value.toLowerCase() === 'url') {
-      resources.push(cssFunctionValue(node))
-      return false
+  const extractNodes = (nodes) => {
+    const resources = []
+    for (let index = 0; index < nodes.length; index += 1) {
+      let node = nodes[index]
+      let rawFunctionName = node.type === 'function' ? node.value : null
+      if (
+        node.type === 'word'
+        && node.value.includes('\\')
+        && nodes[index + 1]?.type === 'space'
+        && nodes[index + 2]?.type === 'function'
+      ) {
+        rawFunctionName = `${node.value}${nodes[index + 1].value}${nodes[index + 2].value}`
+        node = nodes[index + 2]
+        index += 2
+      }
+      if (node.type !== 'function') continue
+      const functionName = decodeCssEscapes(rawFunctionName)?.toLowerCase()
+      if (functionName === null) {
+        resources.push(null)
+      } else if (functionName === 'url') {
+        resources.push(cssFunctionValue(node))
+      } else if (functionName === 'image-set' || functionName === '-webkit-image-set') {
+        resources.push(...imageSetResources(node))
+      } else {
+        resources.push(...extractNodes(node.nodes ?? []))
+      }
     }
-    return undefined
-  })
-  return resources
+    return resources
+  }
+  try {
+    return extractNodes(valueParser(value).nodes)
+  } catch {
+    return [null]
+  }
+}
+
+function consumeCssIdentifier(value) {
+  let position = 0
+  while (position < value.length) {
+    if (/[-_a-z0-9]/iu.test(value[position])) {
+      position += 1
+      continue
+    }
+    if (value[position] !== '\\') break
+    position += 1
+    if (position >= value.length) return null
+    if (/[0-9a-f]/iu.test(value[position])) {
+      let digits = 0
+      while (digits < 6 && /[0-9a-f]/iu.test(value[position] ?? '')) {
+        position += 1
+        digits += 1
+      }
+      if (value[position] === '\r' && value[position + 1] === '\n') position += 2
+      else if (/\s/u.test(value[position] ?? '')) position += 1
+    } else if (/\r|\n|\f/u.test(value[position])) {
+      return null
+    } else {
+      position += 1
+    }
+  }
+  return { raw: value.slice(0, position), rest: value.slice(position).trim() }
 }
 
 export function extractCssResourceCandidates(css) {
@@ -123,8 +287,21 @@ export function extractCssResourceCandidates(css) {
     root.walkDecls((declaration) => {
       resources.push(...extractCssValueResources(declaration.value))
     })
-    root.walkAtRules(/^import$/iu, (atRule) => {
-      const parsed = valueParser(atRule.params)
+    root.walkAtRules((atRule) => {
+      const signature = consumeCssIdentifier(
+        `${atRule.name}${atRule.raws.afterName ?? ''}${atRule.params}`,
+      )
+      if (!signature) {
+        resources.push(null)
+        return
+      }
+      const atRuleName = decodeCssEscapes(signature.raw)?.toLowerCase()
+      if (atRuleName === null) {
+        resources.push(null)
+        return
+      }
+      if (atRuleName !== 'import') return
+      const parsed = valueParser(signature.rest)
       const urls = []
       parsed.walk((node) => {
         if (node.type === 'function' && node.value.toLowerCase() === 'url') {
@@ -147,15 +324,30 @@ export function extractCssResourceCandidates(css) {
   }
 }
 
+function browserResourceAttributesWithin(roots) {
+  return elementsWithin(roots, () => true, hiddenResourceHtmlElements).flatMap((node) => {
+    const tagName = node.tagName.toLowerCase()
+    if (node.namespaceURI === svgNamespace && svgResourceHrefElements.has(tagName)) {
+      return (node.attrs ?? [])
+        .filter((candidate) => candidate.name === 'href')
+        .map((candidate) => candidate.value)
+    }
+    if (node.namespaceURI !== htmlNamespace) return []
+    if (tagName === 'link') {
+      const rels = (attribute(node, 'rel') ?? '').toLowerCase().split(/\s+/u)
+      return rels.some((rel) => fetchingLinkRels.has(rel))
+        ? [attribute(node, 'href') ?? null]
+        : []
+    }
+    return (htmlResourceAttributes.get(tagName) ?? [])
+      .map((name) => attribute(node, name))
+      .filter((value) => value !== undefined)
+  })
+}
+
 function resourceCandidatesWithin(roots) {
   const images = imageCandidatesWithin(roots)
-  const svgUses = elementsWithin(
-    roots,
-    (node) => node.tagName === 'use',
-    hiddenResourceHtmlElements,
-  ).flatMap((node) => (node.attrs ?? [])
-    .filter((candidate) => candidate.name === 'href')
-    .map((candidate) => candidate.value))
+  const attributes = browserResourceAttributesWithin(roots)
   const inlineStyles = elementsWithin(
     roots,
     (node) => attribute(node, 'style') !== undefined,
@@ -170,7 +362,7 @@ function resourceCandidatesWithin(roots) {
     new Set(),
     hiddenResourceHtmlElements,
   )))
-  return { images, resources: [...images, ...svgUses, ...inlineStyles, ...styleBlocks] }
+  return { images, resources: [...images, ...attributes, ...inlineStyles, ...styleBlocks] }
 }
 
 function listFiles(root) {
@@ -300,33 +492,66 @@ export function extractProjectHtmlContract(html) {
 
 export function extractProjectMarkdownContract(text, renderer) {
   const source = text.replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/u, '')
-  const contentSource = source.replace(
-    /<(\/?)\s*(template|code|pre|svg|script|style|noscript)\b[^>]*>/giu,
-    (match, closing) => closing === '/'
-      ? '</publication-hidden>'
-      : /\/\s*>$/u.test(match)
-        ? '<publication-hidden></publication-hidden>'
-        : '<publication-hidden>',
-  )
-  const root = parseFragment(renderer.render(contentSource), { scriptingEnabled: false })
+  const tokens = renderer.parse(source, {})
   const imageRoot = parseFragment(renderer.render(source), { scriptingEnabled: false })
   const resources = resourceCandidatesWithin(imageRoot.childNodes)
-  const headings = elementsWithin(
-    root.childNodes,
-    (node) => node.tagName === 'h2',
-    hiddenMarkdownHtmlElements,
-  ).map((node) => normalizedVisibleText([node], hiddenMarkdownHtmlElements))
-  const links = elementsWithin(
-    root.childNodes,
-    (node) => node.tagName === 'a' && !hasClass(node, 'header-anchor'),
-    hiddenMarkdownHtmlElements,
-  ).map((node) => normalizeRenderedMarkdownHref(attribute(node, 'href') ?? null))
+  const headings = []
+  const links = []
+  const textParts = []
+  const hiddenStack = []
+  let pendingHeading = false
+
+  const collectFragment = (html, includeHeadings = false) => {
+    const fragment = parseFragment(html, { scriptingEnabled: false })
+    if (includeHeadings) {
+      headings.push(...elementsWithin(
+        fragment.childNodes,
+        (node) => node.tagName === 'h2',
+        hiddenMarkdownHtmlElements,
+      ).map((node) => normalizedVisibleText([node], hiddenMarkdownHtmlElements)))
+    }
+    links.push(...elementsWithin(
+      fragment.childNodes,
+      (node) => node.tagName === 'a' && !hasClass(node, 'header-anchor'),
+      hiddenMarkdownHtmlElements,
+    ).map((node) => normalizeRenderedMarkdownHref(attribute(node, 'href') ?? null)))
+    textParts.push(normalizedVisibleText(fragment.childNodes, hiddenMarkdownHtmlElements))
+  }
+
+  for (const token of tokens) {
+    if (token.type === 'html_block') {
+      if (hiddenStack.length === 0) collectFragment(token.content, true)
+      updateHiddenContainerStack(hiddenStack, token.content)
+      continue
+    }
+    if (token.type === 'heading_open') {
+      pendingHeading = token.tag === 'h2' && hiddenStack.length === 0
+      continue
+    }
+    if (token.type === 'heading_close') {
+      pendingHeading = false
+      continue
+    }
+    if (token.type !== 'inline') continue
+    if (hiddenStack.length === 0) {
+      const rendered = renderer.renderInline(token.content)
+      const fragment = parseFragment(rendered, { scriptingEnabled: false })
+      if (pendingHeading) {
+        headings.push(normalizedVisibleText(fragment.childNodes, hiddenMarkdownHtmlElements))
+      }
+      collectFragment(rendered)
+    }
+    for (const child of token.children ?? []) {
+      if (child.type === 'html_inline') updateHiddenContainerStack(hiddenStack, child.content)
+    }
+  }
+
   return {
     headings,
     links,
     images: resources.images,
     resources: resources.resources,
-    text: normalizedVisibleText(root.childNodes, hiddenMarkdownHtmlElements),
+    text: textParts.join(' ').replace(/\p{White_Space}+/gu, ' ').trim(),
   }
 }
 

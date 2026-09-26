@@ -68,6 +68,7 @@ describe('project routes and catalog overview', () => {
       const parsed = extractProjectMarkdownContract(text, markdown)
       expect(parsed.text, file).not.toMatch(/npm install|pip install|docker run|API_KEY/u)
       expect(parsed.images.filter(isRemoteImageCandidate), file).toEqual([])
+      expect(parsed.resources.filter(isRemoteImageCandidate), file).toEqual([])
       if (coreIds.includes(id)) {
         expect(parsed.headings, file).toEqual(requiredProjectHeadings)
         expect(new Set(parsed.headings).size, `${file}: duplicate H2`)
@@ -115,8 +116,8 @@ FAKE_API_KEY=secret
 \`\`\`
 
 \`npm install inline-code\`
-<code><a href="/chapters/01-ai-native#iq-01-a">code link</a><img src="https://example.com/code.png">INLINE_API_KEY=secret</code>
-<code><code>nested</code><img src="https://example.com/nested-code.png">NESTED_API_KEY=secret</code>
+<code><a href="/chapters/01-ai-native#iq-01-a">code link</a>INLINE_API_KEY=secret</code>
+<code><code>nested</code>NESTED_API_KEY=secret</code>
 \`<div style="background:url(https://example.com/inline-code.png)"></div>\`
 
 <template>
@@ -133,7 +134,6 @@ FAKE_API_KEY=secret
 ## Pre heading
 
 <a href="/chapters/03-react#iq-03-a">pre link</a>
-<style>.pre{background:url(https://example.com/pre.png)}</style>
 
 </pre>
 
@@ -142,7 +142,6 @@ FAKE_API_KEY=secret
 ## Code block heading
 
 <a href="/chapters/03-react#iq-03-b">code block link</a>
-<svg><use href="https://example.com/code-use.svg#icon"></use></svg>
 
 </code>
 
@@ -170,15 +169,6 @@ FAKE_API_KEY=secret
 <div style="background:url(https://example.com/script.png)"></div>
 
 </script>
-
-<style>
-
-## Style heading
-
-<a href="/chapters/07-multi-agent#iq-07-a">style link</a>
-@import "https://example.com/nested-style.css";
-
-</style>
 
 <!--
 ## Comment heading
@@ -298,16 +288,28 @@ pip&nbsp;install package
   it('collects real SVG and CSS resources without classifying ordinary anchors as resources', () => {
     const backslashUrl = String.raw`https:\\evil.example\asset.svg`
     const controlUrl = 'h\tt\ntps://evil.example/control.css'
+    const escapedFunction = String.raw`background:u\72l(https://evil.example/escaped-function.png)`
+    const escapedValue = String.raw`background:url(https\3a //evil.example/escaped-value.png)`
+    const escapedImageSet = String.raw`background:image\2d set('/local.png' 1x, 'https://evil.example/escaped-image-set.png' 2x)`
+    const escapedImport = String.raw`@im\70ort "https://evil.example/escaped-import.css";`
     const parsed = extractProjectMarkdownContract(`
 [ordinary external documentation](https://docs.example.com/guide)
 <svg><use href="https://evil.example/icons.svg#one"></use></svg>
 <svg><use xlink:href="//evil.example/icons.svg#two"></use></svg>
 <svg><use href="${backslashUrl}"></use></svg>
+<svg><filter><feImage href="https://evil.example/filter.png"></feImage><feImage xlink:href="//evil.example/filter-xlink.png"></feImage></filter></svg>
+<svg><script href="https://evil.example/script.js"></script><pattern href="https://evil.example/pattern.svg#tile"></pattern><a href="https://docs.example.com/svg-navigation">navigation</a></svg>
+<pre><img src="https://evil.example/raw-pre.png"></pre>
+<code><svg><use href="https://evil.example/raw-code.svg#icon"></use></svg></code>
 <div style="background:url(${controlUrl});mask:url(/local-mask.svg)"></div>
+<div style="${escapedFunction};${escapedValue};${escapedImageSet}"></div>
 <style>
 @import "https://evil.example/theme.css";
 @import url(https://evil.example/theme-url.css);
+${escapedImport}
 .remote { background: url(//evil.example/block.png) }
+.image-set { background: image-set("/local.png" 1x, "https://evil.example/image-set.png" 2x) }
+.webkit { background: -webkit-image-set(url(/local.png) 1x, url(//evil.example/webkit.png) 2x) }
 .local { background: url(data:image/png;base64,AAAA); mask: url(blob:https://example.com/id) }
 </style>
 <noscript><div style="background:url(https://evil.example/nojs.png)"></div></noscript>
@@ -316,15 +318,29 @@ pip&nbsp;install package
     expect(parsed.links).toContain('https://docs.example.com/guide')
     expect(parsed).toHaveProperty('resources')
     expect(parsed.resources).not.toContain('https://docs.example.com/guide')
+    expect(parsed.resources).not.toContain('https://docs.example.com/svg-navigation')
     expect(parsed.resources).toEqual(expect.arrayContaining([
       'https://evil.example/icons.svg#one',
       '//evil.example/icons.svg#two',
       backslashUrl,
+      'https://evil.example/filter.png',
+      '//evil.example/filter-xlink.png',
+      'https://evil.example/script.js',
+      'https://evil.example/pattern.svg#tile',
+      'https://evil.example/raw-pre.png',
+      'https://evil.example/raw-code.svg#icon',
       controlUrl,
       '/local-mask.svg',
+      'https://evil.example/escaped-function.png',
+      'https://evil.example/escaped-value.png',
+      '/local.png',
+      'https://evil.example/escaped-image-set.png',
       'https://evil.example/theme.css',
       'https://evil.example/theme-url.css',
+      'https://evil.example/escaped-import.css',
       '//evil.example/block.png',
+      'https://evil.example/image-set.png',
+      '//evil.example/webkit.png',
       'data:image/png;base64,AAAA',
       'blob:https://example.com/id',
       'https://evil.example/nojs.png',
@@ -333,10 +349,22 @@ pip&nbsp;install package
       'https://evil.example/icons.svg#one',
       '//evil.example/icons.svg#two',
       backslashUrl,
+      'https://evil.example/filter.png',
+      '//evil.example/filter-xlink.png',
+      'https://evil.example/script.js',
+      'https://evil.example/pattern.svg#tile',
+      'https://evil.example/raw-pre.png',
+      'https://evil.example/raw-code.svg#icon',
       controlUrl,
+      'https://evil.example/escaped-function.png',
+      'https://evil.example/escaped-value.png',
+      'https://evil.example/escaped-image-set.png',
       'https://evil.example/theme.css',
       'https://evil.example/theme-url.css',
+      'https://evil.example/escaped-import.css',
       '//evil.example/block.png',
+      'https://evil.example/image-set.png',
+      '//evil.example/webkit.png',
       'https://evil.example/nojs.png',
     ]))
   })

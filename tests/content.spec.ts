@@ -1458,12 +1458,44 @@ describe('project publication boundary', () => {
     const remoteMarkup = [
       '<svg><use href="https://evil.example/icons.svg#one"></use></svg>',
       '<svg><use xlink:href="//evil.example/icons.svg#two"></use></svg>',
+      '<svg><filter><feImage href="https://evil.example/filter.png"></feImage></filter></svg>',
+      '<svg><filter><feImage xlink:href="//evil.example/filter-xlink.png"></feImage></filter></svg>',
+      '<svg><script href="https://evil.example/script.js"></script></svg>',
+      '<svg><pattern href="https://evil.example/pattern.svg#tile"></pattern></svg>',
+      '<svg><linearGradient href="https://evil.example/gradient.svg#linear"></linearGradient></svg>',
+      '<svg><radialGradient href="https://evil.example/gradient.svg#radial"></radialGradient></svg>',
+      '<svg><filter href="https://evil.example/filter.svg#fx"></filter></svg>',
+      '<svg><mpath href="https://evil.example/path.svg#motion"></mpath></svg>',
+      '<svg><textPath href="https://evil.example/path.svg#text"></textPath></svg>',
+      '<svg><animate href="https://evil.example/target.svg#node"></animate></svg>',
+      '<svg><animateMotion href="https://evil.example/target.svg#motion"></animateMotion></svg>',
+      '<svg><animateTransform href="https://evil.example/target.svg#transform"></animateTransform></svg>',
+      '<svg><set href="https://evil.example/target.svg#set"></set></svg>',
+      '<script src="https://evil.example/runtime.js"></script>',
+      '<iframe src="//evil.example/frame.html"></iframe>',
+      '<link rel="stylesheet" href="https://evil.example/theme.css">',
+      '<link rel="preload icon" href="//evil.example/preload.woff2">',
+      '<video poster="https://evil.example/poster.png"></video>',
+      '<object data="https://evil.example/object.svg"></object>',
+      '<embed src="https://evil.example/embed.pdf">',
+      '<input src="https://evil.example/input.png">',
+      '<audio src="https://evil.example/audio.mp3"></audio>',
+      '<video src="https://evil.example/video.mp4"></video>',
+      '<track src="https://evil.example/subtitles.vtt">',
       String.raw`<svg><use href="https:\\evil.example\icons.svg#three"></use></svg>`,
+      '<pre><img src="https://evil.example/raw-pre.png"></pre>',
+      '<code><svg><use href="https://evil.example/raw-code.svg#icon"></use></svg></code>',
       '<div style="background-image:url(//evil.example/inline.png)"></div>',
       '<div style="mask:url(h&#x09;t&#x0A;tps://evil.example/control.svg)"></div>',
+      String.raw`<div style="background:u\72l(https://evil.example/escaped-url.png)"></div>`,
+      String.raw`<div style="background:url(https\3a //evil.example/escaped-value.png)"></div>`,
+      `<div style="background-image:image-set('/local.png' 1x, 'https://evil.example/image-set.png' 2x)"></div>`,
+      '<div style="background-image:-webkit-image-set(url(/local.png) 1x, url(//evil.example/webkit.png) 2x)"></div>',
       '<style>.project-overview{background:url(https://evil.example/block.png)}</style>',
       '<style>@import "//evil.example/import.css";</style>',
       '<style>@import url(https://evil.example/import-url.css);</style>',
+      String.raw`<style>.escaped{background:u\72l(https://evil.example/style-escaped.png)}</style>`,
+      String.raw`<style>@im\70ort "https://evil.example/escaped-import.css";</style>`,
       '<noscript><style>.fallback{background:url(https://evil.example/nojs.png)}</style></noscript>',
     ]
 
@@ -1487,7 +1519,7 @@ describe('project publication boundary', () => {
     const dist = createCompleteDistFixture()
     try {
       const file = join(dist, 'projects/aider.html')
-      const localMarkup = '<picture><source src="relative.png" srcset="/local.png 1x, data:image/png;base64,AAAA 2x, blob:https://example.com/id 3x"><img src="/fallback.png"></picture><svg><use href="/icons.svg#local"></use></svg><div style="background:url(data:image/png;base64,AAAA);mask:url(blob:https://example.com/id)"></div><style>@import "/local.css";.local{background:url(./asset.png)}</style>'
+      const localMarkup = `<picture><source src="relative.png" srcset="/local.png 1x, data:image/png;base64,AAAA 2x, blob:https://example.com/id 3x"><img src="/fallback.png"></picture><svg><use href="/icons.svg#local"></use><feImage href="data:image/png;base64,AAAA"></feImage></svg><script src="/runtime.js"></script><iframe src="./frame.html"></iframe><link rel="stylesheet" href="/theme.css"><link rel="canonical" href="https://docs.example.com/canonical"><video src="/video.mp4" poster="data:image/png;base64,AAAA"></video><audio src="blob:https://example.com/audio"></audio><track src="/subtitles.vtt"><object data="/object.svg"></object><embed src="./embed.pdf"><input src="/input.png"><div style="background:url(data:image/png;base64,AAAA);mask:url(blob:https://example.com/id);content-image:image-set('/one.png' 1x, 'data:image/png;base64,BBBB' 2x)"></div><style>@import "/local.css";.local{background:url(./asset.png);content:image-set("blob:https://example.com/id" 1x)}</style>`
       writeFileSync(
         file,
         readFileSync(file, 'utf8').replace(
@@ -1518,6 +1550,11 @@ describe('project publication boundary', () => {
         '@import url(https://evil.example/theme-url.css);',
         String.raw`.remote{background:url(https:\\evil.example\a.png)}`,
         '.remote{background:url(h\tt\ntps://evil.example/control.png)}',
+        String.raw`.remote{background:u\72l(https://evil.example/escaped-function.png)}`,
+        String.raw`.remote{background:url(https\3a //evil.example/escaped-value.png)}`,
+        '.remote{background:image-set("/local.png" 1x,"https://evil.example/image-set.png" 2x)}',
+        '.remote{background:-webkit-image-set(url(/local.png) 1x,url(//evil.example/webkit.png) 2x)}',
+        String.raw`@im\70ort "https://evil.example/escaped-import.css";`,
       ]) {
         writeFileSync(cssPath, css)
         expect(validateDist(dist), css)
