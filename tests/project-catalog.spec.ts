@@ -307,7 +307,7 @@ const expectedCoreEntrypointSymbols = {
   },
   'openhands-sdk': {
     'openhands-agent-server/openhands/agent_server/sockets.py': ['events_socket', '_WebSocketSubscriber.__call__', '_send_event'],
-    'openhands-agent-server/openhands/agent_server/event_service.py': ['EventService.send_message', 'EventService.run', 'EventService.subscribe_to_events', 'AsyncCallbackWrapper.__call__', 'EventService._pub_sub'],
+    'openhands-agent-server/openhands/agent_server/event_service.py': ['EventService.send_message', 'EventService.run', 'EventService.subscribe_to_events', 'EventService.start'],
     'openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py': ['LocalConversation.__init__', 'LocalConversation.send_message', 'LocalConversation.arun'],
     'openhands-sdk/openhands/sdk/agent/agent.py': ['Agent.astep', 'Agent._get_action_event', 'Agent._aexecute_actions'],
     'openhands-sdk/openhands/sdk/agent/response_dispatch.py': ['_ahandle_tool_calls'],
@@ -327,7 +327,7 @@ const expectedCoreEntrypointSymbols = {
 const expectedChains = {
   'mcp-tool-call': ['schema:mcp-spec:schema/2026-07-28/schema.json:CallToolRequest', 'host-run:mcp-python-sdk:src/mcp/server/mcpserver/server.py:MCPServer.run', 'transport:mcp-python-sdk:src/mcp/server/stdio.py:stdio_server', 'server-run:mcp-python-sdk:src/mcp/server/lowlevel/server.py:Server.run', 'runner-loop:mcp-python-sdk:src/mcp/server/runner.py:serve_dual_era_loop', 'dispatcher-loop:mcp-python-sdk:src/mcp/shared/jsonrpc_dispatcher.py:JSONRPCDispatcher.run', 'dispatcher-request:mcp-python-sdk:src/mcp/shared/jsonrpc_dispatcher.py:JSONRPCDispatcher._dispatch_request', 'request:mcp-python-sdk:src/mcp/server/runner.py:ServerRunner._on_request', 'dispatch:mcp-python-sdk:src/mcp/server/lowlevel/server.py:get_request_handler', 'mcp-handler:mcp-python-sdk:src/mcp/server/mcpserver/server.py:MCPServer._handle_call_tool', 'mcp-call:mcp-python-sdk:src/mcp/server/mcpserver/server.py:MCPServer.call_tool', 'tool-lookup:mcp-python-sdk:src/mcp/server/mcpserver/tools/tool_manager.py:ToolManager.call_tool', 'tool-run:mcp-python-sdk:src/mcp/server/mcpserver/tools/base.py:Tool.run', 'tool-function:mcp-python-sdk:examples/snippets/servers/basic_tool.py:sum', 'serialize:mcp-python-sdk:src/mcp/server/runner.py:ServerRunner._serialize', 'dispatcher-response:mcp-python-sdk:src/mcp/shared/jsonrpc_dispatcher.py:JSONRPCDispatcher._write_result', 'stdout:mcp-python-sdk:src/mcp/server/stdio.py:stdio_server'],
   'aider-repo-to-verified-edit': ['cli:aider:aider/main.py:main', 'run:aider:aider/coders/base_coder.py:Coder.run', 'turn:aider:aider/coders/base_coder.py:Coder.run_one', 'context:aider:aider/coders/base_coder.py:Coder.send_message', 'repo-map:aider:aider/repomap.py:RepoMap.get_repo_map', 'send:aider:aider/coders/base_coder.py:Coder.send', 'completion:aider:aider/models.py:Model.send_completion', 'parse:aider:aider/coders/editblock_coder.py:EditBlockCoder.get_edits', 'apply-updates:aider:aider/coders/base_coder.py:Coder.apply_updates', 'dry-run:aider:aider/coders/editblock_coder.py:EditBlockCoder.apply_edits_dry_run', 'prepare:aider:aider/coders/base_coder.py:Coder.prepare_to_edit', 'apply:aider:aider/coders/editblock_coder.py:EditBlockCoder.apply_edits', 'write:aider:aider/io.py:InputOutput.write_text', 'auto-commit:aider:aider/coders/base_coder.py:Coder.auto_commit', 'commit:aider:aider/repo.py:GitRepo.commit', 'auto-lint:aider:aider/coders/base_coder.py:Coder.lint_edited', 'lint-commit:aider:aider/coders/base_coder.py:Coder.auto_commit', 'shell-confirm:aider:aider/io.py:InputOutput.confirm_ask', 'shell-run:aider:aider/coders/base_coder.py:Coder.handle_shell_commands', 'auto-test:aider:aider/commands.py:Commands.cmd_test', 'reflection:aider:aider/coders/base_coder.py:Coder.run_one'],
-  'openhands-canvas-to-workspace-event': ['chat-submit:openhands-canvas:src/components/features/chat/chat-interface.tsx:handleSendMessage', 'hook-send:openhands-canvas:src/hooks/use-send-message.ts:useSendMessage().send', 'canvas-send:openhands-canvas:src/contexts/conversation-websocket-context.tsx:ConversationWebSocketProvider.sendMessage', 'socket-receive:openhands-sdk:openhands-agent-server/openhands/agent_server/sockets.py:events_socket', 'service-message:openhands-sdk:openhands-agent-server/openhands/agent_server/event_service.py:EventService.send_message', 'conversation-message:openhands-sdk:openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py:LocalConversation.send_message', 'service-run:openhands-sdk:openhands-agent-server/openhands/agent_server/event_service.py:EventService.run', 'conversation-run:openhands-sdk:openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py:LocalConversation.arun', 'agent-step:openhands-sdk:openhands-sdk/openhands/sdk/agent/agent.py:Agent.astep', 'dispatch-tool-calls:openhands-sdk:openhands-sdk/openhands/sdk/agent/response_dispatch.py:_ahandle_tool_calls', 'execute-actions:openhands-sdk:openhands-sdk/openhands/sdk/agent/agent.py:Agent._aexecute_actions', 'tool-call:openhands-sdk:openhands-sdk/openhands/sdk/tool/tool.py:ToolDefinition.__call__', 'persist-event:openhands-sdk:openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py:LocalConversation.__init__', 'async-callback:openhands-sdk:openhands-agent-server/openhands/agent_server/event_service.py:AsyncCallbackWrapper.__call__', 'publish-event:openhands-sdk:openhands-agent-server/openhands/agent_server/event_service.py:EventService._pub_sub', 'subscriber-event:openhands-sdk:openhands-agent-server/openhands/agent_server/sockets.py:_WebSocketSubscriber.__call__', 'socket-send:openhands-sdk:openhands-agent-server/openhands/agent_server/sockets.py:_send_event', 'canvas-receive:openhands-canvas:src/contexts/conversation-websocket-context.tsx:ConversationWebSocketProvider.handleMainMessage'],
+  'openhands-canvas-to-workspace-event': ['chat-submit:openhands-canvas:src/components/features/chat/chat-interface.tsx:handleSendMessage', 'hook-send:openhands-canvas:src/hooks/use-send-message.ts:useSendMessage().send', 'canvas-send:openhands-canvas:src/contexts/conversation-websocket-context.tsx:ConversationWebSocketProvider.sendMessage', 'socket-receive:openhands-sdk:openhands-agent-server/openhands/agent_server/sockets.py:events_socket', 'service-message:openhands-sdk:openhands-agent-server/openhands/agent_server/event_service.py:EventService.send_message', 'conversation-message:openhands-sdk:openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py:LocalConversation.send_message', 'service-run:openhands-sdk:openhands-agent-server/openhands/agent_server/event_service.py:EventService.run', 'conversation-run:openhands-sdk:openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py:LocalConversation.arun', 'agent-step:openhands-sdk:openhands-sdk/openhands/sdk/agent/agent.py:Agent.astep', 'dispatch-tool-calls:openhands-sdk:openhands-sdk/openhands/sdk/agent/response_dispatch.py:_ahandle_tool_calls', 'execute-actions:openhands-sdk:openhands-sdk/openhands/sdk/agent/agent.py:Agent._aexecute_actions', 'tool-call:openhands-sdk:openhands-sdk/openhands/sdk/tool/tool.py:ToolDefinition.__call__', 'persist-event:openhands-sdk:openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py:LocalConversation.__init__', 'publish-event:openhands-sdk:openhands-agent-server/openhands/agent_server/event_service.py:EventService.start', 'socket-send:openhands-sdk:openhands-agent-server/openhands/agent_server/sockets.py:_WebSocketSubscriber.__call__', 'canvas-receive:openhands-canvas:src/contexts/conversation-websocket-context.tsx:ConversationWebSocketProvider.handleMainMessage'],
   'benchmark-task-to-score': ['swe-input:swe-bench:swebench/harness/run_evaluation.py:main', 'swe-env:swe-bench:swebench/harness/docker_utils.py:exec_run_with_timeout', 'swe-grade:swe-bench:swebench/harness/grading.py:get_eval_report', 'swe-report:swe-bench:swebench/harness/reporting.py:make_run_report', 'tau-cli:tau2-bench:src/tau2/cli.py:main', 'tau-domain:tau2-bench:src/tau2/runner/batch.py:run_domain', 'tau-load:tau2-bench:src/tau2/runner/helpers.py:get_tasks', 'tau-batch:tau2-bench:src/tau2/runner/batch.py:run_tasks', 'tau-task:tau2-bench:src/tau2/runner/batch.py:run_single_task', 'tau-build:tau2-bench:src/tau2/runner/build.py:build_orchestrator', 'tau-sim:tau2-bench:src/tau2/runner/simulation.py:run_simulation', 'tau-orchestrator:tau2-bench:src/tau2/orchestrator/orchestrator.py:BaseOrchestrator.run', 'tau-environment:tau2-bench:src/tau2/environment/environment.py:Environment.make_tool_call', 'tau-trajectory:tau2-bench:src/tau2/runner/simulation.py:run_simulation', 'tau-evaluate:tau2-bench:src/tau2/evaluator/evaluator.py:evaluate_simulation', 'tau-reward:tau2-bench:src/tau2/evaluator/evaluator.py:evaluate_simulation'],
   'dify-request-to-graph-events': ['controller:dify:api/controllers/service_api/app/workflow.py:WorkflowRunApi.post', 'generator:dify:api/core/app/apps/workflow/app_generator.py:WorkflowAppGenerator', 'runner:dify:api/core/app/apps/workflow/app_runner.py:WorkflowAppRunner', 'entry:dify:api/core/workflow/workflow_entry.py:WorkflowEntry', 'factory:dify:api/core/workflow/node_factory.py:DifyNodeFactory', 'agent-node:dify:api/core/workflow/nodes/agent_v2/agent_node.py:DifyAgentNode', 'response:dify:api/core/app/apps/common/workflow_response_converter.py:WorkflowResponseConverter'],
   'crewai-kickoff-to-task-output': ['kickoff:crewai:lib/crewai/src/crewai/crew.py:Crew.kickoff', 'process:crewai:lib/crewai/src/crewai/process.py:Process', 'execution:crewai:lib/crewai/src/crewai/execution.py:begin_execution', 'task:crewai:lib/crewai/src/crewai/task.py:Task.execute_sync', 'agent:crewai:lib/crewai/src/crewai/agent/core.py:Agent.execute_task', 'executor:crewai:lib/crewai/src/crewai/agents/crew_agent_executor.py:CrewAgentExecutor.invoke', 'step:crewai:lib/crewai/src/crewai/agents/step_executor.py:StepExecutor.execute', 'tool:crewai:lib/crewai/src/crewai/tools/tool_usage.py:ToolUsage.use', 'output:crewai:lib/crewai/src/crewai/task.py:Task._export_output'],
@@ -376,7 +376,7 @@ const expectedSubjectDigests = {
   'mcp-python-sdk': '21a74ad2294a17ef639fb92539bee85e299dd9cc71fea3e6db72d615da7db867',
   aider: '5e52014bcd913a55fbbaed8dcdf44cff28bcf19d6d6af5b33264c0bb1caec388',
   'openhands-canvas': '05fb380eafe106924eb9bb17f712d73b75c8b0c7e8d0cd10696cb830798c5ed4',
-  'openhands-sdk': '49b57ad1cb32ce8084c8c0fa75ae6976543e76ca70893e858403699410bea8f8',
+  'openhands-sdk': 'a4ea3a15cab7a116af2beaf8715d8586d6fd5b472b1054adad949dc8aa222133',
   'swe-bench': 'e356c00937817246deae70028e1d8068a2e9426e33f5d77e5b44e485adb3efaa',
   'tau2-bench': '9ce153cca427f514e1d8b1b727931efa4ab2f8767fac1019117219ef17bb99d9',
   dify: '6881c250b6f94d1ff50aa54d77a493cacb672796350e9c8281b2cc639563d683',
@@ -389,8 +389,8 @@ const expectedSubjectDigests = {
 const expectedChainDigests = {
   'mcp-tool-call': '54b46cce64ce2559ae2656a61335d2b92df9df99fdf87e1b7215efe76d4a1ab4',
   'aider-repo-to-verified-edit': '222bc344a8184b8ff7cac95a1e36f620a50a58cacb0f61b459132238164486ce',
-  'openhands-canvas-to-workspace-event': 'e28817b291e43fa1371c2e2174421af65921b4a8e5c7089216b69d475fbb702e',
-  'benchmark-task-to-score': 'fc1b273a3f59963d7e35c73718ca408b468dc92ad999dc179faf736cffc1df89',
+  'openhands-canvas-to-workspace-event': '168bff273714e7a5f797f51d6bff179ede412397be22f5c5742bbef8669a5a06',
+  'benchmark-task-to-score': '4bc18b2acf77c5290f31cf416e89b1f34a3001b1f85a69c365425fcbf8ae5da2',
   'dify-request-to-graph-events': '060d82f9c004cfb20a95ccf3a951383bb7715b47ba25abb1232dcfc9034b6a50',
   'crewai-kickoff-to-task-output': '4a3711ad6debf20e72f0732a6719b0bf9a7e2ae9153cc141a8bb800eb9d9c058',
   'autogpt-flowise-evolution': '2d20650faa158737e729becfdc9559ed3d1f419bbcffccf2977f4eb946d722df',
@@ -411,7 +411,7 @@ describe('real project catalog', () => {
     expect(Object.keys(catalog)).toEqual(['schema_version', 'defaults', 'pages', 'subjects', 'chains'])
     expect(catalog.schema_version).toBe(1)
     expect(catalog.defaults).toEqual({ verified_at: '2026-09-26', review_by: '2026-10-26' })
-    expect(digest(catalog)).toBe('0f46cd636fafd2e62a593558aa0efc8ed700cfe2326197104333f4d9e7b549c5')
+    expect(digest(catalog)).toBe('6be8be4c75bca1b0098b3527dc5173e2a89c4dc4d93360454c08d8e1fd1199ad')
     expect(catalog.pages.map((page: { page_item_id: string }) => page.page_item_id)).toEqual(pageIds)
     expect(catalog.subjects.map((subject: { id: string }) => subject.id)).toEqual(subjectIds)
     expect(Object.fromEntries(catalog.subjects.map((subject: any) => [subject.id, [
@@ -462,12 +462,13 @@ describe('real project catalog', () => {
     expect(subjectsById['tau2-bench'].entrypoints.find((entry: { path: string }) => entry.path === 'src/tau2/cli.py').symbols)
       .not.toContain('run')
     const openHandsChain = catalog.chains.find((chain: { id: string }) => chain.id === 'openhands-canvas-to-workspace-event')
+    expect(openHandsChain.steps).toHaveLength(16)
     expect(openHandsChain.misconception).toContain('environment and configuration source')
     expect(JSON.stringify(openHandsChain)).not.toMatch(/owns tool resources|owner boundary/iu)
     expect(openHandsChain.steps.map((step: { track?: string }) => step.track)).toEqual([
       ...Array(6).fill('message 入站'),
       ...Array(6).fill('action / observation 执行'),
-      ...Array(6).fill('durable event 回流'),
+      ...Array(4).fill('durable event 回流'),
     ])
     const benchmarkChain = catalog.chains.find((chain: { id: string }) => chain.id === 'benchmark-task-to-score')
     const trackSizes = Object.values(Object.groupBy(
@@ -475,6 +476,10 @@ describe('real project catalog', () => {
       (step: { track?: string }) => step.track ?? 'main',
     )).map((steps) => steps?.length ?? 0)
     expect(Math.max(...trackSizes)).toBeLessThanOrEqual(12)
+    const tauEvaluate = benchmarkChain.steps.find((step: { id: string }) => step.id === 'tau-evaluate')
+    const tauReward = benchmarkChain.steps.find((step: { id: string }) => step.id === 'tau-reward')
+    expect(tauEvaluate.responsibility).toContain('EvaluationType.ALL_WITH_NL_ASSERTIONS')
+    expect(tauReward.responsibility).toContain('task.evaluation_criteria.reward_basis')
     const aiderChain = catalog.chains.find((chain: { id: string }) => chain.id === 'aider-repo-to-verified-edit')
     expect(aiderChain.steps.map((step: { id: string; track?: string; label: string }) =>
       [step.id, step.track, step.label],

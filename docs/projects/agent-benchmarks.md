@@ -35,7 +35,7 @@ SWE-bench 的 v5.0.1 是 tag，不冒充 GitHub Release。页面只拆评测执�
 
 ## 一次请求的数据流
 
-SWE-bench 将实例和预测 patch 放入隔离环境，运行目标测试并由 grading 生成解决状态。τ²-bench 由当前 CLI 调用 batch runner，构建 agent、user、environment 与 orchestrator；simulation 保留 trajectory。只有默认 `EvaluationType.ALL` 按 `task.reward_basis` 选择分量后相乘，ACTION 只有被选中时才是硬门禁；单项类型与 `*_IGNORE_BASIS` 各走自己的分支。early termination 返回 `0.0`，没有 criteria 时返回 `1.0`，这些短路结果不能冒充默认 ALL 分支的乘积。
+SWE-bench 将实例和预测 patch 放入隔离环境，运行目标测试并由 grading 生成解决状态。τ²-bench 由当前 CLI 调用 batch runner，构建 agent、user、environment 与 orchestrator；simulation 保留 trajectory。默认 `EvaluationType.ALL` 与 `EvaluationType.ALL_WITH_NL_ASSERTIONS` 都按 `task.evaluation_criteria.reward_basis` 选择分量后相乘，后者只强制 NL assertions；ACTION 只有被选中时才是硬门禁。单项类型与 `*_IGNORE_BASIS` 各走自己的分支。early termination 返回 `0.0`，没有 criteria 时返回 `1.0`，这些短路结果不能冒充 basis-aware 分支的乘积。
 
 ## 阅读练习
 

@@ -27,7 +27,7 @@ Canvas v1.24.0 依赖 `@openhands/typescript-client@1.49.6`，与本页固定的
 
 ## 唯一纵向调用链
 
-从 `handleSendMessage` 与 `useSendMessage().send` 进入 WebSocket 后，`events_socket` 通过 `EventService.subscribe_to_events` 注册订阅，并把消息交给 `EventService.send_message`，后者直接调用 `LocalConversation.send_message` 写入用户 `MessageEvent`。`EventService.run` 只启动已有 conversation 的执行，不拥有订阅；执行侧再由 `LocalConversation.arun` 和 `Agent.astep` 推进，tool call 被转成 `ActionEvent`，工具结果形成 `Observation`。事件回流由 `LocalConversation.__init__` 组装的 callback 保证持久化 append 先发生，再依次经过 `AsyncCallbackWrapper.__call__`、EventService `_pub_sub`/PubSub、`_WebSocketSubscriber.__call__` 与 `_send_event` 回到 Canvas event store。图中的三条 track 不是一条跨异步边界的同步调用栈。
+从 `handleSendMessage` 与 `useSendMessage().send` 进入 WebSocket 后，`events_socket` 通过 `EventService.subscribe_to_events` 注册订阅，并把消息交给 `EventService.send_message`，后者直接调用 `LocalConversation.send_message` 写入用户 `MessageEvent`。`EventService.run` 只启动已有 conversation 的执行，不拥有订阅；执行侧再由 `LocalConversation.arun` 和 `Agent.astep` 推进，tool call 被转成 `ActionEvent`，工具结果形成 `Observation`。装配阶段，`EventService.start` 构造并注册 `AsyncCallbackWrapper(self._pub_sub, ...)`；事件实际回流时，`LocalConversation.__init__` 组装的 callback 保证持久化 append 先发生，随后 `AsyncCallbackWrapper.__call__` 调度 EventService `_pub_sub`/PubSub，`_WebSocketSubscriber.__call__` 作为 subscriber 调用 `_send_event`，最后回到 Canvas event store。图中的三条 track 不是一条跨异步边界的同步调用栈。
 
 ## 关键源码入口
 
