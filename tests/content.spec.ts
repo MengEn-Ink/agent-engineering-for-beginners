@@ -2040,10 +2040,16 @@ describe('release configuration', () => {
     mkdirSync(join(fixtureDir, 'assets'), { recursive: true })
     mkdirSync(join(fixtureDir, 'chapters'), { recursive: true })
     mkdirSync(join(fixtureDir, 'paths'), { recursive: true })
+    mkdirSync(join(fixtureDir, 'projects'), { recursive: true })
     writeFileSync(join(fixtureDir, 'index.html'), '<h1>book</h1>')
     writeFileSync(join(fixtureDir, 'assets/app.js'), 'console.log("book")')
+    writeFileSync(join(fixtureDir, 'health'), 'ok')
     writeFileSync(join(fixtureDir, 'chapters/01.html'), '<h1>chapter</h1>')
     writeFileSync(join(fixtureDir, 'paths/index.html'), '<h1>reading paths</h1>')
+    writeFileSync(join(fixtureDir, 'projects/index.html'), '<h1>projects</h1>')
+    for (const output of expectedProjectOutputs.slice(1)) {
+      writeFileSync(join(fixtureDir, output), '<h1>project leaf</h1>')
+    }
 
     try {
       expect(resolvePreviewPath('/agent-engineering-for-beginners/', fixtureDir)).toBe(
@@ -2051,6 +2057,12 @@ describe('release configuration', () => {
       )
       expect(resolvePreviewPath('/agent-engineering-for-beginners/assets/app.js', fixtureDir)).toBe(
         join(fixtureDir, 'assets/app.js'),
+      )
+      expect(resolvePreviewPath('/agent-engineering-for-beginners/health', fixtureDir)).toBe(
+        join(fixtureDir, 'health'),
+      )
+      expect(resolvePreviewPath('/agent-engineering-for-beginners/health/', fixtureDir)).toBe(
+        join(fixtureDir, 'health/index.html'),
       )
       expect(resolvePreviewPath('/agent-engineering-for-beginners/chapters/01', fixtureDir)).toBe(
         join(fixtureDir, 'chapters/01.html'),
@@ -2062,8 +2074,38 @@ describe('release configuration', () => {
         join(fixtureDir, 'paths/index.html'),
       )
       expect(resolvePreviewPath('/agent-engineering-for-beginners/chapters/01/', fixtureDir)).toBe(
-        join(fixtureDir, 'chapters/01.html'),
+        join(fixtureDir, 'chapters/01/index.html'),
       )
+      for (const route of ['projects', 'projects/', 'projects/index.html']) {
+        expect(resolvePreviewPath(
+          `/agent-engineering-for-beginners/${route}`,
+          fixtureDir,
+        ), route).toBe(join(fixtureDir, 'projects/index.html'))
+      }
+      for (const output of expectedProjectOutputs.slice(1)) {
+        const cleanRoute = output.slice(0, -'.html'.length)
+        const leafFile = join(fixtureDir, output)
+        expect(resolvePreviewPath(
+          `/agent-engineering-for-beginners/${cleanRoute}`,
+          fixtureDir,
+        ), cleanRoute).toBe(leafFile)
+        expect(resolvePreviewPath(
+          `/agent-engineering-for-beginners/${output}`,
+          fixtureDir,
+        ), output).toBe(leafFile)
+        expect(resolvePreviewPath(
+          `/agent-engineering-for-beginners/${cleanRoute}/`,
+          fixtureDir,
+        ), `${cleanRoute}/`).toBe(join(fixtureDir, cleanRoute, 'index.html'))
+      }
+      expect(resolvePreviewPath(
+        '/agent-engineering-for-beginners/projects/aider?source=preview',
+        fixtureDir,
+      )).toBe(join(fixtureDir, 'projects/aider.html'))
+      expect(resolvePreviewPath(
+        '/agent-engineering-for-beginners/projects/%',
+        fixtureDir,
+      )).toBeNull()
       expect(resolvePreviewPath('/agent-engineering-for-beginners/../../LICENSE', fixtureDir)).toBeNull()
     } finally {
       rmSync(fixtureDir, { recursive: true, force: true })
