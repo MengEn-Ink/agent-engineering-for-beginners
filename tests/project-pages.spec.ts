@@ -49,6 +49,13 @@ function expectCoreProjectPage(path: string, projectId: string) {
 }
 
 describe('project routes and catalog overview', () => {
+  it('keeps project pages free of remote images for project asset provenance', () => {
+    for (const path of projectRouteRecords.map(([, route]) =>
+      `docs${route.endsWith('/') ? `${route}index` : route}.md`)) {
+      expect(readFileSync(path, 'utf8'), path).not.toMatch(/!\[[^\]]*\]\(https?:\/\//u)
+    }
+  })
+
   it('adds exactly eight project routes without changing the existing 31', () => {
     const actual = projectRouteRecords.map(([id]) => getContentItem(id))
     expect(actual.map(({ id, route, title, kind }) => [id, route, title, kind])).toEqual(

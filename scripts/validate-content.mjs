@@ -8,6 +8,7 @@ import {
   validateProjectCatalogFile,
   validateProjectCatalogIntegration,
 } from './project-catalog.mjs'
+import { validateProvenanceFile } from './validate-provenance.mjs'
 
 const forbiddenRules = [
   { label: '本机绝对路径', pattern: /\/Users\//g },
@@ -292,6 +293,10 @@ export function validateBook(root = process.cwd(), options = {}) {
     ...projectCatalogErrors,
     ...integrationSourceErrors,
     ...projectIntegrationErrors,
+    ...validateProvenanceFile(
+      resolve(root, options.provenancePath ?? 'assets/provenance.yml'),
+      root,
+    ),
     ...validatePublishedFiles(root),
   ]
 }

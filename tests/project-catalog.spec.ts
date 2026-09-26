@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parse } from 'yaml'
 import {
@@ -8,6 +10,7 @@ import {
   validateProjectCatalogIntegration,
 } from '../scripts/project-catalog.mjs'
 import { validateBook } from '../scripts/validate-content.mjs'
+import { validateProvenanceFile } from '../scripts/validate-provenance.mjs'
 
 const sha = 'a'.repeat(40)
 
@@ -52,6 +55,23 @@ const validCatalog = {
       symbol: 'main', responsibility: 'Validate the repository and arguments.',
     }],
   }],
+}
+
+const provenanceCatalog = {
+  pages: [{ page_item_id: 'project-aider', subjects: ['aider'] }],
+  subjects: [{
+    id: 'aider',
+    canonical_repo: 'Aider-AI/aider',
+    pinned_commit: sha,
+    license_scopes: [{ basis: 'path', expression: 'Apache-2.0', path_or_glob: '**' }],
+  }],
+}
+
+function writeProvenanceFixture(root: string, yaml: string, file = 'copied.svg') {
+  mkdirSync(join(root, 'docs/public/project-assets'), { recursive: true })
+  mkdirSync(join(root, 'assets'), { recursive: true })
+  writeFileSync(join(root, 'docs/public/project-assets', file), '<svg/>')
+  writeFileSync(join(root, 'assets/provenance.yml'), yaml)
 }
 
 describe('project catalog schema', () => {
@@ -238,6 +258,198 @@ describe('project catalog schema', () => {
       'Project catalog integration requires contentItems',
       'Project catalog integration requires interviewQuestions',
     ])
+  })
+})
+
+describe('project asset provenance', () => {
+  it('accepts the intentionally empty phase-two registry', () => {
+    expect(validateProvenanceFile('assets/provenance.yml', process.cwd())).toEqual([])
+  })
+
+  it('rejects missing, object, and string assets instead of normalizing them to empty', () => {
+    const root = mkdtempSync(join(tmpdir(), 'project-assets-schema-'))
+    try {
+      mkdirSync(join(root, 'assets'), { recursive: true })
+      for (const [name, value] of [
+        ['missing.yml', 'schema_version: 1\n'],
+        ['object.yml', 'schema_version: 1\nassets: {}\n'],
+        ['string.yml', 'schema_version: 1\nassets: invalid\n'],
+      ]) {
+        const path = join(root, 'assets', name)
+        writeFileSync(path, value)
+        expect(validateProvenanceFile(path, root, provenanceCatalog))
+          .toContain('Asset provenance assets must be an array')
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects an unregistered project asset', () => {
+    const root = mkdtempSync(join(tmpdir(), 'project-assets-'))
+    try {
+      writeProvenanceFixture(root, 'schema_version: 1\nassets: []\n')
+      expect(validateProvenanceFile(join(root, 'assets/provenance.yml'), root, provenanceCatalog))
+        .toContain('Unregistered project asset: docs/public/project-assets/copied.svg')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects forged host, repository, ref, source path, and license claims', () => {
+    const root = mkdtempSync(join(tmpdir(), 'project-assets-'))
+    try {
+      writeProvenanceFixture(root, `
+schema_version: 1
+assets:
+  - local_file: docs/public/project-assets/copied.svg
+    origin: third-party
+    subject_id: aider
+    source_url: https://evil.example/Aider-AI/other/blob/${'c'.repeat(40)}/other.svg
+    source_repo: Aider-AI/other
+    source_ref: ${'c'.repeat(40)}
+    source_path: image.svg
+    license: GPL-3.0
+    license_basis: path
+    manual_license_review: false
+    manual_reviewed_by: null
+    manual_review_note: null
+    copyright_holder: Example
+    modified: false
+    used_by: [project-aider]
+    alt: Architecture
+    verified_at: '2026-09-26'
+`)
+      expect(validateProvenanceFile(join(root, 'assets/provenance.yml'), root, provenanceCatalog)).toEqual(expect.arrayContaining([
+        'Third-party asset URL must use https://github.com: docs/public/project-assets/copied.svg',
+        'Third-party asset source_repo does not match subject: docs/public/project-assets/copied.svg',
+        'Third-party asset source_ref does not match subject pin: docs/public/project-assets/copied.svg',
+        'Third-party asset URL does not match repo/ref/path: docs/public/project-assets/copied.svg',
+        'Third-party asset license does not match the most specific path scope: docs/public/project-assets/copied.svg',
+      ]))
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('checks page ownership and the most specific matching path license scope', () => {
+    const root = mkdtempSync(join(tmpdir(), 'project-assets-'))
+    const catalogWithNestedLicense = structuredClone(provenanceCatalog)
+    catalogWithNestedLicense.subjects[0].license_scopes.push({
+      basis: 'path', expression: 'MIT', path_or_glob: 'docs/**',
+    })
+    try {
+      writeProvenanceFixture(root, `
+schema_version: 1
+assets:
+  - local_file: docs/public/project-assets/copied.svg
+    origin: third-party
+    subject_id: aider
+    source_url: https://github.com/Aider-AI/aider/blob/${sha}/docs/copied.svg
+    source_repo: Aider-AI/aider
+    source_ref: ${sha}
+    source_path: docs/copied.svg
+    license: Apache-2.0
+    license_basis: path
+    manual_license_review: false
+    manual_reviewed_by: null
+    manual_review_note: null
+    copyright_holder: Aider contributors
+    modified: false
+    used_by: [project-other]
+    alt: Architecture
+    verified_at: '2026-09-26'
+`)
+      expect(validateProvenanceFile(
+        join(root, 'assets/provenance.yml'),
+        root,
+        catalogWithNestedLicense,
+      )).toEqual(expect.arrayContaining([
+        'Third-party asset subject is not owned by page project-other: docs/public/project-assets/copied.svg',
+        'Third-party asset license does not match the most specific path scope: docs/public/project-assets/copied.svg',
+      ]))
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('requires explicit human evidence for contribution-based licenses', () => {
+    const contributionCatalog = {
+      pages: [{ page_item_id: 'project-mcp-python-sdk', subjects: ['mcp-spec'] }],
+      subjects: [{
+        id: 'mcp-spec',
+        canonical_repo: 'modelcontextprotocol/modelcontextprotocol',
+        pinned_commit: 'b'.repeat(40),
+        license_scopes: [{
+          basis: 'contribution', expression: 'Apache-2.0', selector: 'new-code',
+          scope: 'new', note: 'history required',
+        }],
+      }],
+    }
+    const root = mkdtempSync(join(tmpdir(), 'project-assets-'))
+    try {
+      writeProvenanceFixture(root, `
+schema_version: 1
+assets:
+  - local_file: docs/public/project-assets/copied.svg
+    origin: third-party
+    subject_id: mcp-spec
+    source_url: https://github.com/modelcontextprotocol/modelcontextprotocol/blob/${'b'.repeat(40)}/schema.svg
+    source_repo: modelcontextprotocol/modelcontextprotocol
+    source_ref: ${'b'.repeat(40)}
+    source_path: schema.svg
+    license: Apache-2.0
+    license_basis: contribution
+    license_selector: new-code
+    manual_license_review: false
+    manual_reviewed_by: null
+    manual_review_note: null
+    copyright_holder: MCP contributors
+    modified: true
+    used_by: [project-mcp-python-sdk]
+    alt: Schema relationship
+    verified_at: '2026-09-26'
+`)
+      expect(validateProvenanceFile(join(root, 'assets/provenance.yml'), root, contributionCatalog))
+        .toContain('Contribution-based asset requires recorded human review: docs/public/project-assets/copied.svg')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('keeps original assets outside third-party source checks and rejects unknown origins', () => {
+    const root = mkdtempSync(join(tmpdir(), 'project-assets-'))
+    const original = `
+schema_version: 1
+assets:
+  - local_file: docs/public/project-assets/original.svg
+    origin: original
+    subject_id: null
+    source_url: null
+    source_repo: null
+    source_ref: null
+    source_path: null
+    license: null
+    license_basis: null
+    manual_license_review: false
+    manual_reviewed_by: null
+    manual_review_note: null
+    copyright_holder: Agent Engineering for Beginners contributors
+    modified: false
+    used_by: [project-aider]
+    alt: Original architecture diagram
+    verified_at: '2026-09-26'
+`
+    try {
+      writeProvenanceFixture(root, original, 'original.svg')
+      expect(validateProvenanceFile(join(root, 'assets/provenance.yml'), root, provenanceCatalog)).toEqual([])
+
+      writeFileSync(join(root, 'assets/provenance.yml'), original.replace('origin: original', 'origin: copied'))
+      expect(validateProvenanceFile(join(root, 'assets/provenance.yml'), root, provenanceCatalog))
+        .toContain('Asset docs/public/project-assets/original.svg has invalid origin')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })
 
@@ -624,9 +836,11 @@ describe('real project catalog', () => {
     expect(validateProjectCatalog(catalog)).toEqual([])
   })
 
-  it('makes the book validator fail closed on a missing project catalog', () => {
+  it('makes the book validator fail closed on missing project metadata', () => {
     expect(validateBook(process.cwd())).toEqual([])
     expect(validateBook(process.cwd(), { projectCatalogPath: 'sources/missing-project-index.yml' }))
       .toContain('Missing sources/project-index.yml')
+    expect(validateBook(process.cwd(), { provenancePath: 'assets/missing-provenance.yml' }))
+      .toContain('Missing assets/provenance.yml')
   })
 })
