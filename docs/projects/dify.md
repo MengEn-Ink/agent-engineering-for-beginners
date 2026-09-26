@@ -1,33 +1,35 @@
 ---
-title: Dify：一次请求怎样进入工作流图
-description: 只追踪 service API、AppRunner、WorkflowEntry、Graphon、节点和响应事件这一条链。
+title: Dify：blocking 请求怎样穿过工作流图
+description: 固定 service API 的 blocking 主链，并把 streaming 作为独立交付旁路。
 ---
 
-# Dify：一次请求怎样进入工作流图
+# Dify：blocking 请求怎样穿过工作流图
 
 ## 30 秒结论
 
-Dify 把应用配置、模型、工具、知识与工作流组织成平台。真正执行不是“画布自己跑起来”，而是请求进入 AppRunner，由 WorkflowEntry 配置 Graphon，引擎调度节点并把事件转换成响应。
+Dify 的画布不是执行者。编号主链只选择 blocking：Service API 经过生成服务与 workflow generator/runner，先由 `Graph.init` 和 `DifyNodeFactory.create_node` 得到图及节点，再把已经创建的 Graph 交给 WorkflowEntry；Graphon 推进节点后，事件依次经过 queue、pipeline、内部 typed response 和最终 public payload。streaming 是独立旁路，不能混进这条同步返回链。
 
 ## 为什么选
 
-它适合观察低代码平台如何把编辑态配置变成运行态控制流，以及多租户、插件、持久化和可观测层为什么不能被一张画布替代。
+它适合观察低代码平台怎样把编辑态配置变成运行态控制流，也能暴露平台边界：多租户、权限、插件、队列、交付方式与许可证限制都不会被一张画布消除。
 
 ## 版本与边界
 
 <ProjectMeta project-id="project-dify" />
 
-本页固定在 1.17.1，只追踪 service API 的 workflow 执行。数据集、插件市场、计费、前端编辑器和云服务不展开。
+本页固定在 1.17.1（commit `8387590ace4a094de812b7847fc6a4c3a27cd52b`），只解释 `WorkflowRunApi.post` 接收的 service API workflow 请求。数据集、插件市场、计费、前端编辑器和云服务不展开；主链固定 `response_mode=blocking`。
 
 ## 原创建筑图
 
 <ProjectCallChain project-id="project-dify" />
 
-Graphon 是固定版本中实际的图执行依赖；页面必须把 Dify 的适配层与 Graphon 引擎分开标注。
+图中两个 blocking track 是同一条编号链为控制复杂度而分段，第三个 track 才是 streaming side path。Graphon 是固定版本中的图执行依赖；Dify 的装配、事件与响应适配层必须和 Graphon 引擎分开读。
 
 ## 唯一纵向调用链
 
-从 workflow controller 进入 AppGenerator/AppRunner，再到 WorkflowEntry、GraphEngine、NodeFactory、AgentNode 和 response converter。只追这一条链，不从头解释整个仓库。
+blocking 主链按源码顺序为：`WorkflowRunApi.post → AppGenerateService.generate → AppGenerateService._run_with_guardrails → AppGenerateService._dispatch_generate(AppMode.WORKFLOW, streaming=false) → WorkflowAppGenerator.generate → WorkflowAppGenerator._generate → WorkflowAppGenerator._generate_worker → WorkflowAppRunner.run → WorkflowBasedAppRunner._init_graph → Graph.init + DifyNodeFactory.create_node → DifyAgentNode.__init__（仅 agent_node_kind == dify_agent）→ WorkflowEntry(existing Graph) → GraphEngine.run → worker → Node.run → DifyAgentNode._run/_run_inner → create_run → stream_events → WorkflowAppRunner._handle_event → WorkflowAppQueueManager → WorkflowAppGenerateTaskPipeline → WorkflowResponseConverter 内部 typed response → WorkflowAppGenerateResponseConverter 最终 public payload`。
+
+WorkflowEntry 接收已经创建的 Graph，再配置并运行 GraphEngine；GraphEngine 并不负责创建节点。DifyAgentNode 也不直接输出 SSE，它把 agent backend 事件适配为图节点事件。
 
 ## 关键源码入口
 
@@ -35,21 +37,23 @@ Graphon 是固定版本中实际的图执行依赖；页面必须把 Dify 的适
 
 ## 一次请求的数据流
 
-请求先经过应用与访问校验，生成运行配置和变量池。WorkflowEntry 创建 GraphEngine 并叠加执行限制、可观测与持久化层；NodeFactory 按版本解析节点，节点产生事件，响应转换器再把内部事件变成调用方可消费的输出。
+blocking 请求先完成应用校验、配额与并发 guardrail，再选择 `AppMode.WORKFLOW`。generator 创建 queue manager 和工作线程；runner 建变量池并初始化 Graph，`DifyNodeFactory.create_node` 依据节点类型与版本构造节点。只有配置为 agent v2 且 `agent_node_kind == dify_agent` 时才进入 DifyAgentNode，它通过 backend `create_run → stream_events` 产生节点事件。`WorkflowAppRunner._handle_event` 把 Graphon 事件转换成 app queue event，`WorkflowAppGenerateTaskPipeline` 消费并聚合；通用 `WorkflowResponseConverter` 只生成内部 typed response，最后由 `WorkflowAppGenerateResponseConverter` 映射 public payload。
+
+streaming 旁路先订阅 topic，再投递 Celery `_AppRunner`；worker 进入同一套 WorkflowAppGenerator/WorkflowAppRunner 执行，完成 public mapping 后写入 topic，请求进程再 `retrieve_events` 并转成 SSE。这里的 Celery `_AppRunner` 与执行工作流的 `WorkflowAppRunner` 是两类 Runner 不是同一个对象。
 
 ## 阅读练习
 
-1. 从 controller 找到 AppRunner 的创建位置。
-2. 在 WorkflowEntry 中列出 GraphEngine 之外叠加的三个工程层。
-3. 找出节点类型和版本如何进入 NodeFactory。
+1. 从 `WorkflowRunApi.post` 追到 `_dispatch_generate`，说明 blocking 分支在哪里确定。
+2. 从 `_init_graph` 追踪 `Graph.init` 与 `DifyNodeFactory.create_node`，解释为什么 WorkflowEntry 拿到的是 existing Graph。
+3. 对照 blocking 与 streaming track，标出 public mapping、topic 写入、retrieve 和 SSE 的先后关系。
 
 ## 失败边界
 
-节点执行失败、人工输入暂停、执行上限和响应流中断是不同状态。不能把“前端仍显示流程图”当作运行继续，也不能在恢复时忽略已经发生的外部副作用。
+请求被 guardrail 拒绝、节点失败、agent backend 流中断、人工输入暂停、Graphon 执行上限和响应交付中断是不同状态。恢复前必须区分图执行是否已产生外部副作用；页面仍显示流程图或 SSE 连接仍存在，都不能证明节点成功。
 
 ## 生产边界
 
-平台封装不自动保证工作流适合 Agent、工具最小权限、数据隔离或结果正确。Dify 使用修改版 Apache-2.0，多租户服务与前端标识复用必须先读根许可证。
+执行限制、可观测与部分状态层会装配到 GraphEngine，但持久化也不归 WorkflowEntry 单独负责；队列、task pipeline、数据库仓储与 streaming topic 各有职责。平台封装也不自动保证工具最小权限、租户数据隔离或输出正确。Dify 使用修改版 Apache-2.0，根许可证对多租户服务、前端标识及外观专利另有附加条件，商业或平台复用必须逐条核对。
 
 ## 高频面试点
 
@@ -59,8 +63,8 @@ Graphon 是固定版本中实际的图执行依赖；页面必须把 Dify 的适
 
 ## 升级复核
 
-比较 controller、AppRunner、WorkflowEntry、Graphon 版本、NodeFactory、AgentNode 和事件转换。许可证文本或 Graphon 主版本变化必须触发人工复核。
+逐项复核 controller、AppGenerateService、WorkflowAppGenerator、两类 Runner、Graphon 版本、NodeFactory、agent node、WorkflowEntry、queue、task pipeline 与两级 response converter。Graphon 主版本、streaming transport 或根许可证变化都必须触发人工复核。
 
 ## 来源与归因
 
-执行图为本书原创重绘，依据固定 commit 的 Dify 源码。页面不复用 Dify Logo、产品截图或受外观专利保护的视觉表达。
+调用链图为本书原创重绘，依据固定 commit 的 12 个 Dify 源文件。页面不复用 Dify Logo、产品截图或受外观专利保护的视觉表达。

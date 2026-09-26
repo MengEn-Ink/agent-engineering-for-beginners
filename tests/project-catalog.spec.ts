@@ -269,8 +269,8 @@ const expectedEntrypoints = {
   'openhands-sdk': ['openhands-agent-server/openhands/agent_server/sockets.py', 'openhands-agent-server/openhands/agent_server/event_service.py', 'openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py', 'openhands-sdk/openhands/sdk/agent/agent.py', 'openhands-sdk/openhands/sdk/agent/response_dispatch.py', 'openhands-sdk/openhands/sdk/tool/tool.py'],
   'swe-bench': ['swebench/harness/run_evaluation.py', 'swebench/harness/docker_utils.py', 'swebench/harness/grading.py', 'swebench/harness/reporting.py'],
   'tau2-bench': ['src/tau2/cli.py', 'src/tau2/runner/batch.py', 'src/tau2/runner/helpers.py', 'src/tau2/runner/build.py', 'src/tau2/runner/simulation.py', 'src/tau2/orchestrator/orchestrator.py', 'src/tau2/environment/environment.py', 'src/tau2/evaluator/evaluator.py'],
-  dify: ['api/controllers/service_api/app/workflow.py', 'api/core/app/apps/workflow/app_generator.py', 'api/core/app/apps/workflow/app_runner.py', 'api/core/workflow/workflow_entry.py', 'api/core/workflow/node_factory.py', 'api/core/workflow/nodes/agent_v2/agent_node.py', 'api/core/app/apps/common/workflow_response_converter.py'],
-  crewai: ['lib/crewai/src/crewai/crew.py', 'lib/crewai/src/crewai/process.py', 'lib/crewai/src/crewai/execution.py', 'lib/crewai/src/crewai/task.py', 'lib/crewai/src/crewai/agent/core.py', 'lib/crewai/src/crewai/agents/crew_agent_executor.py', 'lib/crewai/src/crewai/agents/step_executor.py', 'lib/crewai/src/crewai/tools/tool_usage.py'],
+  dify: ['api/controllers/service_api/app/workflow.py', 'api/services/app_generate_service.py', 'api/core/app/apps/workflow/app_generator.py', 'api/core/app/apps/workflow/app_runner.py', 'api/core/app/apps/workflow_app_runner.py', 'api/core/workflow/node_factory.py', 'api/core/workflow/nodes/agent_v2/agent_node.py', 'api/core/workflow/workflow_entry.py', 'api/core/app/apps/workflow/app_queue_manager.py', 'api/core/app/apps/workflow/generate_task_pipeline.py', 'api/core/app/apps/common/workflow_response_converter.py', 'api/core/app/apps/workflow/generate_response_converter.py'],
+  crewai: ['lib/crewai/src/crewai/crew.py', 'lib/crewai/src/crewai/crews/utils.py', 'lib/crewai/src/crewai/process.py', 'lib/crewai/src/crewai/task.py', 'lib/crewai/src/crewai/agent/core.py', 'lib/crewai/src/crewai/experimental/agent_executor.py', 'lib/crewai/src/crewai/utilities/agent_utils.py', 'lib/crewai/src/crewai/tools/tool_usage.py', 'lib/crewai/src/crewai/tools/structured_tool.py', 'lib/crewai/src/crewai/agents/step_executor.py'],
   autogpt: ['classic/original_autogpt/autogpt/app/main.py', 'classic/original_autogpt/autogpt/agents/agent.py'],
   flowise: ['packages/server/src/controllers/predictions/index.ts', 'packages/server/src/services/predictions/index.ts'],
   'hermes-agent': [],
@@ -323,14 +323,40 @@ const expectedCoreEntrypointSymbols = {
     'src/tau2/environment/environment.py': ['Environment.get_response', 'Environment.make_tool_call'],
     'src/tau2/evaluator/evaluator.py': ['evaluate_simulation'],
   },
+  dify: {
+    'api/controllers/service_api/app/workflow.py': ['WorkflowRunApi.post'],
+    'api/services/app_generate_service.py': ['AppGenerateService.generate', 'AppGenerateService._run_with_guardrails', 'AppGenerateService._dispatch_generate', 'AppGenerateService._build_streaming_task_on_subscribe'],
+    'api/core/app/apps/workflow/app_generator.py': ['WorkflowAppGenerator.generate', 'WorkflowAppGenerator._generate', 'WorkflowAppGenerator._generate_worker'],
+    'api/core/app/apps/workflow/app_runner.py': ['WorkflowAppRunner.run'],
+    'api/core/app/apps/workflow_app_runner.py': ['WorkflowBasedAppRunner._init_graph', 'WorkflowBasedAppRunner._handle_event'],
+    'api/core/workflow/node_factory.py': ['DifyNodeFactory.create_node'],
+    'api/core/workflow/nodes/agent_v2/agent_node.py': ['DifyAgentNode.__init__', 'DifyAgentNode._run', 'DifyAgentNode._run_inner'],
+    'api/core/workflow/workflow_entry.py': ['WorkflowEntry.__init__', 'WorkflowEntry.run'],
+    'api/core/app/apps/workflow/app_queue_manager.py': ['WorkflowAppQueueManager._publish'],
+    'api/core/app/apps/workflow/generate_task_pipeline.py': ['WorkflowAppGenerateTaskPipeline.process', 'WorkflowAppGenerateTaskPipeline._to_blocking_response', 'WorkflowAppGenerateTaskPipeline._to_stream_response'],
+    'api/core/app/apps/common/workflow_response_converter.py': ['WorkflowResponseConverter.workflow_start_to_stream_response', 'WorkflowResponseConverter.workflow_finish_to_stream_response', 'WorkflowResponseConverter.handle_agent_log'],
+    'api/core/app/apps/workflow/generate_response_converter.py': ['WorkflowAppGenerateResponseConverter.convert_blocking_full_response', 'WorkflowAppGenerateResponseConverter.convert_stream_full_response'],
+  },
+  crewai: {
+    'lib/crewai/src/crewai/crew.py': ['Crew.kickoff', 'Crew._run_sequential_process', 'Crew._execute_tasks', 'Crew._create_crew_output'],
+    'lib/crewai/src/crewai/crews/utils.py': ['prepare_kickoff', 'setup_agents', 'prepare_task_execution'],
+    'lib/crewai/src/crewai/process.py': ['Process.sequential'],
+    'lib/crewai/src/crewai/task.py': ['Task.execute_sync', 'Task._execute_core', 'Task._export_output'],
+    'lib/crewai/src/crewai/agent/core.py': ['Agent.execute_task', 'Agent.create_agent_executor', 'Agent._finalize_task_execution'],
+    'lib/crewai/src/crewai/experimental/agent_executor.py': ['AgentExecutor.invoke', 'AgentExecutor.generate_plan', 'AgentExecutor._ensure_step_executor', 'AgentExecutor.call_llm_and_parse', 'AgentExecutor.execute_tool_action', 'AgentExecutor.call_llm_native_tools', 'AgentExecutor.execute_native_tool', 'AgentExecutor._execute_single_native_tool_call'],
+    'lib/crewai/src/crewai/utilities/agent_utils.py': ['process_llm_response'],
+    'lib/crewai/src/crewai/tools/tool_usage.py': ['ToolUsage.use', 'ToolUsage._use'],
+    'lib/crewai/src/crewai/tools/structured_tool.py': ['CrewStructuredTool.invoke'],
+    'lib/crewai/src/crewai/agents/step_executor.py': ['StepExecutor.execute'],
+  },
 }
 const expectedChains = {
   'mcp-tool-call': ['schema:mcp-spec:schema/2026-07-28/schema.json:CallToolRequest', 'host-run:mcp-python-sdk:src/mcp/server/mcpserver/server.py:MCPServer.run', 'transport:mcp-python-sdk:src/mcp/server/stdio.py:stdio_server', 'server-run:mcp-python-sdk:src/mcp/server/lowlevel/server.py:Server.run', 'runner-loop:mcp-python-sdk:src/mcp/server/runner.py:serve_dual_era_loop', 'dispatcher-loop:mcp-python-sdk:src/mcp/shared/jsonrpc_dispatcher.py:JSONRPCDispatcher.run', 'dispatcher-request:mcp-python-sdk:src/mcp/shared/jsonrpc_dispatcher.py:JSONRPCDispatcher._dispatch_request', 'request:mcp-python-sdk:src/mcp/server/runner.py:ServerRunner._on_request', 'dispatch:mcp-python-sdk:src/mcp/server/lowlevel/server.py:get_request_handler', 'mcp-handler:mcp-python-sdk:src/mcp/server/mcpserver/server.py:MCPServer._handle_call_tool', 'mcp-call:mcp-python-sdk:src/mcp/server/mcpserver/server.py:MCPServer.call_tool', 'tool-lookup:mcp-python-sdk:src/mcp/server/mcpserver/tools/tool_manager.py:ToolManager.call_tool', 'tool-run:mcp-python-sdk:src/mcp/server/mcpserver/tools/base.py:Tool.run', 'tool-function:mcp-python-sdk:examples/snippets/servers/basic_tool.py:sum', 'serialize:mcp-python-sdk:src/mcp/server/runner.py:ServerRunner._serialize', 'dispatcher-response:mcp-python-sdk:src/mcp/shared/jsonrpc_dispatcher.py:JSONRPCDispatcher._write_result', 'stdout:mcp-python-sdk:src/mcp/server/stdio.py:stdio_server'],
   'aider-repo-to-verified-edit': ['cli:aider:aider/main.py:main', 'run:aider:aider/coders/base_coder.py:Coder.run', 'turn:aider:aider/coders/base_coder.py:Coder.run_one', 'context:aider:aider/coders/base_coder.py:Coder.send_message', 'repo-map:aider:aider/repomap.py:RepoMap.get_repo_map', 'send:aider:aider/coders/base_coder.py:Coder.send', 'completion:aider:aider/models.py:Model.send_completion', 'parse:aider:aider/coders/editblock_coder.py:EditBlockCoder.get_edits', 'apply-updates:aider:aider/coders/base_coder.py:Coder.apply_updates', 'dry-run:aider:aider/coders/editblock_coder.py:EditBlockCoder.apply_edits_dry_run', 'prepare:aider:aider/coders/base_coder.py:Coder.prepare_to_edit', 'apply:aider:aider/coders/editblock_coder.py:EditBlockCoder.apply_edits', 'write:aider:aider/io.py:InputOutput.write_text', 'auto-commit:aider:aider/coders/base_coder.py:Coder.auto_commit', 'commit:aider:aider/repo.py:GitRepo.commit', 'auto-lint:aider:aider/coders/base_coder.py:Coder.lint_edited', 'lint-commit:aider:aider/coders/base_coder.py:Coder.auto_commit', 'shell-confirm:aider:aider/io.py:InputOutput.confirm_ask', 'shell-run:aider:aider/coders/base_coder.py:Coder.handle_shell_commands', 'auto-test:aider:aider/commands.py:Commands.cmd_test', 'reflection:aider:aider/coders/base_coder.py:Coder.run_one'],
   'openhands-canvas-to-workspace-event': ['chat-submit:openhands-canvas:src/components/features/chat/chat-interface.tsx:handleSendMessage', 'hook-send:openhands-canvas:src/hooks/use-send-message.ts:useSendMessage().send', 'canvas-send:openhands-canvas:src/contexts/conversation-websocket-context.tsx:ConversationWebSocketProvider.sendMessage', 'socket-receive:openhands-sdk:openhands-agent-server/openhands/agent_server/sockets.py:events_socket', 'service-message:openhands-sdk:openhands-agent-server/openhands/agent_server/event_service.py:EventService.send_message', 'conversation-message:openhands-sdk:openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py:LocalConversation.send_message', 'service-run:openhands-sdk:openhands-agent-server/openhands/agent_server/event_service.py:EventService.run', 'conversation-run:openhands-sdk:openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py:LocalConversation.arun', 'agent-step:openhands-sdk:openhands-sdk/openhands/sdk/agent/agent.py:Agent.astep', 'dispatch-tool-calls:openhands-sdk:openhands-sdk/openhands/sdk/agent/response_dispatch.py:_ahandle_tool_calls', 'execute-actions:openhands-sdk:openhands-sdk/openhands/sdk/agent/agent.py:Agent._aexecute_actions', 'tool-call:openhands-sdk:openhands-sdk/openhands/sdk/tool/tool.py:ToolDefinition.__call__', 'persist-event:openhands-sdk:openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py:LocalConversation.__init__', 'publish-event:openhands-sdk:openhands-agent-server/openhands/agent_server/event_service.py:EventService.start', 'socket-send:openhands-sdk:openhands-agent-server/openhands/agent_server/sockets.py:_WebSocketSubscriber.__call__', 'canvas-receive:openhands-canvas:src/contexts/conversation-websocket-context.tsx:ConversationWebSocketProvider.handleMainMessage'],
   'benchmark-task-to-score': ['swe-input:swe-bench:swebench/harness/run_evaluation.py:main', 'swe-env:swe-bench:swebench/harness/docker_utils.py:exec_run_with_timeout', 'swe-grade:swe-bench:swebench/harness/grading.py:get_eval_report', 'swe-report:swe-bench:swebench/harness/reporting.py:make_run_report', 'tau-cli:tau2-bench:src/tau2/cli.py:main', 'tau-domain:tau2-bench:src/tau2/runner/batch.py:run_domain', 'tau-load:tau2-bench:src/tau2/runner/helpers.py:get_tasks', 'tau-batch:tau2-bench:src/tau2/runner/batch.py:run_tasks', 'tau-task:tau2-bench:src/tau2/runner/batch.py:run_single_task', 'tau-build:tau2-bench:src/tau2/runner/build.py:build_orchestrator', 'tau-sim:tau2-bench:src/tau2/runner/simulation.py:run_simulation', 'tau-orchestrator:tau2-bench:src/tau2/orchestrator/orchestrator.py:BaseOrchestrator.run', 'tau-environment:tau2-bench:src/tau2/environment/environment.py:Environment.make_tool_call', 'tau-trajectory:tau2-bench:src/tau2/runner/simulation.py:run_simulation', 'tau-evaluate:tau2-bench:src/tau2/evaluator/evaluator.py:evaluate_simulation', 'tau-reward:tau2-bench:src/tau2/evaluator/evaluator.py:evaluate_simulation'],
-  'dify-request-to-graph-events': ['controller:dify:api/controllers/service_api/app/workflow.py:WorkflowRunApi.post', 'generator:dify:api/core/app/apps/workflow/app_generator.py:WorkflowAppGenerator', 'runner:dify:api/core/app/apps/workflow/app_runner.py:WorkflowAppRunner', 'entry:dify:api/core/workflow/workflow_entry.py:WorkflowEntry', 'factory:dify:api/core/workflow/node_factory.py:DifyNodeFactory', 'agent-node:dify:api/core/workflow/nodes/agent_v2/agent_node.py:DifyAgentNode', 'response:dify:api/core/app/apps/common/workflow_response_converter.py:WorkflowResponseConverter'],
-  'crewai-kickoff-to-task-output': ['kickoff:crewai:lib/crewai/src/crewai/crew.py:Crew.kickoff', 'process:crewai:lib/crewai/src/crewai/process.py:Process', 'execution:crewai:lib/crewai/src/crewai/execution.py:begin_execution', 'task:crewai:lib/crewai/src/crewai/task.py:Task.execute_sync', 'agent:crewai:lib/crewai/src/crewai/agent/core.py:Agent.execute_task', 'executor:crewai:lib/crewai/src/crewai/agents/crew_agent_executor.py:CrewAgentExecutor.invoke', 'step:crewai:lib/crewai/src/crewai/agents/step_executor.py:StepExecutor.execute', 'tool:crewai:lib/crewai/src/crewai/tools/tool_usage.py:ToolUsage.use', 'output:crewai:lib/crewai/src/crewai/task.py:Task._export_output'],
+  'dify-request-to-graph-events': ['dify-01-controller:dify:api/controllers/service_api/app/workflow.py:WorkflowRunApi.post', 'dify-02-service:dify:api/services/app_generate_service.py:AppGenerateService.generate', 'dify-03-guardrails:dify:api/services/app_generate_service.py:AppGenerateService._run_with_guardrails', 'dify-04-workflow-mode:dify:api/services/app_generate_service.py:AppGenerateService._dispatch_generate', 'dify-05-generate:dify:api/core/app/apps/workflow/app_generator.py:WorkflowAppGenerator.generate', 'dify-06-generate-core:dify:api/core/app/apps/workflow/app_generator.py:WorkflowAppGenerator._generate', 'dify-07-worker:dify:api/core/app/apps/workflow/app_generator.py:WorkflowAppGenerator._generate_worker', 'dify-08-runner:dify:api/core/app/apps/workflow/app_runner.py:WorkflowAppRunner.run', 'dify-09-graph-init:dify:api/core/app/apps/workflow_app_runner.py:WorkflowBasedAppRunner._init_graph', 'dify-10-node-factory:dify:api/core/workflow/node_factory.py:DifyNodeFactory.create_node', 'dify-11-agent-node:dify:api/core/workflow/nodes/agent_v2/agent_node.py:DifyAgentNode.__init__', 'dify-12-entry:dify:api/core/workflow/workflow_entry.py:WorkflowEntry.__init__', 'dify-13-engine:dify:api/core/workflow/workflow_entry.py:WorkflowEntry.run', 'dify-14-agent-run:dify:api/core/workflow/nodes/agent_v2/agent_node.py:DifyAgentNode._run', 'dify-15-agent-backend:dify:api/core/workflow/nodes/agent_v2/agent_node.py:DifyAgentNode._run_inner', 'dify-16-event-handler:dify:api/core/app/apps/workflow_app_runner.py:WorkflowBasedAppRunner._handle_event', 'dify-17-queue:dify:api/core/app/apps/workflow/app_queue_manager.py:WorkflowAppQueueManager._publish', 'dify-18-pipeline:dify:api/core/app/apps/workflow/generate_task_pipeline.py:WorkflowAppGenerateTaskPipeline.process', 'dify-19-typed:dify:api/core/app/apps/common/workflow_response_converter.py:WorkflowResponseConverter.workflow_finish_to_stream_response', 'dify-20-aggregate:dify:api/core/app/apps/workflow/generate_task_pipeline.py:WorkflowAppGenerateTaskPipeline._to_blocking_response', 'dify-21-public:dify:api/core/app/apps/workflow/generate_response_converter.py:WorkflowAppGenerateResponseConverter.convert_blocking_full_response', 'dify-stream-01-subscribe:dify:api/services/app_generate_service.py:AppGenerateService._build_streaming_task_on_subscribe', 'dify-stream-02-dispatch:dify:api/services/app_generate_service.py:AppGenerateService._dispatch_generate', 'dify-stream-03-worker:dify:api/core/app/apps/workflow/app_generator.py:WorkflowAppGenerator._generate_worker', 'dify-stream-04-typed:dify:api/core/app/apps/workflow/generate_task_pipeline.py:WorkflowAppGenerateTaskPipeline._to_stream_response', 'dify-stream-05-public:dify:api/core/app/apps/workflow/generate_response_converter.py:WorkflowAppGenerateResponseConverter.convert_stream_full_response', 'dify-stream-06-topic-sse:dify:api/services/app_generate_service.py:AppGenerateService._dispatch_generate'],
+  'crewai-kickoff-to-task-output': ['crew-01-kickoff:crewai:lib/crewai/src/crewai/crew.py:Crew.kickoff', 'crew-02-prepare:crewai:lib/crewai/src/crewai/crews/utils.py:prepare_kickoff', 'crew-03-setup-agents:crewai:lib/crewai/src/crewai/crews/utils.py:setup_agents', 'crew-04-create-executor:crewai:lib/crewai/src/crewai/agent/core.py:Agent.create_agent_executor', 'crew-05-process:crewai:lib/crewai/src/crewai/process.py:Process.sequential', 'crew-06-sequential:crewai:lib/crewai/src/crewai/crew.py:Crew._run_sequential_process', 'crew-07-execute-tasks:crewai:lib/crewai/src/crewai/crew.py:Crew._execute_tasks', 'crew-08-prepare-task:crewai:lib/crewai/src/crewai/crews/utils.py:prepare_task_execution', 'crew-09-task-sync:crewai:lib/crewai/src/crewai/task.py:Task.execute_sync', 'crew-10-task-core:crewai:lib/crewai/src/crewai/task.py:Task._execute_core', 'crew-11-agent:crewai:lib/crewai/src/crewai/agent/core.py:Agent.execute_task', 'crew-12-invoke:crewai:lib/crewai/src/crewai/experimental/agent_executor.py:AgentExecutor.invoke', 'crew-13-finish:crewai:lib/crewai/src/crewai/experimental/agent_executor.py:AgentExecutor.invoke', 'crew-14-finalize:crewai:lib/crewai/src/crewai/agent/core.py:Agent._finalize_task_execution', 'crew-15-task-output:crewai:lib/crewai/src/crewai/task.py:Task._execute_core', 'crew-16-crew-output:crewai:lib/crewai/src/crewai/crew.py:Crew._create_crew_output', 'crew-text-01-llm:crewai:lib/crewai/src/crewai/experimental/agent_executor.py:AgentExecutor.call_llm_and_parse', 'crew-text-02-action:crewai:lib/crewai/src/crewai/experimental/agent_executor.py:AgentExecutor.execute_tool_action', 'crew-text-03-use:crewai:lib/crewai/src/crewai/tools/tool_usage.py:ToolUsage.use', 'crew-text-04-use-inner:crewai:lib/crewai/src/crewai/tools/tool_usage.py:ToolUsage._use', 'crew-text-05-invoke:crewai:lib/crewai/src/crewai/tools/structured_tool.py:CrewStructuredTool.invoke', 'crew-native-01-llm:crewai:lib/crewai/src/crewai/experimental/agent_executor.py:AgentExecutor.call_llm_native_tools', 'crew-native-02-action:crewai:lib/crewai/src/crewai/experimental/agent_executor.py:AgentExecutor.execute_native_tool', 'crew-native-03-single:crewai:lib/crewai/src/crewai/experimental/agent_executor.py:AgentExecutor._execute_single_native_tool_call', 'crew-plan-01-plan:crewai:lib/crewai/src/crewai/experimental/agent_executor.py:AgentExecutor.generate_plan', 'crew-plan-02-lazy:crewai:lib/crewai/src/crewai/experimental/agent_executor.py:AgentExecutor._ensure_step_executor', 'crew-plan-03-execute:crewai:lib/crewai/src/crewai/agents/step_executor.py:StepExecutor.execute'],
   'autogpt-flowise-evolution': ['autogpt-entry:autogpt:classic/original_autogpt/autogpt/app/main.py:run_auto_gpt', 'autogpt-agent:autogpt:classic/original_autogpt/autogpt/agents/agent.py:Agent.execute', 'flowise-entry:flowise:packages/server/src/controllers/predictions/index.ts:createPrediction', 'flowise-service:flowise:packages/server/src/services/predictions/index.ts:buildChatflow'],
 }
 const expectedAiderTracksAndLabels = [
@@ -379,8 +405,8 @@ const expectedSubjectDigests = {
   'openhands-sdk': 'a4ea3a15cab7a116af2beaf8715d8586d6fd5b472b1054adad949dc8aa222133',
   'swe-bench': 'e356c00937817246deae70028e1d8068a2e9426e33f5d77e5b44e485adb3efaa',
   'tau2-bench': '9ce153cca427f514e1d8b1b727931efa4ab2f8767fac1019117219ef17bb99d9',
-  dify: '6881c250b6f94d1ff50aa54d77a493cacb672796350e9c8281b2cc639563d683',
-  crewai: 'c08cfcd2380dbb33b118271457a61aa9b716325f29e25613cc1ddb94a6bd7b56',
+  dify: '6b333b37b98ac1baae3b25b9f1874dbe60c0c99a95eee6e7a703bd752a5c428f',
+  crewai: 'dbe36bab9609685066dbb40e6fd4dc549e9e174264a3454680064a34c8b900f2',
   autogpt: '33d5cf4286bca6be740451dc94daf9c77d633318e95f38760b980c5699d66bf4',
   flowise: '4c2438da4a88f32b9f6089b64b35bbb383bf60d6b8a9258a5af1e2f5a3b360f5',
   'hermes-agent': 'b1e7efda63633c8af2b155954e2a0145428c19795399837ac745f3681e0a66c4',
@@ -391,8 +417,8 @@ const expectedChainDigests = {
   'aider-repo-to-verified-edit': '222bc344a8184b8ff7cac95a1e36f620a50a58cacb0f61b459132238164486ce',
   'openhands-canvas-to-workspace-event': '168bff273714e7a5f797f51d6bff179ede412397be22f5c5742bbef8669a5a06',
   'benchmark-task-to-score': '4bc18b2acf77c5290f31cf416e89b1f34a3001b1f85a69c365425fcbf8ae5da2',
-  'dify-request-to-graph-events': '060d82f9c004cfb20a95ccf3a951383bb7715b47ba25abb1232dcfc9034b6a50',
-  'crewai-kickoff-to-task-output': '4a3711ad6debf20e72f0732a6719b0bf9a7e2ae9153cc141a8bb800eb9d9c058',
+  'dify-request-to-graph-events': 'c03e79df927fb6393a8917d0d53b6368692c84c9d4fccb671d91da4dfb8015cc',
+  'crewai-kickoff-to-task-output': '5bf5f4b7fe325496d4ecdde12e457505948075025e44429401b5737b76dec3c9',
   'autogpt-flowise-evolution': '2d20650faa158737e729becfdc9559ed3d1f419bbcffccf2977f4eb946d722df',
 }
 const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
@@ -411,7 +437,7 @@ describe('real project catalog', () => {
     expect(Object.keys(catalog)).toEqual(['schema_version', 'defaults', 'pages', 'subjects', 'chains'])
     expect(catalog.schema_version).toBe(1)
     expect(catalog.defaults).toEqual({ verified_at: '2026-09-26', review_by: '2026-10-26' })
-    expect(digest(catalog)).toBe('6be8be4c75bca1b0098b3527dc5173e2a89c4dc4d93360454c08d8e1fd1199ad')
+    expect(digest(catalog)).toBe('16d964c1e4602e1ffb4431b1c79fac70134b7c9cf118c00c5dada41b4c8d943a')
     expect(catalog.pages.map((page: { page_item_id: string }) => page.page_item_id)).toEqual(pageIds)
     expect(catalog.subjects.map((subject: { id: string }) => subject.id)).toEqual(subjectIds)
     expect(Object.fromEntries(catalog.subjects.map((subject: any) => [subject.id, [
@@ -431,7 +457,7 @@ describe('real project catalog', () => {
       ]))
     expect(coreSubjects).toEqual(expectedCoreEntrypointSymbols)
     const sourceEntries = catalog.subjects.flatMap((subject: { entrypoints: Array<{ path: string; symbols: string[]; responsibility: string }> }) => subject.entrypoints)
-    expect(sourceEntries).toHaveLength(57)
+    expect(sourceEntries).toHaveLength(64)
     expect(sourceEntries.every((entry: { path: string; symbols: string[]; responsibility: string }) =>
       [entry.path, entry.responsibility].every((value) => value.trim().length > 0)
         && entry.symbols.length > 0
@@ -446,6 +472,8 @@ describe('real project catalog', () => {
     expect(subjectsById['openhands-sdk'].entrypoints).toHaveLength(6)
     expect(subjectsById['tau2-bench'].entrypoints).toHaveLength(8)
     expect([...subjectsById['swe-bench'].entrypoints, ...subjectsById['tau2-bench'].entrypoints]).toHaveLength(12)
+    expect(subjectsById.dify.entrypoints).toHaveLength(12)
+    expect(subjectsById.crewai.entrypoints).toHaveLength(10)
     const entrypointPaths = (id: string) => subjectsById[id].entrypoints.map((entry: { path: string }) => entry.path)
     expect(entrypointPaths('openhands-canvas')).not.toEqual(expect.arrayContaining([
       'src/api/conversation-service/agent-server-conversation-service.api.ts',
@@ -461,6 +489,12 @@ describe('real project catalog', () => {
     expect(entrypointPaths('tau2-bench')).not.toContain('src/tau2/run.py')
     expect(subjectsById['tau2-bench'].entrypoints.find((entry: { path: string }) => entry.path === 'src/tau2/cli.py').symbols)
       .not.toContain('run')
+    for (const oldPath of [
+      'lib/crewai/src/crewai/execution.py',
+      'lib/crewai/src/crewai/agents/crew_agent_executor.py',
+    ]) {
+      expect(entrypointPaths('crewai')).not.toContain(oldPath)
+    }
     const openHandsChain = catalog.chains.find((chain: { id: string }) => chain.id === 'openhands-canvas-to-workspace-event')
     expect(openHandsChain.steps).toHaveLength(16)
     expect(openHandsChain.misconception).toContain('environment and configuration source')
@@ -484,6 +518,44 @@ describe('real project catalog', () => {
     expect(aiderChain.steps.map((step: { id: string; track?: string; label: string }) =>
       [step.id, step.track, step.label],
     )).toEqual(expectedAiderTracksAndLabels)
+    const difyChain = catalog.chains.find((chain: { id: string }) => chain.id === 'dify-request-to-graph-events')
+    expect(difyChain.steps.map((step: { track: string }) => step.track)).toEqual([
+      ...Array(12).fill('blocking 01 · request to graph'),
+      ...Array(9).fill('blocking 02 · graph to response'),
+      ...Array(6).fill('streaming side path'),
+    ])
+    expect(difyChain.misconception).toContain('WorkflowEntry receives an existing Graph')
+    expect(difyChain.steps.find((step: { id: string }) => step.id === 'dify-15-agent-backend').responsibility)
+      .toContain('create_run and consume stream_events')
+    expect(difyChain.steps.find((step: { id: string }) => step.id === 'dify-19-typed').responsibility)
+      .toContain('typed internal workflow response')
+    expect(difyChain.steps.at(-1).responsibility).toContain('SSE retrieval')
+
+    const crewChain = catalog.chains.find((chain: { id: string }) => chain.id === 'crewai-kickoff-to-task-output')
+    expect(crewChain.steps.map((step: { track: string }) => step.track)).toEqual([
+      ...Array(8).fill('default sequential 01 · setup'),
+      ...Array(8).fill('default sequential 02 · execution and output'),
+      ...Array(5).fill('text ReAct · conditional'),
+      ...Array(3).fill('native tool · conditional'),
+      ...Array(3).fill('planning · conditional'),
+    ])
+    const defaultCrewSteps = crewChain.steps.filter((step: { track: string }) => step.track.startsWith('default sequential'))
+    for (const oldDefaultSymbol of [
+      'CrewAgentExecutor.invoke',
+      'StepExecutor.execute',
+      'Task._export_output',
+    ]) {
+      expect(defaultCrewSteps.map((step: { symbol: string }) => step.symbol)).not.toContain(oldDefaultSymbol)
+    }
+    expect(crewChain.steps.find((step: { id: string }) => step.id === 'crew-native-03-single').responsibility)
+      .toContain('_available_functions[func_name]')
+    expect(crewChain.steps.find((step: { id: string }) => step.id === 'crew-plan-02-lazy').responsibility)
+      .toContain('after todos exist')
+    for (const chain of [difyChain, crewChain]) {
+      const sizes = Object.values(Object.groupBy(chain.steps, (step: { track: string }) => step.track))
+        .map((steps) => steps?.length ?? 0)
+      expect(Math.max(...sizes)).toBeLessThanOrEqual(12)
+    }
     expect(Object.fromEntries(catalog.chains.map((chain: { id: string }) => [chain.id, digest(chain)])))
       .toEqual(expectedChainDigests)
     expect(Object.fromEntries(catalog.pages.map((page: { page_item_id: string }) => {
