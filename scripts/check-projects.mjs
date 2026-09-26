@@ -67,6 +67,16 @@ function retryBudgetAllowsRequest(retryBudget) {
   return true
 }
 
+function requestTimeoutMs(retryBudget) {
+  if (!retryBudget) return 12_000
+  const remainingWallMs = retryBudget.deadlineMs - timeMilliseconds(retryBudget.clock)
+  if (remainingWallMs <= 0) {
+    retryBudget.exhausted = true
+    return 0
+  }
+  return Math.min(12_000, Math.ceil(remainingWallMs))
+}
+
 function claimRetryDelay(retryBudget, delayMs) {
   if (!retryBudget) return true
   if (!retryBudgetAllowsRequest(retryBudget)) return false
@@ -141,22 +151,37 @@ export async function requestProjectJson(url, {
   now = new Date(),
   clock = () => now,
   sleepImpl = (delayMs) => new Promise((done) => setTimeout(done, delayMs)),
+  timeoutSignalFactory = (timeoutMs) => AbortSignal.timeout(timeoutMs),
   retryBudget,
 } = {}) {
+  let parsedUrl
+  try {
+    parsedUrl = new URL(url)
+  } catch {
+    return { status: 0, data: null, failure: 'invalid_url' }
+  }
+  const sendGitHubToken = parsedUrl.origin === 'https://api.github.com'
   const attemptLimit = Math.min(maxRequestAttempts, Math.max(1, Math.trunc(retryAttempts)))
   for (let attempt = 1; attempt <= attemptLimit; attempt += 1) {
     if (!retryBudgetAllowsRequest(retryBudget)) return retryBudgetFailure()
+    const timeoutMs = requestTimeoutMs(retryBudget)
+    if (timeoutMs <= 0) return retryBudgetFailure()
     try {
-      const isGitHubApi = new URL(url).hostname === 'api.github.com'
       const response = await fetchImpl(url, {
-        signal: AbortSignal.timeout(12_000),
+        signal: timeoutSignalFactory(timeoutMs),
+        redirect: 'manual',
         headers: {
           accept: 'application/vnd.github+json',
           'user-agent': 'agent-engineering-handbook-project-check/1.0',
-          ...(githubToken && isGitHubApi ? { authorization: `Bearer ${githubToken}` } : {}),
+          ...(githubToken && sendGitHubToken ? { authorization: `Bearer ${githubToken}` } : {}),
         },
       })
+      if (!retryBudgetAllowsRequest(retryBudget)) return retryBudgetFailure(response.status)
+      if (response.status >= 300 && response.status < 400) {
+        return { status: response.status, data: null, failure: 'redirect' }
+      }
       const responseIsRetryable = retryable.has(response.status) || await isRateLimited403(response)
+      if (!retryBudgetAllowsRequest(retryBudget)) return retryBudgetFailure(response.status)
       if (responseIsRetryable && attempt < attemptLimit) {
         const delayMs = retryDelay(response, {
           attempt,
@@ -179,8 +204,11 @@ export async function requestProjectJson(url, {
         }
       }
       try {
-        return { status: response.status, data: await response.json(), failure: null }
+        const data = await response.json()
+        if (!retryBudgetAllowsRequest(retryBudget)) return retryBudgetFailure(response.status)
+        return { status: response.status, data, failure: null }
       } catch {
+        if (!retryBudgetAllowsRequest(retryBudget)) return retryBudgetFailure(response.status)
         if (attempt === attemptLimit) {
           if (markExhaustedAfterFinalRetry(retryBudget)) return retryBudgetFailure(response.status)
           return { status: response.status, data: null, failure: 'parse' }
@@ -190,6 +218,7 @@ export async function requestProjectJson(url, {
         await sleepImpl(delayMs)
       }
     } catch {
+      if (!retryBudgetAllowsRequest(retryBudget)) return retryBudgetFailure()
       if (attempt === attemptLimit) {
         if (markExhaustedAfterFinalRetry(retryBudget)) return retryBudgetFailure()
         return { status: 0, data: null, failure: 'network' }
@@ -205,7 +234,9 @@ export async function requestProjectJson(url, {
 function recordFailure(findings, response) {
   if (response.failure === 'budget') {
     findings.push('project_retry_budget_exhausted', 'project_transient_error')
-  } else if (response.failure === 'transient') findings.push('project_transient_error')
+  } else if (response.failure === 'invalid_url') findings.push('project_url_invalid')
+  else if (response.failure === 'redirect') findings.push('project_redirect_error')
+  else if (response.failure === 'transient') findings.push('project_transient_error')
   else if (response.failure === 'network') findings.push('project_network_error')
   else if (response.failure === 'parse') findings.push('project_parse_error')
   else if (response.failure === 'http') findings.push('project_http_error')
@@ -238,6 +269,7 @@ export async function checkProjectSubject(subject, {
   maxRetryDelayMs = 60_000,
   clock = () => now,
   sleepImpl = (delayMs) => new Promise((done) => setTimeout(done, delayMs)),
+  timeoutSignalFactory = (timeoutMs) => AbortSignal.timeout(timeoutMs),
   retryBudget,
 } = {}) {
   const api = `https://api.github.com/repos/${subject.canonical_repo}`
@@ -250,6 +282,7 @@ export async function checkProjectSubject(subject, {
     now,
     clock,
     sleepImpl,
+    timeoutSignalFactory,
     retryBudget,
   }
   const findings = []
@@ -403,6 +436,8 @@ const blockingFindings = new Set([
   'project_network_error',
   'project_parse_error',
   'project_http_error',
+  'project_url_invalid',
+  'project_redirect_error',
   'project_schema_invalid',
   'project_retry_budget_exhausted',
   'project_scan_skipped_after_budget',
@@ -454,6 +489,7 @@ export async function runProjectCheck({
   retrySleepBudgetMs = defaultProjectRetrySleepBudgetMs,
   clock = () => new Date(),
   sleepImpl = (delayMs) => new Promise((done) => setTimeout(done, delayMs)),
+  timeoutSignalFactory = (timeoutMs) => AbortSignal.timeout(timeoutMs),
 } = {}) {
   const schemaErrors = validateProjectCatalogFile(projectPath)
   let report
@@ -483,6 +519,7 @@ export async function runProjectCheck({
         maxRetryDelayMs,
         clock,
         sleepImpl,
+        timeoutSignalFactory,
         retryBudget,
       }))
     }

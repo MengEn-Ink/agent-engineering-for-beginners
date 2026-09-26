@@ -1139,6 +1139,136 @@ describe('project freshness checker', () => {
     }
   })
 
+  it('does not send a token to the GitHub API host over HTTP', async () => {
+    let authorization: string | undefined
+    const result = await requestProjectJson('http://api.github.com/repos/example/repo', {
+      githubToken: 'read-token',
+      retryAttempts: 1,
+      fetchImpl: async (_url: string, init?: { headers?: Record<string, string> }) => {
+        authorization = init?.headers?.authorization
+        return { status: 200, json: async () => ({ ok: true }) }
+      },
+    })
+    expect(authorization).toBeUndefined()
+    expect(result.failure).toBeNull()
+  })
+
+  it('rejects an invalid URL without attempting a request', async () => {
+    let requests = 0
+    const result = await requestProjectJson('not a URL', {
+      githubToken: 'read-token',
+      retryAttempts: 3,
+      fetchImpl: async () => {
+        requests += 1
+        return { status: 200, json: async () => ({ ok: true }) }
+      },
+    })
+    expect(requests).toBe(0)
+    expect(result.failure).toBe('invalid_url')
+  })
+
+  it.each([
+    'https://evil.example/steal',
+    'http://api.github.com/repos/example/repo',
+  ])('does not follow or forward credentials to redirect target %s', async (location) => {
+    const requests: Array<{ url: string; authorization?: string; redirect?: string }> = []
+    const result = await requestProjectJson('https://api.github.com/repos/example/repo', {
+      githubToken: 'read-token',
+      retryAttempts: 3,
+      fetchImpl: async (url: string, init?: { headers?: Record<string, string>; redirect?: string }) => {
+        requests.push({ url, authorization: init?.headers?.authorization, redirect: init?.redirect })
+        return { status: 302, url, headers: new Headers({ location }), json: async () => ({}) }
+      },
+    })
+    expect(requests).toEqual([{
+      url: 'https://api.github.com/repos/example/repo',
+      authorization: 'Bearer read-token',
+      redirect: 'manual',
+    }])
+    expect(result).toMatchObject({ status: 302, failure: 'redirect' })
+  })
+
+  it('shortens the request timeout to the remaining wall-clock budget', async () => {
+    const outputRoot = mkdtempSync(join(tmpdir(), 'project-freshness-request-timeout-'))
+    const timeouts: number[] = []
+    const timeoutSignal = {} as AbortSignal
+    let receivedSignal: AbortSignal | undefined
+    let requests = 0
+    let clockMs = Date.parse('2026-09-26T00:00:00Z')
+    try {
+      const report = await runProjectCheck({
+        outputJson: join(outputRoot, 'project-freshness.json'),
+        outputMarkdown: join(outputRoot, 'project-freshness.md'),
+        retryBudgetMs: 5_000,
+        clock: () => new Date(clockMs),
+        timeoutSignalFactory: (timeoutMs: number) => {
+          timeouts.push(timeoutMs)
+          return timeoutSignal
+        },
+        sleepImpl: async () => { throw new Error('must not sleep') },
+        fetchImpl: async (_url: string, init?: { signal?: AbortSignal }) => {
+          requests += 1
+          receivedSignal = init?.signal
+          clockMs += 5_000
+          throw new Error('AbortError')
+        },
+      })
+      expect(timeouts).toEqual([5_000])
+      expect(receivedSignal).toBe(timeoutSignal)
+      expect(requests).toBe(1)
+      expect(report.results[0].findings).toEqual(expect.arrayContaining([
+        'project_retry_budget_exhausted',
+        'project_transient_error',
+      ]))
+      expect(report.results.slice(1).every((result: any) =>
+        result.findings.includes('project_scan_skipped_after_budget'))).toBe(true)
+    } finally {
+      rmSync(outputRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('fails the current subject when its final response crosses the wall deadline', async () => {
+    const outputRoot = mkdtempSync(join(tmpdir(), 'project-freshness-response-deadline-'))
+    const catalog = parse(readFileSync('sources/project-index.yml', 'utf8')) as any
+    const subject = { ...catalog.defaults, ...catalog.subjects[0] }
+    let clockMs = Date.parse('2026-09-26T00:00:00Z')
+    let requests = 0
+    try {
+      const report = await runProjectCheck({
+        outputJson: join(outputRoot, 'project-freshness.json'),
+        outputMarkdown: join(outputRoot, 'project-freshness.md'),
+        clock: () => new Date(clockMs),
+        timeoutSignalFactory: () => ({} as AbortSignal),
+        sleepImpl: async () => { throw new Error('must not sleep') },
+        fetchImpl: async (url: string) => {
+          requests += 1
+          const api = `https://api.github.com/repos/${subject.canonical_repo}`
+          if (url === api) return { status: 200, url, json: async () => ({ full_name: subject.canonical_repo, archived: subject.archived, default_branch: subject.verified_default_branch }) }
+          if (url.endsWith(`/commits/${encodeURIComponent(subject.verified_default_branch)}`)) return { status: 200, url, json: async () => ({ sha: subject.verified_default_head, commit: { committer: { date: `${subject.verified_at}T00:00:00Z` } } }) }
+          if (url.includes('/commits/')) return { status: 200, url, json: async () => ({ sha: subject.pinned_commit }) }
+          if (url.includes('/contents/') && !url.includes('/contents/LICENSE')) {
+            const path = decodeURIComponent(url.split('/contents/')[1].split('?')[0])
+            return { status: 200, url, json: async () => ({ path }) }
+          }
+          if (url.includes('/contents/LICENSE')) return { status: 404, url, json: async () => ({}) }
+          if (url.endsWith('/releases/latest')) {
+            clockMs += 120_000
+            return { status: 200, url, json: async () => ({ tag_name: subject.pinned_ref }) }
+          }
+          return { status: 404, url, json: async () => ({}) }
+        },
+      })
+      expect(requests).toBe(7)
+      expect(report.results[0].findings).toEqual(expect.arrayContaining([
+        'project_retry_budget_exhausted',
+        'project_transient_error',
+      ]))
+      expect(report.results[1].findings).toEqual(['project_scan_skipped_after_budget'])
+    } finally {
+      rmSync(outputRoot, { recursive: true, force: true })
+    }
+  })
+
   it('renders schema validation details in the Markdown report', async () => {
     const outputRoot = mkdtempSync(join(tmpdir(), 'project-freshness-schema-report-'))
     const outputMarkdown = join(outputRoot, 'project-freshness.md')
