@@ -116,6 +116,27 @@ describe('project routes and catalog overview', () => {
       rmSync(fixtureRoot, { recursive: true, force: true })
     }
   })
+
+  it('rejects interview IDs produced by any factory other than local question', () => {
+    const fixtureRoot = mkdtempSync(join(tmpdir(), 'project-integration-factory-'))
+    const dataRoot = join(fixtureRoot, 'docs/.vitepress/theme/data')
+    mkdirSync(dataRoot, { recursive: true })
+    writeFileSync(
+      join(dataRoot, 'contentRegistry.ts'),
+      "export const contentItems = [{ id: 'projects-index' }]\n",
+    )
+    writeFileSync(
+      join(dataRoot, 'interviewQuestions.ts'),
+      "export const interviewQuestions = [otherFactory('iq-04-a')]\n",
+    )
+
+    try {
+      expect(validateBook(fixtureRoot, { projectCatalogPath: resolve('sources/project-index.yml') }))
+        .toContain('interviewQuestions entry 0 must call local question with a string-literal id')
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true })
+    }
+  })
 })
 
 describe('project presentation primitives', () => {

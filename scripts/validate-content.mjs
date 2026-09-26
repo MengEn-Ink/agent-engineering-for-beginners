@@ -224,7 +224,8 @@ function literalIdFromEntry(entry, exportName) {
     )
     return property && ts.isStringLiteral(property.initializer) ? property.initializer.text : null
   }
-  if (exportName === 'interviewQuestions' && ts.isCallExpression(entry)) {
+  if (exportName === 'interviewQuestions' && ts.isCallExpression(entry)
+    && ts.isIdentifier(entry.expression) && entry.expression.text === 'question') {
     const [firstArgument] = entry.arguments
     return firstArgument && ts.isStringLiteral(firstArgument) ? firstArgument.text : null
   }
@@ -250,6 +251,12 @@ function loadTypeScriptIdObjects(path, exportName) {
   const items = []
   const errors = []
   for (const [index, entry] of array.elements.entries()) {
+    if (exportName === 'interviewQuestions'
+      && (!ts.isCallExpression(entry) || !ts.isIdentifier(entry.expression)
+        || entry.expression.text !== 'question')) {
+      errors.push(`${exportName} entry ${index} must call local question with a string-literal id`)
+      continue
+    }
     const id = literalIdFromEntry(entry, exportName)
     if (id === null) errors.push(`${exportName} entry ${index} requires a string-literal id`)
     else items.push({ id })

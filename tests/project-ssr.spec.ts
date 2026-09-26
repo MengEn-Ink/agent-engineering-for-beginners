@@ -19,13 +19,18 @@ const projectHtmlFiles = [
 beforeAll(() => {
   outputRoot = mkdtempSync(join(tmpdir(), 'project-ssr-'))
   execFileSync('pnpm', ['exec', 'vitepress', 'build', 'docs', '--outDir', outputRoot], {
-    cwd: process.cwd(), stdio: 'pipe', encoding: 'utf8',
+    cwd: process.cwd(), stdio: 'pipe', encoding: 'utf8', timeout: 120_000,
   })
 }, 120_000)
 
 afterAll(() => rmSync(outputRoot, { recursive: true, force: true }))
 
 describe('actual project SSR', () => {
+  it('bounds the VitePress subprocess independently of the Vitest hook', () => {
+    const source = readFileSync('tests/project-ssr.spec.ts', 'utf8')
+    expect(source).toMatch(/execFileSync\([\s\S]+timeout:\s*120_000/u)
+  })
+
   it('renders all eight approved routes', () => {
     expect(projectHtmlFiles.filter((file) => !existsSync(join(outputRoot, file)))).toEqual([])
   })
