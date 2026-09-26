@@ -1,5 +1,6 @@
 import { existsSync, lstatSync, readdirSync, statSync } from 'node:fs'
 import { join, posix, relative } from 'node:path'
+import parseSrcset from 'parse-srcset'
 import { parse, parseFragment } from 'parse5'
 
 const hiddenHtmlElements = new Set(['script', 'style', 'template', 'noscript'])
@@ -12,6 +13,7 @@ const hiddenMarkdownHtmlElements = new Set([
 ])
 const hiddenImageHtmlElements = new Set(['script', 'style', 'template'])
 const hiddenMarkdownImageHtmlElements = new Set([...hiddenImageHtmlElements, 'code', 'pre'])
+const localImageBase = new URL('https://local.invalid/')
 
 function attribute(node, name) {
   return node.attrs?.find((candidate) => candidate.name === name)?.value
@@ -66,34 +68,11 @@ function hrefsWithin(roots, hiddenElements = hiddenHtmlElements) {
 }
 
 function parseSrcsetCandidates(srcset) {
-  const candidates = []
-  let position = 0
-  while (position < srcset.length) {
-    while (position < srcset.length && /[\s,]/u.test(srcset[position])) position += 1
-    if (position >= srcset.length) break
-
-    const isDataUrl = srcset.slice(position, position + 5).toLowerCase() === 'data:'
-    const start = position
-    while (
-      position < srcset.length
-      && !/\s/u.test(srcset[position])
-      && (isDataUrl || srcset[position] !== ',')
-    ) {
-      position += 1
-    }
-    const candidate = srcset.slice(start, position).replace(/,+$/u, '')
-    if (candidate !== '') candidates.push(candidate)
-
-    let parentheses = 0
-    while (position < srcset.length) {
-      const character = srcset[position]
-      position += 1
-      if (character === '(') parentheses += 1
-      else if (character === ')') parentheses = Math.max(0, parentheses - 1)
-      else if (character === ',' && parentheses === 0) break
-    }
+  try {
+    return parseSrcset(srcset).map((candidate) => candidate.url)
+  } catch {
+    return [null]
   }
-  return candidates
 }
 
 function imageCandidatesWithin(roots, hiddenElements = hiddenImageHtmlElements) {
@@ -284,5 +263,16 @@ export function validatePinnedGithubSourceHref(href, expectedHref) {
 }
 
 export function isRemoteImageCandidate(candidate) {
-  return typeof candidate === 'string' && /^(?:https?:)?\/\//iu.test(candidate.trim())
+  if (typeof candidate !== 'string' || candidate.trim() === '') return true
+  const value = candidate.trim()
+  const withoutAsciiControls = value.replace(/[\u0009\u000A\u000C\u000D]/gu, '')
+  try {
+    const url = new URL(value, localImageBase)
+    if (url.protocol === 'data:' || url.protocol === 'blob:') return false
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return true
+    return url.origin !== localImageBase.origin
+      || /^(?:https?:|\/\/)/iu.test(withoutAsciiControls)
+  } catch {
+    return true
+  }
 }

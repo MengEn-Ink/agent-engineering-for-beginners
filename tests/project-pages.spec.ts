@@ -11,7 +11,10 @@ import {
   loadProjectCatalog,
   validateProjectCatalogIntegration,
 } from '../scripts/project-catalog.mjs'
-import { extractProjectMarkdownContract } from '../scripts/publication-contracts.mjs'
+import {
+  extractProjectMarkdownContract,
+  isRemoteImageCandidate,
+} from '../scripts/publication-contracts.mjs'
 import { validateBook } from '../scripts/validate-content.mjs'
 
 const projectCatalog = loadProjectCatalog(resolve('sources/project-index.yml')) as ProjectCatalog
@@ -40,7 +43,6 @@ const projectRouteRecords = [
 ] as const
 
 const markdown = await createMarkdownRenderer(resolve('docs'))
-const remoteImagePattern = /^(?:https?:)?\/\//iu
 
 function expectCoreProjectPage(path: string, projectId: string) {
   const text = readFileSync(path, 'utf8')
@@ -52,9 +54,7 @@ function expectCoreProjectPage(path: string, projectId: string) {
   expect(contract.text).not.toMatch(
     /npm install|pip install|docker run|OPENAI_API_KEY|ANTHROPIC_API_KEY/u,
   )
-  expect(contract.images, path).not.toEqual(expect.arrayContaining([
-    expect.stringMatching(remoteImagePattern),
-  ]))
+  expect(contract.images.filter(isRemoteImageCandidate), path).toEqual([])
 }
 
 describe('project routes and catalog overview', () => {
@@ -65,9 +65,7 @@ describe('project routes and catalog overview', () => {
       const text = readFileSync(file, 'utf8')
       const parsed = extractProjectMarkdownContract(text, markdown)
       expect(parsed.text, file).not.toMatch(/npm install|pip install|docker run|API_KEY/u)
-      expect(parsed.images, file).not.toEqual(expect.arrayContaining([
-        expect.stringMatching(remoteImagePattern),
-      ]))
+      expect(parsed.images.filter(isRemoteImageCandidate), file).toEqual([])
       if (coreIds.includes(id)) {
         expect(parsed.headings, file).toEqual(requiredProjectHeadings)
         expect(new Set(parsed.headings).size, `${file}: duplicate H2`)
@@ -219,6 +217,8 @@ pip&nbsp;install package
   })
 
   it('collects remote image candidates from Markdown, srcset, picture, and noscript', () => {
+    const backslashUrl = String.raw`https:\\evil.example\a.png`
+    const controlUrl = 'h\tt\ntps://evil.example/control.png'
     const parsed = extractProjectMarkdownContract(`
 ![protocol relative](//example.com/markdown.png)
 <img src="//example.com/html.png">
@@ -228,9 +228,13 @@ pip&nbsp;install package
 <noscript><img src="https://example.com/noscript.png"></noscript>
 <svg><image href="//example.com/svg-href.png"></image></svg>
 <svg><image xlink:href="https://example.com/svg-xlink.png"></image></svg>
+<img srcset="data:image/png;base64,AAAA, https://evil.example/data-comma.png 2x">
+<img src="${backslashUrl}">
+<img src="${controlUrl}">
+<img src="http://[">
 `, markdown)
 
-    expect(parsed.images.filter((candidate) => remoteImagePattern.test(candidate))).toEqual([
+    expect(parsed.images.filter(isRemoteImageCandidate)).toEqual([
       '//example.com/markdown.png',
       '//example.com/html.png',
       'https://example.com/srcset.png',
@@ -239,6 +243,10 @@ pip&nbsp;install package
       'https://example.com/noscript.png',
       '//example.com/svg-href.png',
       'https://example.com/svg-xlink.png',
+      'https://evil.example/data-comma.png',
+      backslashUrl,
+      controlUrl,
+      'http://[',
     ])
     expect(parsed.images).toEqual(expect.arrayContaining([
       '/local.png',
@@ -246,16 +254,39 @@ pip&nbsp;install package
       'data:image/png;base64,AAAA',
       '/local-picture.png',
       '/local-source-fallback.png',
+      'data:image/png;base64,AAAA',
     ]))
+  })
+
+  it('classifies image candidates with WHATWG URL semantics and fails closed', () => {
+    const backslashUrl = String.raw`https:\\evil.example\a.png`
+    const controlUrl = 'h\tt\ntps://evil.example/a.png'
+    for (const candidate of [
+      'https://evil.example/a.png',
+      'http://evil.example/a.png',
+      '//evil.example/a.png',
+      backslashUrl,
+      controlUrl,
+      'http://[',
+    ]) {
+      expect(isRemoteImageCandidate(candidate), candidate).toBe(true)
+    }
+    for (const candidate of [
+      '/images/local.png',
+      './images/local.png',
+      'images/local.png',
+      'data:image/png;base64,AAAA',
+      'blob:https://example.com/id',
+    ]) {
+      expect(isRemoteImageCandidate(candidate), candidate).toBe(false)
+    }
   })
 
   it('keeps project pages free of remote images for project asset provenance', () => {
     for (const path of projectRouteRecords.map(([, route]) =>
       `docs${route.endsWith('/') ? `${route}index` : route}.md`)) {
       const contract = extractProjectMarkdownContract(readFileSync(path, 'utf8'), markdown)
-      expect(contract.images, path).not.toEqual(expect.arrayContaining([
-        expect.stringMatching(remoteImagePattern),
-      ]))
+      expect(contract.images.filter(isRemoteImageCandidate), path).toEqual([])
     }
   })
 

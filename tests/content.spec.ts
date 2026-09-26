@@ -1378,6 +1378,10 @@ describe('project publication boundary', () => {
       '<noscript><img src="https://example.com/noscript.png"></noscript>',
       '<svg><image href="//example.com/svg-href.png"></image></svg>',
       '<svg><image xlink:href="https://example.com/svg-xlink.png"></image></svg>',
+      '<img srcset="data:image/png;base64,AAAA, https://evil.example/data-comma.png 2x">',
+      String.raw`<img src="https:\\evil.example\a.png">`,
+      '<img src="h&#x09;t&#x0A;tps://evil.example/control.png">',
+      '<img src="http://[">',
     ]
 
     for (const markup of remoteMarkup) {
@@ -1393,6 +1397,24 @@ describe('project publication boundary', () => {
       } finally {
         rmSync(dist, { recursive: true, force: true })
       }
+    }
+  })
+
+  it('allows explicit local, data, and blob image candidates in project HTML', () => {
+    const dist = createCompleteDistFixture()
+    try {
+      const file = join(dist, 'projects/aider.html')
+      const localMarkup = '<picture><source src="relative.png" srcset="/local.png 1x, data:image/png;base64,AAAA 2x, blob:https://example.com/id 3x"><img src="/fallback.png"></picture>'
+      writeFileSync(
+        file,
+        readFileSync(file, 'utf8').replace(
+          '<div class="vp-doc">',
+          `<div class="vp-doc">${localMarkup}`,
+        ),
+      )
+      expect(validateDist(dist)).toEqual([])
+    } finally {
+      rmSync(dist, { recursive: true, force: true })
     }
   })
 
