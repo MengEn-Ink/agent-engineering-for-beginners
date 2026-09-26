@@ -506,7 +506,15 @@ ${escapedImportTarget}
   })
 
   it('identifies project selectors from parsed class nodes only', () => {
-    for (const css of [
+    const knownProjectRules = '.project-card{color:inherit}.project-panel{color:inherit}'
+    for (const selector of ['[class="project-exact"]', '[class~="project-token"]']) {
+      const resources = extractCssResourceCandidates(
+        `${selector}{background-image:var(--remote)}`,
+        { dynamicResources: 'project' },
+      )
+      expect(resources, selector).toContain(null)
+    }
+    for (const selector of [
       String.raw`.\70roject-remote{background-image:var(--remote)}`,
       String.raw`.pro\6a ect-remote{mask-image:env(remote-mask)}`,
       String.raw`:is(.safe,.\70roject-is){background-image:var(--remote)}`,
@@ -514,25 +522,39 @@ ${escapedImportTarget}
       ':not(.project-not){background-image:attr(data-image url)}',
       '.shell:has(.project-child){background-image:var(--remote)}',
       '.safe,.project-list{background-image:var(--remote)}',
-      '[class~="project-token"]{background-image:var(--remote)}',
-      '[class="project-exact"]{background-image:env(remote-image)}',
-      '[class]{background-image:attr(data-image url)}',
-      '.broken:not([class="project-x"{background-image:var(--remote)}',
+      '[class="project-card"]',
+      '[class~="project-panel"]',
+      '[class^="project-"]',
+      '[class$="-card"]',
+      '[class*="ject-"]',
+      '[class|="project"]',
+      String.raw`[class~="\70roject-card"]`,
+      String.raw`[cl\61ss*="ject\2d "]`,
+      '[class]',
+      '.broken:not([class="project-card"',
     ]) {
+      const css = selector.includes('{')
+        ? `${knownProjectRules}${selector}`
+        : `${knownProjectRules}${selector}{background-image:var(--remote)}`
       const resources = extractCssResourceCandidates(css, { dynamicResources: 'project' })
-      expect(resources, css).toContain(null)
-      expect(resources.some(isRemoteImageCandidate), css).toBe(true)
+      expect(resources, selector).toContain(null)
+      expect(resources.some(isRemoteImageCandidate), selector).toBe(true)
     }
 
-    expect(extractCssResourceCandidates(
-      '[data-note=".project-"]{background-image:var(--decorative-local-value)}',
-      { dynamicResources: 'project' },
-    )).toEqual([])
-    for (const css of [
-      '[class^="vpi-"]{mask-image:var(--icon)}',
-      '.vp-doc [class*="language-"]{background-image:var(--vp-icon-copy)}',
+    for (const selector of [
+      '[class="pro"]',
+      '[class~="pro"]',
+      '[class^="ject-"]',
+      '[class$="totally-unrelated"]',
+      '[class*="unrelated"]',
+      '[class|="pro"]',
+      '[data-note=".project-card"]',
+      '[class^="vpi-"]',
+      '.vp-doc [class*="language-"]',
     ]) {
-      expect(extractCssResourceCandidates(css, { dynamicResources: 'project' }), css).toEqual([])
+      const css = `${knownProjectRules}${selector}{background-image:var(--safe)}`
+      expect(extractCssResourceCandidates(css, { dynamicResources: 'project' }), selector)
+        .toEqual([])
     }
   })
 

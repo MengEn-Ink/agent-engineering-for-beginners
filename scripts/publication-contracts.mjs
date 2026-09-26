@@ -350,7 +350,50 @@ function consumeCssIdentifier(value) {
   return name && { raw: name.raw, rest: value.slice(name.end).trim() }
 }
 
-function belongsToProjectRule(declaration) {
+function collectProjectClassTokens(root) {
+  const tokens = new Set()
+  root.walkRules((rule) => {
+    try {
+      selectorParser((selectors) => {
+        selectors.walkClasses((node) => {
+          if (node.value.startsWith('project-')) tokens.add(node.value)
+        })
+      }).processSync(rule.selector)
+    } catch {
+      // The declaration-level pass treats an unparseable selector as project-scoped.
+    }
+  })
+  return tokens
+}
+
+function classAttributeCanMatchProject(node, projectClassTokens) {
+  if (node.attribute.toLowerCase() !== 'class') return false
+  if (!node.operator || node.value === undefined) return true
+  const value = node.insensitive ? node.value.toLowerCase() : node.value
+  const tokens = [...projectClassTokens].map((token) =>
+    node.insensitive ? token.toLowerCase() : token)
+  const literalTokens = value.split(/[ \t\n\f\r]+/u)
+
+  if (node.operator === '=') {
+    return literalTokens.some((token) => token.startsWith('project-') || tokens.includes(token))
+  }
+  if (node.operator === '~=') return value.startsWith('project-') || tokens.includes(value)
+  if (node.operator === '^=') {
+    return 'project-'.startsWith(value) || tokens.some((token) => token.startsWith(value))
+  }
+  if (node.operator === '$=') return tokens.some((token) => token.endsWith(value))
+  if (node.operator === '*=') {
+    return 'project-'.includes(value) || tokens.some((token) => token.includes(value))
+  }
+  if (node.operator === '|=') {
+    return value === 'project'
+      || value.startsWith('project-')
+      || tokens.some((token) => token === value || token.startsWith(`${value}-`))
+  }
+  return true
+}
+
+function belongsToProjectRule(declaration, projectClassTokens) {
   let container = declaration.parent
   while (container) {
     if (container.type === 'rule') {
@@ -361,19 +404,7 @@ function belongsToProjectRule(declaration) {
             if (node.value.startsWith('project-')) projectScoped = true
           })
           selectors.walkAttributes((node) => {
-            if (node.attribute.toLowerCase() !== 'class') return
-            if (!node.operator || node.value === undefined) {
-              projectScoped = true
-              return
-            }
-            const value = node.insensitive ? node.value.toLowerCase() : node.value
-            if (['=', '~=', '^=', '*='].includes(node.operator)) {
-              if (value.includes('project-') || 'project-'.startsWith(value)) {
-                projectScoped = true
-              }
-            } else {
-              projectScoped = true
-            }
+            if (classAttributeCanMatchProject(node, projectClassTokens)) projectScoped = true
           })
         }).processSync(container.selector)
         if (projectScoped) return true
@@ -390,9 +421,13 @@ export function extractCssResourceCandidates(css, options = {}) {
   try {
     const root = postcss.parse(css)
     const resources = []
+    const projectClassTokens = collectProjectClassTokens(root)
     root.walkDecls((declaration) => {
       const dynamicResourceContext = cssResourceProperties.has(declaration.prop.toLowerCase())
-        && (options.dynamicResources !== 'project' || belongsToProjectRule(declaration))
+        && (
+          options.dynamicResources !== 'project'
+          || belongsToProjectRule(declaration, projectClassTokens)
+        )
       resources.push(...extractCssValueResources(
         declaration.value,
         dynamicResourceContext,
