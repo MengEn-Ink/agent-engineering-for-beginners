@@ -2184,7 +2184,11 @@ summary {
 
 .project-license-print {
   display: none;
+}
+
+.project-license-print p {
   overflow-wrap: anywhere;
+  word-break: break-all;
 }
 
 .project-meta summary {

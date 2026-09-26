@@ -520,7 +520,7 @@ describe('project presentation primitives', () => {
   it('wraps full fixed license URLs in the print fallback', () => {
     const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
     expect(style).toMatch(
-      /\.project-license-print\s*\{[^}]*overflow-wrap:\s*anywhere/su,
+      /\.project-license-print\s+p\s*\{[^}]*overflow-wrap:\s*anywhere[^}]*word-break:\s*break-all/su,
     )
   })
 
