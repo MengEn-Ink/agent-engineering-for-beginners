@@ -2140,13 +2140,6 @@ summary {
   text-align: center;
 }
 
-.project-architecture-nodes span:not(:last-child)::after {
-  position: absolute;
-  inset-inline-end: -0.65rem;
-  content: '→';
-  color: var(--reading-link);
-}
-
 .project-call-chain li {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -2165,6 +2158,7 @@ summary {
 }
 
 .project-chain-track-group h4,
+.project-chain-provenance,
 .project-meta small,
 .project-source-links small {
   color: var(--reading-text-soft);
@@ -2229,13 +2223,6 @@ summary {
     grid-template-columns: 1fr;
   }
 
-  .project-architecture-nodes span:not(:last-child)::after {
-    inset-inline-end: auto;
-    inset-block-end: -0.8rem;
-    inset-inline-start: 50%;
-    content: '↓';
-  }
-
   .project-meta,
   .project-chain-section,
   .project-overview section {
@@ -2244,6 +2231,27 @@ summary {
 }
 
 @media print {
+  :root,
+  .dark {
+    color-scheme: light !important;
+    --reading-bg: #ffffff;
+    --reading-bg-soft: #f4f3ee;
+    --reading-text: #111827;
+    --reading-text-soft: #374151;
+    --reading-link: #0b4aa2;
+    --reading-rule: #cbd5e1;
+    --book-paper: var(--reading-bg);
+    --book-paper-bright: #ffffff;
+    --book-ink: var(--reading-text);
+    --book-ink-soft: var(--reading-text-soft);
+    --book-rule: var(--reading-rule);
+    --vp-c-bg: var(--reading-bg);
+    --vp-c-bg-alt: var(--reading-bg-soft);
+    --vp-c-text-1: var(--reading-text);
+    --vp-c-text-2: var(--reading-text-soft);
+    --vp-c-brand-1: var(--reading-link);
+  }
+
   .course-stage-more,
   .course-stage-more > summary,
   .course-progress progress,
@@ -2272,6 +2280,13 @@ summary {
     break-inside: avoid;
   }
 
+  .reading-progress,
+  .reading-progress-copy,
+  .reading-progress-actions {
+    display: block !important;
+    break-inside: auto !important;
+  }
+
   .project-meta details {
     display: none !important;
   }
@@ -2286,7 +2301,7 @@ summary {
   .project-source-links > li,
   .project-call-chain li {
     display: block;
-    break-inside: avoid;
+    break-inside: auto;
   }
 
   .project-meta > ul > li > *,
@@ -2308,6 +2323,7 @@ summary {
   }
 
   .project-source-print-url {
+    break-inside: avoid !important;
     display: block !important;
     max-width: 100% !important;
     overflow-wrap: anywhere !important;

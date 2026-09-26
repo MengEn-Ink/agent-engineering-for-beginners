@@ -14,6 +14,8 @@
 
 这些页面是阅读型源码课程，不会安装或运行上游项目。Python Lab Kit 属于下一阶段；在独立设计、离线 fixture、成本上限和清理流程完成前，仓库不会发布 `/labs/`。
 
+机器可读的项目清单位于 [`sources/project-index.yml`](sources/project-index.yml)，覆盖 8 个公开项目路由、13 个上游 subject 与 66 个源码 entrypoint，并记录固定 commit、许可证范围和许可证证据。`/course/` 仍由 26 个公开课程入口组成。
+
 ## 学习入口
 
 - 课程地图 `/course/` 展示完整课程与建议学习顺序；

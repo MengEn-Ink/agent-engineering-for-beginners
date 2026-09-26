@@ -1,13 +1,25 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { getProjectPage, getProjectSubject, projectSourceUrl } from '../data/projectCatalog'
+import { isReviewOverdue, reviewDateInTimeZone } from '../data/chapterMeta'
 
-const props = defineProps<{ projectId: string }>()
+const props = defineProps<{ projectId: string; clock?: () => Date }>()
 const page = computed(() => getProjectPage(props.projectId))
 const subjects = computed(() => page.value.subjects.map(getProjectSubject))
 const tierLabel = computed(() => page.value.catalog_tier === 'core' ? '核心拆解' : '历史反例')
 const statusLabels: Record<string, string> = { active: '活跃', archived: '已归档', eol: '已停止维护' }
 const statusLabel = (status: string) => statusLabels[status] ?? status
+const reviewNow = ref<Date | null>(null)
+
+function reviewStatus(reviewBy: string) {
+  if (!reviewNow.value) return 'neutral'
+  if (reviewBy === reviewDateInTimeZone(reviewNow.value)) return 'today'
+  return isReviewOverdue(reviewBy, reviewNow.value) ? 'overdue' : 'future'
+}
+
+onMounted(() => {
+  reviewNow.value = (props.clock ?? (() => new Date()))()
+})
 </script>
 
 <template>
@@ -18,7 +30,21 @@ const statusLabel = (status: string) => statusLabels[status] ?? status
         <a :href="subject.canonical_url">{{ subject.canonical_repo }}</a>
         <span><strong>固定版本：</strong>{{ subject.pinned_ref }} · <code>{{ subject.pinned_commit }}</code></span>
         <span><strong>仓库状态：</strong>{{ statusLabel(subject.repository_status) }}<template v-if="subject.archived"> · GitHub 已归档</template></span>
-        <span><strong>核验：</strong>{{ subject.verified_at }}，下次 {{ subject.review_by }}</span>
+        <span class="project-review-status" aria-live="polite">
+          <strong>核验日期：</strong><time :datetime="subject.verified_at">{{ subject.verified_at }}</time>；
+          <template v-if="reviewStatus(subject.review_by) === 'neutral'">
+            <strong>复核日期：</strong><time :datetime="subject.review_by">{{ subject.review_by }}</time>（按日期复核）
+          </template>
+          <template v-else-if="reviewStatus(subject.review_by) === 'future'">
+            <strong>下次复核：</strong><time :datetime="subject.review_by">{{ subject.review_by }}</time>
+          </template>
+          <template v-else-if="reviewStatus(subject.review_by) === 'today'">
+            <strong>今日复核：</strong><time :datetime="subject.review_by">{{ subject.review_by }}</time>
+          </template>
+          <template v-else>
+            <strong>已逾期 / 需复核：</strong><time :datetime="subject.review_by">{{ subject.review_by }}</time>
+          </template>
+        </span>
         <a :href="subject.watch_url">检查上游更新</a>
         <details>
           <summary>许可证边界</summary>

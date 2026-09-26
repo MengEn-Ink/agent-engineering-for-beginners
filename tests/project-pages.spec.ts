@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path'
 import { createMarkdownRenderer } from 'vitepress'
 import { describe, expect, it } from 'vitest'
 import { contentItems, getContentItem } from '../docs/.vitepress/theme/data/contentRegistry'
+import { courseItems } from '../docs/.vitepress/theme/data/courseMap'
 import { interviewQuestions } from '../docs/.vitepress/theme/data/interviewQuestions'
 import { createProjectCatalogLookup } from '../docs/.vitepress/theme/data/projectCatalogCore'
 import type { ProjectCatalog } from '../docs/.vitepress/theme/data/projectCatalogTypes'
@@ -16,6 +17,7 @@ import {
   isRemoteImageCandidate,
 } from '../scripts/publication-contracts.mjs'
 import { validateBook } from '../scripts/validate-content.mjs'
+import { isReviewOverdue, reviewDateInTimeZone } from '../scripts/review-date.mjs'
 
 const projectCatalog = loadProjectCatalog(resolve('sources/project-index.yml')) as ProjectCatalog
 const {
@@ -391,6 +393,11 @@ describe('project documentation handoff', () => {
     expect(readme).toContain('固定 commit')
     expect(readme).toContain('Python Lab Kit 属于下一阶段')
     expect(readme).toContain('仓库不会发布 `/labs/`')
+    expect(readme).toContain('[`sources/project-index.yml`](sources/project-index.yml)')
+    expect(readme).toContain(`${projectCatalog.pages.length} 个公开项目路由`)
+    expect(readme).toContain(`${projectCatalog.subjects.length} 个上游 subject`)
+    expect(readme).toContain(`${projectCatalog.subjects.flatMap((subject) => subject.entrypoints).length} 个源码 entrypoint`)
+    expect(readme).toContain(`${courseItems.length} 个公开课程入口`)
     expect(readme).not.toMatch(/\]\([^)]*\/labs\//u)
   })
 })
@@ -468,6 +475,11 @@ describe('project presentation primitives', () => {
     expect(chain).toContain('源码事实：')
     expect(chain).toContain('本书归纳：')
     expect(chain).toContain('不要误解')
+    expect(chain).toContain('getProjectSubject(step.subject_id)')
+    expect(chain).toContain('step.subject.canonical_repo')
+    expect(chain).toContain('step.subject.pinned_ref')
+    expect(chain).toContain('step.subject.pinned_commit')
+    expect(chain).toContain('project-chain-provenance')
 
     const meta = readFileSync('docs/.vitepress/theme/components/ProjectMeta.vue', 'utf8')
     expect(meta).toContain('仓库状态')
@@ -478,6 +490,14 @@ describe('project presentation primitives', () => {
     expect(meta).toContain('scope.basis')
     expect(meta).toContain('scope.path_or_glob ?? scope.selector')
     expect(meta).toContain('projectSourceUrl(subject.id, source.path)')
+    expect(meta).toContain('clock?: () => Date')
+    expect(meta).toContain('onMounted')
+    expect(meta).toContain('reviewDateInTimeZone')
+    expect(meta).toContain('isReviewOverdue')
+    for (const label of ['按日期复核', '下次复核', '今日复核', '已逾期', '需复核']) {
+      expect(meta).toContain(label)
+    }
+    expect(meta).not.toContain('，下次 {{ subject.review_by }}')
 
     const sources = readFileSync('docs/.vitepress/theme/components/ProjectSourceLinks.vue', 'utf8')
     for (const field of ['row.path', 'row.symbols', 'row.responsibility']) {
@@ -603,7 +623,7 @@ describe('project presentation primitives', () => {
     expectEffectiveRule(
       ['.project-meta > ul > li', '.project-source-links > li', '.project-call-chain li'],
       'print',
-      { display: { value: 'block' }, 'break-inside': { value: 'avoid' } },
+      { display: { value: 'block' }, 'break-inside': { value: 'auto' } },
     )
     expectEffectiveRule(
       ['.project-meta > ul > li > *', '.project-source-links > li > *', '.project-call-chain li > *'],
@@ -611,11 +631,27 @@ describe('project presentation primitives', () => {
       { display: { value: 'block' } },
     )
     expectEffectiveRule(['.project-source-print-url'], 'print', {
+      'break-inside': { value: 'avoid', important: true },
       display: { value: 'block', important: true },
       'max-width': { value: '100%', important: true },
       'overflow-wrap': { value: 'anywhere', important: true },
       'white-space': { value: 'normal', important: true },
     })
+    expectEffectiveRule([':root', '.dark'], 'print', {
+      'color-scheme': { value: 'light', important: true },
+      '--reading-bg': { value: '#ffffff' },
+      '--reading-text': { value: '#111827' },
+      '--reading-link': { value: '#0b4aa2' },
+      '--reading-rule': { value: '#cbd5e1' },
+    })
+    expectEffectiveRule(
+      ['.reading-progress', '.reading-progress-copy', '.reading-progress-actions'],
+      'print',
+      {
+        display: { value: 'block', important: true },
+        'break-inside': { value: 'auto', important: true },
+      },
+    )
 
     const mediaAncestors = (rule: any) => {
       const ancestors: string[] = []
@@ -912,6 +948,24 @@ describe('project presentation primitives', () => {
         }
       }
     }
+    const architectureArrowContent = rules.flatMap((rule) => {
+      const actual = declarations(rule)
+      return selectors(rule)
+        .filter((selector) => selector.includes('.project-architecture-nodes') && selector.includes('::after'))
+        .filter(() => Boolean(actual.content))
+    })
+    expect(architectureArrowContent).toEqual([])
+  })
+
+  it('uses the shared Shanghai date boundary for project review states', () => {
+    const beforeShanghaiMidnight = new Date('2026-10-25T15:59:59Z')
+    const atShanghaiMidnight = new Date('2026-10-25T16:00:00Z')
+    const afterReviewDay = new Date('2026-10-26T16:00:00Z')
+    expect(reviewDateInTimeZone(beforeShanghaiMidnight)).toBe('2026-10-25')
+    expect(reviewDateInTimeZone(atShanghaiMidnight)).toBe('2026-10-26')
+    expect(isReviewOverdue('2026-10-26', beforeShanghaiMidnight)).toBe(false)
+    expect(isReviewOverdue('2026-10-26', atShanghaiMidnight)).toBe(false)
+    expect(isReviewOverdue('2026-10-26', afterReviewDay)).toBe(true)
   })
 
   it('enforces the scoped Vue and TypeScript check during production builds', () => {
