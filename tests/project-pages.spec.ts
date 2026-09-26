@@ -245,3 +245,36 @@ describe('OpenHands and benchmark dissections', () => {
     expect(text).not.toMatch(/本书.*SWE-bench.*(?:得分|准确率|通过率)\s*\d/iu)
   })
 })
+
+describe('Dify and CrewAI dissections', () => {
+  it('publishes both complete reading-only pages', () => {
+    expectCoreProjectPage('docs/projects/dify.md', 'project-dify')
+    expectCoreProjectPage('docs/projects/crewai.md', 'project-crewai')
+  })
+
+  it('states Dify and CrewAI boundaries without marketing claims', () => {
+    const dify = readFileSync('docs/projects/dify.md', 'utf8')
+    expect(dify).toContain('service API')
+    expect(dify).toContain('WorkflowEntry')
+    expect(dify).toContain('Graphon')
+    expect(dify).toContain('NodeFactory')
+    expect(dify).toContain('AgentNode')
+    expect(dify).toContain('response converter')
+    expect(dify).toContain('修改版 Apache-2.0')
+    for (const id of ['IQ-02-B', 'IQ-06-A', 'IQ-10-A']) {
+      expect(dify).toContain(id)
+    }
+
+    const crew = readFileSync('docs/projects/crewai.md', 'utf8')
+    expect(crew).toContain('sequential process')
+    expect(crew).toContain('StepExecutor')
+    expect(crew).toContain('角色名称不会自动形成权限隔离')
+    expect(crew).toContain('消融实验显示增益')
+    for (const id of ['IQ-07-A', 'IQ-07-B', 'IQ-07-C']) {
+      expect(crew).toContain(id)
+    }
+
+    expect(`${dify}\n${crew}`).not.toMatch(/最佳框架|生产级首选|Star 数/u)
+    expect(`${dify}\n${crew}`).not.toMatch(/^## Lab$/gmu)
+  })
+})
