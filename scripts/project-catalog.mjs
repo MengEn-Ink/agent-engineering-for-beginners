@@ -107,6 +107,12 @@ export function validateProjectCatalog(data) {
     }
     if (!pinKinds.has(subject.pin_kind)) errors.push(`Subject ${subject.id} has invalid pin_kind`)
     if (!shaPattern.test(subject.pinned_commit ?? '')) errors.push(`Subject ${subject.id} has invalid pinned_commit`)
+    if (!nonEmpty(subject.verified_default_branch)) {
+      errors.push(`Subject ${subject.id} requires verified_default_branch`)
+    }
+    if (!shaPattern.test(subject.verified_default_head ?? '')) {
+      errors.push(`Subject ${subject.id} has invalid verified_default_head`)
+    }
     if (!repositoryStatuses.has(subject.repository_status)) errors.push(`Subject ${subject.id} has invalid repository_status`)
     if (!subjectTiers.has(subject.catalog_tier)) errors.push(`Subject ${subject.id} has invalid catalog_tier`)
     if (typeof subject.archived !== 'boolean') errors.push(`Subject ${subject.id} archived must be boolean`)

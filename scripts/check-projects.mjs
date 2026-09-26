@@ -7,13 +7,93 @@ import { validateProjectCatalogFile } from './project-catalog.mjs'
 import { reviewDateInTimeZone } from './review-date.mjs'
 
 const retryable = new Set([408, 429, 500, 502, 503, 504])
+const shaPattern = /^[0-9a-f]{40}$/iu
+const maxSchemaErrors = 20
+const maxSchemaErrorLength = 240
+
+function responseHeader(response, name) {
+  if (typeof response?.headers?.get === 'function') return response.headers.get(name)
+  if (!response?.headers || typeof response.headers !== 'object') return null
+  const key = Object.keys(response.headers).find((item) => item.toLowerCase() === name.toLowerCase())
+  return key ? String(response.headers[key]) : null
+}
+
+function nowMilliseconds(now) {
+  const value = typeof now === 'function' ? now() : now
+  return value instanceof Date ? value.getTime() : new Date(value).getTime()
+}
+
+function headerDelayMs(response, now) {
+  const delays = []
+  const retryAfter = responseHeader(response, 'retry-after')
+  if (retryAfter !== null && retryAfter.trim() !== '') {
+    const seconds = Number(retryAfter)
+    const delay = Number.isFinite(seconds)
+      ? seconds * 1_000
+      : Date.parse(retryAfter) - nowMilliseconds(now)
+    if (Number.isFinite(delay)) delays.push(Math.max(0, delay))
+  }
+  const resetHeader = responseHeader(response, 'x-ratelimit-reset')
+  if (resetHeader !== null && resetHeader.trim() !== '') {
+    const reset = Number(resetHeader)
+    if (Number.isFinite(reset)) delays.push(Math.max(0, (reset * 1_000) - nowMilliseconds(now)))
+  }
+  return delays.length > 0 ? Math.max(...delays) : null
+}
+
+function retryDelay(response, { attempt, retryDelayMs, maxRetryDelayMs, now }) {
+  const requested = headerDelayMs(response, now) ?? retryDelayMs * attempt
+  return Math.min(Math.max(0, requested), maxRetryDelayMs)
+}
+
+async function isRateLimited403(response) {
+  if (response.status !== 403) return false
+  if (responseHeader(response, 'x-ratelimit-remaining') === '0') return true
+  const retryAfter = responseHeader(response, 'retry-after')
+  if (retryAfter !== null && retryAfter.trim() !== '') return true
+  try {
+    const body = await response.json()
+    const message = typeof body?.message === 'string' ? body.message : ''
+    return /(?:secondary\s+)?rate\s+limit|abuse\s+detection/iu.test(message)
+  } catch {
+    return false
+  }
+}
+
+function isRecord(value) {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function nonEmpty(value) {
+  return typeof value === 'string' && value.trim() !== ''
+}
+
+function validCommitSha(value) {
+  return typeof value === 'string' && shaPattern.test(value)
+}
+
+function validCommitDate(value) {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value))
+}
+
+function validBase64Content(value) {
+  if (typeof value !== 'string') return false
+  const compact = value.replace(/\s/gu, '')
+  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(compact)) {
+    return false
+  }
+  return Buffer.from(compact, 'base64').toString('base64') === compact
+}
 
 export async function requestProjectJson(url, {
-  fetchImpl,
+  fetchImpl = fetch,
   githubToken,
-  retryAttempts,
-  retryDelayMs,
-}) {
+  retryAttempts = 3,
+  retryDelayMs = 250,
+  maxRetryDelayMs = 60_000,
+  now = new Date(),
+  sleepImpl = (delayMs) => new Promise((done) => setTimeout(done, delayMs)),
+} = {}) {
   for (let attempt = 1; attempt <= retryAttempts; attempt += 1) {
     try {
       const isGitHubApi = new URL(url).hostname === 'api.github.com'
@@ -25,15 +105,21 @@ export async function requestProjectJson(url, {
           ...(githubToken && isGitHubApi ? { authorization: `Bearer ${githubToken}` } : {}),
         },
       })
-      if (retryable.has(response.status) && attempt < retryAttempts) {
-        await new Promise((done) => setTimeout(done, retryDelayMs * attempt))
+      const responseIsRetryable = retryable.has(response.status) || await isRateLimited403(response)
+      if (responseIsRetryable && attempt < retryAttempts) {
+        await sleepImpl(retryDelay(response, {
+          attempt,
+          retryDelayMs,
+          maxRetryDelayMs,
+          now,
+        }))
         continue
       }
       if (response.status >= 400) {
         return {
           status: response.status,
           data: null,
-          failure: retryable.has(response.status) ? 'transient' : 'http',
+          failure: responseIsRetryable ? 'transient' : 'http',
         }
       }
       try {
@@ -42,11 +128,16 @@ export async function requestProjectJson(url, {
         if (attempt === retryAttempts) {
           return { status: response.status, data: null, failure: 'parse' }
         }
-        await new Promise((done) => setTimeout(done, retryDelayMs * attempt))
+        await sleepImpl(retryDelay(response, {
+          attempt,
+          retryDelayMs,
+          maxRetryDelayMs,
+          now,
+        }))
       }
     } catch {
       if (attempt === retryAttempts) return { status: 0, data: null, failure: 'network' }
-      await new Promise((done) => setTimeout(done, retryDelayMs * attempt))
+      await sleepImpl(Math.min(retryDelayMs * attempt, maxRetryDelayMs))
     }
   }
   return { status: 0, data: null, failure: 'network' }
@@ -75,9 +166,19 @@ export async function checkProjectSubject(subject, {
   now = new Date(),
   retryAttempts = 3,
   retryDelayMs = 250,
+  maxRetryDelayMs = 60_000,
+  sleepImpl = (delayMs) => new Promise((done) => setTimeout(done, delayMs)),
 } = {}) {
   const api = `https://api.github.com/repos/${subject.canonical_repo}`
-  const options = { fetchImpl, githubToken, retryAttempts, retryDelayMs }
+  const options = {
+    fetchImpl,
+    githubToken,
+    retryAttempts,
+    retryDelayMs,
+    maxRetryDelayMs,
+    now,
+    sleepImpl,
+  }
   const findings = []
   let defaultBranch = null
 
@@ -87,17 +188,20 @@ export async function checkProjectSubject(subject, {
   } else {
     const metadataData = metadata.data
     defaultBranch = metadataData?.default_branch
-    if (typeof metadataData?.full_name !== 'string'
+    if (!isRecord(metadataData)
+      || !nonEmpty(metadataData.full_name)
       || typeof metadataData?.archived !== 'boolean'
-      || typeof defaultBranch !== 'string'
-      || defaultBranch === '') {
+      || !nonEmpty(defaultBranch)) {
       requireReview(findings, 'repository_metadata_invalid')
     }
-    if (metadataData?.full_name !== subject.canonical_repo) {
+    if (nonEmpty(metadataData?.full_name) && metadataData.full_name !== subject.canonical_repo) {
       requireReview(findings, 'canonical_repo_changed')
     }
-    if (Boolean(metadataData?.archived) !== subject.archived) {
+    if (typeof metadataData?.archived === 'boolean' && metadataData.archived !== subject.archived) {
       requireReview(findings, 'repository_status_changed')
+    }
+    if (nonEmpty(defaultBranch) && defaultBranch !== subject.verified_default_branch) {
+      requireReview(findings, 'default_branch_changed')
     }
   }
 
@@ -105,16 +209,25 @@ export async function checkProjectSubject(subject, {
     const head = await requestProjectJson(`${api}/commits/${encodeURIComponent(defaultBranch)}`, options)
     if (head.failure) {
       recordFailure(findings, head)
-    } else if (head.data?.sha !== subject.pinned_commit
-      && head.data?.commit?.committer?.date
-      && reviewDateInTimeZone(new Date(head.data.commit.committer.date)) > subject.verified_at) {
-      findings.push('project_update_available')
+    } else {
+      const headSha = head.data?.sha
+      const headDate = head.data?.commit?.committer?.date
+      if (validCommitSha(headSha) && headSha !== subject.verified_default_head) {
+        findings.push('project_update_available')
+      }
+      if (!isRecord(head.data) || !validCommitSha(headSha) || !validCommitDate(headDate)) {
+        requireReview(findings, 'repository_head_invalid')
+      }
     }
   }
 
   const ref = await requestProjectJson(`${api}/commits/${encodeURIComponent(subject.pinned_ref)}`, options)
   if (ref.failure) recordFailure(findings, ref)
-  else if (ref.data?.sha !== subject.pinned_commit) requireReview(findings, 'pin_ref_mismatch')
+  else if (!isRecord(ref.data) || !validCommitSha(ref.data.sha)) {
+    requireReview(findings, 'pinned_ref_response_invalid')
+  } else if (ref.data.sha !== subject.pinned_commit) {
+    requireReview(findings, 'pin_ref_mismatch')
+  }
 
   for (const entrypoint of subject.entrypoints) {
     const encodedPath = entrypoint.path.split('/').map(encodeURIComponent).join('/')
@@ -126,7 +239,7 @@ export async function checkProjectSubject(subject, {
       requireReview(findings, 'entrypoint_missing')
     } else if (entry.failure) {
       recordFailure(findings, entry)
-    } else if (entry.data?.path !== entrypoint.path) {
+    } else if (!isRecord(entry.data) || entry.data.path !== entrypoint.path) {
       requireReview(findings, 'entrypoint_response_invalid')
     }
   }
@@ -143,6 +256,11 @@ export async function checkProjectSubject(subject, {
         requireReview(findings, 'license_source_missing')
       } else if (license.failure) {
         recordFailure(findings, license)
+      } else if (!isRecord(license.data)
+        || license.data.path !== source.path
+        || license.data.encoding !== 'base64'
+        || !validBase64Content(license.data.content)) {
+        requireReview(findings, 'license_response_invalid')
       } else if (githubContentSha256(license.data) !== source.sha256) {
         requireReview(findings, 'license_changed')
       }
@@ -159,9 +277,17 @@ export async function checkProjectSubject(subject, {
     } else if (latest.failure) {
       recordFailure(findings, latest)
     } else {
-      const latestRef = subject.pin_kind === 'tag' ? latest.data?.[0]?.name : latest.data?.tag_name
-      if (!latestRef) requireReview(findings, 'project_release_missing')
-      else if (latestRef !== subject.pinned_ref) findings.push('project_update_available')
+      const validLatest = subject.pin_kind === 'tag'
+        ? Array.isArray(latest.data) && isRecord(latest.data[0]) && nonEmpty(latest.data[0].name)
+        : isRecord(latest.data) && nonEmpty(latest.data.tag_name)
+      if (!validLatest) {
+        requireReview(findings, subject.pin_kind === 'tag'
+          ? 'project_tags_response_invalid'
+          : 'project_release_response_invalid')
+      } else {
+        const latestRef = subject.pin_kind === 'tag' ? latest.data[0].name : latest.data.tag_name
+        if (latestRef !== subject.pinned_ref) findings.push('project_update_available')
+      }
     }
   }
 
@@ -211,6 +337,20 @@ function renderProjectReport(report) {
     if (result.license_source_paths.length > 0) {
       lines.push(`  - License sources: ${result.license_source_paths.join(', ')}`)
     }
+    if (Array.isArray(result.schema_errors) && result.schema_errors.length > 0) {
+      lines.push('  - Schema errors:')
+      for (const error of result.schema_errors.slice(0, maxSchemaErrors)) {
+        const normalized = String(error).replace(/\s+/gu, ' ').trim()
+        const marker = '... [truncated]'
+        const detail = normalized.length > maxSchemaErrorLength
+          ? `${normalized.slice(0, maxSchemaErrorLength - marker.length)}${marker}`
+          : normalized
+        lines.push(`    - ${detail}`)
+      }
+      if (result.schema_errors.length > maxSchemaErrors) {
+        lines.push(`    - ... ${result.schema_errors.length - maxSchemaErrors} additional schema errors omitted.`)
+      }
+    }
   }
   lines.push('', 'Automated findings request review; they never authorize content changes.', '')
   return lines.join('\n')
@@ -223,6 +363,10 @@ export async function runProjectCheck({
   fetchImpl = fetch,
   githubToken = process.env.GITHUB_TOKEN,
   now = new Date(),
+  retryAttempts = 3,
+  retryDelayMs = 250,
+  maxRetryDelayMs = 60_000,
+  sleepImpl = (delayMs) => new Promise((done) => setTimeout(done, delayMs)),
 } = {}) {
   const schemaErrors = validateProjectCatalogFile(projectPath)
   let report
@@ -238,7 +382,15 @@ export async function runProjectCheck({
     const subjects = data.subjects.map((subject) => ({ ...data.defaults, ...subject }))
     const results = []
     for (const subject of subjects) {
-      results.push(await checkProjectSubject(subject, { fetchImpl, githubToken, now }))
+      results.push(await checkProjectSubject(subject, {
+        fetchImpl,
+        githubToken,
+        now,
+        retryAttempts,
+        retryDelayMs,
+        maxRetryDelayMs,
+        sleepImpl,
+      }))
     }
     report = buildProjectFreshnessReport(results, now.toISOString())
   }

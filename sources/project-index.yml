@@ -59,6 +59,8 @@ subjects:
     pin_kind: release
     pinned_ref: '2026-07-28'
     pinned_commit: 5f5440bb26a62e2cf3440b92da5a667efa03b267
+    verified_default_branch: main
+    verified_default_head: ab3a39c13bd23be691c2760e1c6c5c15a64582e1
     repository_status: active
     archived: false
     catalog_tier: core
@@ -90,6 +92,8 @@ subjects:
     pin_kind: release
     pinned_ref: v2.2.0
     pinned_commit: 9972c21aa42054fb1450c5fc614761ed11847ec6
+    verified_default_branch: main
+    verified_default_head: f1b6589088534632fef92238ee9750951e3c0185
     repository_status: active
     archived: false
     catalog_tier: core
@@ -118,6 +122,8 @@ subjects:
     pin_kind: release
     pinned_ref: v0.86.0
     pinned_commit: a4be6ccd87ebaa59b361f3f028d116ce1761b626
+    verified_default_branch: main
+    verified_default_head: 5dc9490bb35f9729ef2c95d00a19ccd30c26339c
     repository_status: active
     archived: false
     catalog_tier: core
@@ -146,6 +152,8 @@ subjects:
     pin_kind: release
     pinned_ref: v1.24.0
     pinned_commit: 7dc6805406ea3c76cb4a3ce407c3c72d481b0ac6
+    verified_default_branch: main
+    verified_default_head: 47a10808d78561546a02555d0d2c7fa96fa96300
     repository_status: active
     archived: false
     catalog_tier: core
@@ -164,6 +172,8 @@ subjects:
     pin_kind: release
     pinned_ref: v1.49.6
     pinned_commit: fcc102a697874d54a357e36004e02c95040dbdc0
+    verified_default_branch: main
+    verified_default_head: a350dc73ef9b4d3a801ffab2aed211a04d2120a9
     repository_status: active
     archived: false
     catalog_tier: core
@@ -185,6 +195,8 @@ subjects:
     pin_kind: tag
     pinned_ref: v5.0.1
     pinned_commit: 87ab1f6ced28f75ba73ca899dc759b019310944a
+    verified_default_branch: main
+    verified_default_head: 02e7a74ffd0b707aab73d203fe87bdc7c76afc8e
     repository_status: active
     archived: false
     catalog_tier: core
@@ -204,6 +216,8 @@ subjects:
     pin_kind: release
     pinned_ref: v1.0.1
     pinned_commit: fc0055dc4e0a316c3f83133267fbd6faaa770992
+    verified_default_branch: main
+    verified_default_head: b7ea9074c1cba482b30687fecdb5c8425fd6f619
     repository_status: active
     archived: false
     catalog_tier: core
@@ -227,6 +241,8 @@ subjects:
     pin_kind: release
     pinned_ref: 1.17.1
     pinned_commit: 8387590ace4a094de812b7847fc6a4c3a27cd52b
+    verified_default_branch: main
+    verified_default_head: f4602cc1fe8448486e185be74152699322ccec3f
     repository_status: active
     archived: false
     catalog_tier: core
@@ -260,6 +276,8 @@ subjects:
     pin_kind: release
     pinned_ref: 1.15.22
     pinned_commit: 7a01af27912c2b142d8bac70d1894343f8b91bd1
+    verified_default_branch: main
+    verified_default_head: 4ed2abc7bbf504a634d3b733f2a97e0fbe8d44ec
     repository_status: active
     archived: false
     catalog_tier: core
@@ -286,6 +304,8 @@ subjects:
     pin_kind: release
     pinned_ref: autogpt-platform-beta-v0.8.1
     pinned_commit: ead8f943f981ea650285eee3020c8ff0e7eda94d
+    verified_default_branch: master
+    verified_default_head: 5e84f064d3779acc49c86c51e2167ba8f660c93d
     repository_status: active
     archived: false
     catalog_tier: historical
@@ -313,6 +333,8 @@ subjects:
     pin_kind: release
     pinned_ref: flowise@3.1.4
     pinned_commit: a65f81bb43ef66d3ce734bf0dff4223ae8041c95
+    verified_default_branch: main
+    verified_default_head: 9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb
     repository_status: eol
     archived: true
     catalog_tier: historical
@@ -345,6 +367,8 @@ subjects:
     pin_kind: release
     pinned_ref: v2026.9.24
     pinned_commit: f97608f178d1ffeca59860195ab7da295f7c8e5f
+    verified_default_branch: main
+    verified_default_head: d0288be5b3330d2442e3907185b8e9d0958297bb
     repository_status: active
     archived: false
     catalog_tier: watch-only
@@ -361,6 +385,8 @@ subjects:
     pin_kind: release
     pinned_ref: v2026.9.6
     pinned_commit: eb377ac59e6c9fd6c7705028034812becf00271b
+    verified_default_branch: main
+    verified_default_head: 51ec96836f768c07c80e9d11af872014e7436d69
     repository_status: active
     archived: false
     catalog_tier: watch-only

@@ -20,6 +20,8 @@ export interface ProjectSubject {
   pin_kind: 'release' | 'tag' | 'commit'
   pinned_ref: string
   pinned_commit: string
+  verified_default_branch: string
+  verified_default_head: string
   repository_status: 'active' | 'archived' | 'eol'
   archived: boolean
   catalog_tier: 'core' | 'historical' | 'watch-only'

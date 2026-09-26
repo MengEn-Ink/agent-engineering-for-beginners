@@ -40,6 +40,8 @@ const validCatalog = {
     pin_kind: 'release',
     pinned_ref: 'v0.86.0',
     pinned_commit: sha,
+    verified_default_branch: 'main',
+    verified_default_head: 'c'.repeat(40),
     repository_status: 'active',
     archived: false,
     catalog_tier: 'core',
@@ -85,6 +87,20 @@ function writeProvenanceFixture(root: string, yaml: string, file = 'copied.svg')
 describe('project catalog schema', () => {
   it('accepts a valid catalog', () => {
     expect(validateProjectCatalog(validCatalog)).toEqual([])
+  })
+
+  it('requires a verified default branch and a full commit SHA for every subject', () => {
+    const missingBranch = structuredClone(validCatalog)
+    delete (missingBranch.subjects[0] as Partial<typeof missingBranch.subjects[0]>).verified_default_branch
+    expect(validateProjectCatalog(missingBranch)).toContain(
+      'Subject aider requires verified_default_branch',
+    )
+
+    const invalidHead = structuredClone(validCatalog)
+    invalidHead.subjects[0].verified_default_head = 'abc123'
+    expect(validateProjectCatalog(invalidHead)).toContain(
+      'Subject aider has invalid verified_default_head',
+    )
   })
 
   it('requires path and contribution licenses to use disjoint selectors', () => {
@@ -947,20 +963,35 @@ const expectedSubjectFacts = {
   'hermes-agent': ['NousResearch/hermes-agent', 'v2026.9.24', 'f97608f178d1ffeca59860195ab7da295f7c8e5f', 'active', false, 'watch-only', 'LICENSE:821556e6336796450ab852d375117b48a4887e71d255794fd6318d99982a5ab6'],
   openclaw: ['openclaw/openclaw', 'v2026.9.6', 'eb377ac59e6c9fd6c7705028034812becf00271b', 'active', false, 'watch-only', 'LICENSE:73571b25326281d369087f469842c02444fe39faaecebda4d82ed21ff3a1c29d|THIRD_PARTY_NOTICES.md:c1d1bbc550feee74853eba104e347341569cbbbe37a9f77659993ca0766277d5'],
 }
+const expectedDefaultHeads = {
+  'mcp-spec': ['main', 'ab3a39c13bd23be691c2760e1c6c5c15a64582e1'],
+  'mcp-python-sdk': ['main', 'f1b6589088534632fef92238ee9750951e3c0185'],
+  aider: ['main', '5dc9490bb35f9729ef2c95d00a19ccd30c26339c'],
+  'openhands-canvas': ['main', '47a10808d78561546a02555d0d2c7fa96fa96300'],
+  'openhands-sdk': ['main', 'a350dc73ef9b4d3a801ffab2aed211a04d2120a9'],
+  'swe-bench': ['main', '02e7a74ffd0b707aab73d203fe87bdc7c76afc8e'],
+  'tau2-bench': ['main', 'b7ea9074c1cba482b30687fecdb5c8425fd6f619'],
+  dify: ['main', 'f4602cc1fe8448486e185be74152699322ccec3f'],
+  crewai: ['main', '4ed2abc7bbf504a634d3b733f2a97e0fbe8d44ec'],
+  autogpt: ['master', '5e84f064d3779acc49c86c51e2167ba8f660c93d'],
+  flowise: ['main', '9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb'],
+  'hermes-agent': ['main', 'd0288be5b3330d2442e3907185b8e9d0958297bb'],
+  openclaw: ['main', '51ec96836f768c07c80e9d11af872014e7436d69'],
+}
 const expectedSubjectDigests = {
-  'mcp-spec': '492729a2b1d5e3690d4d4eb8ffb8a6f9089a8d3e21b7a284d49b6c9100788801',
-  'mcp-python-sdk': '21a74ad2294a17ef639fb92539bee85e299dd9cc71fea3e6db72d615da7db867',
-  aider: '5e52014bcd913a55fbbaed8dcdf44cff28bcf19d6d6af5b33264c0bb1caec388',
-  'openhands-canvas': '05fb380eafe106924eb9bb17f712d73b75c8b0c7e8d0cd10696cb830798c5ed4',
-  'openhands-sdk': 'a4ea3a15cab7a116af2beaf8715d8586d6fd5b472b1054adad949dc8aa222133',
-  'swe-bench': 'e356c00937817246deae70028e1d8068a2e9426e33f5d77e5b44e485adb3efaa',
-  'tau2-bench': '9ce153cca427f514e1d8b1b727931efa4ab2f8767fac1019117219ef17bb99d9',
-  dify: '8a8a754b9535e7028992c81d37216196c1c485f545a14e424d79fd7f7a99597f',
-  crewai: 'c5fb7c7ffe10ec064e027756413c9ea678fc148cd3a2c2b91e4248cbec3546ef',
-  autogpt: '33d5cf4286bca6be740451dc94daf9c77d633318e95f38760b980c5699d66bf4',
-  flowise: '4c2438da4a88f32b9f6089b64b35bbb383bf60d6b8a9258a5af1e2f5a3b360f5',
-  'hermes-agent': 'b1e7efda63633c8af2b155954e2a0145428c19795399837ac745f3681e0a66c4',
-  openclaw: '9eb64f3e66b9ca1449a291d1abcdd39493e1ab262467c7b86dceae6792bded62',
+  'mcp-spec': '911ce4822c6c2a9a08ea69979905bd0ab7d809fe125130dc5d64fba3826b0a4b',
+  'mcp-python-sdk': '44c444c5693d70a6303caa5c73199bb66f64b4cad976a3b7531636aa543e2bca',
+  aider: 'e05d3f6975d9073915a8c08023631b926b674e84e25f8f417f4ef01058e0f7b9',
+  'openhands-canvas': '20adab4e8847459cccb32b0e35c691be4d9ecf62beec281231eb7b461c1b35f6',
+  'openhands-sdk': '058bd4781231926efe7b2f5b0da0f625044db08ba9761bdf38b8254f53842560',
+  'swe-bench': '6a56d49723da575a8a3cc7d25f0c2518a55b9e123d4842e90a0b1750cb49bd81',
+  'tau2-bench': '595043b096692a7a1b7013dd97db7d3f13a502af5d4cb312b899f0cce4be7b80',
+  dify: '829d3713451b9ab8d4ee5006a08887e250abc6ef304497d28436e9b53c210d9b',
+  crewai: '4fbcdba367ecc5a34c26073f43a562cf69d479101cd7fe2e1fe23857abf3892a',
+  autogpt: '04b3fc7cd80081e19a46f0a53cb47d3c30b18ba31f5e61c7a51e67d9958ac134',
+  flowise: 'c5b6637a3dd85cfc3a936a45a72e4753f2662b2749a27c52c7b73909f50cc90e',
+  'hermes-agent': 'a66ccc1c3e28d2f188954922f48ad62c53783cf5bac110000ffcd8771445ee5d',
+  openclaw: '4bbbb022c40f27ede7f2b9bea9faecfcfd9154728fe21ed556775c41a97d5fa3',
 }
 const expectedChainDigests = {
   'mcp-tool-call': '54b46cce64ce2559ae2656a61335d2b92df9df99fdf87e1b7215efe76d4a1ab4',
@@ -987,7 +1018,7 @@ describe('real project catalog', () => {
     expect(Object.keys(catalog)).toEqual(['schema_version', 'defaults', 'pages', 'subjects', 'chains'])
     expect(catalog.schema_version).toBe(1)
     expect(catalog.defaults).toEqual({ verified_at: '2026-09-26', review_by: '2026-10-26' })
-    expect(digest(catalog)).toBe('4bcf91bbc4fdac68aee5f5d531a78025ee8218ebda7125c99839d36da4e49787')
+    expect(digest(catalog)).toBe('5af94d203b278b9e91a1900b0472494e394decf2e25f55270245023c19b21194')
     expect(catalog.pages.map((page: { page_item_id: string }) => page.page_item_id)).toEqual(pageIds)
     expect(catalog.subjects.map((subject: { id: string }) => subject.id)).toEqual(subjectIds)
     expect(Object.fromEntries(catalog.subjects.map((subject: any) => [subject.id, [
@@ -995,6 +1026,10 @@ describe('real project catalog', () => {
       subject.repository_status, subject.archived, subject.catalog_tier,
       subject.license_sources.map((source: { path: string; sha256: string }) => `${source.path}:${source.sha256}`).join('|'),
     ]]))).toEqual(expectedSubjectFacts)
+    expect(Object.fromEntries(catalog.subjects.map((subject: any) => [subject.id, [
+      subject.verified_default_branch,
+      subject.verified_default_head,
+    ]]))).toEqual(expectedDefaultHeads)
     expect(Object.fromEntries(catalog.subjects.map((subject: { id: string }) => [subject.id, digest(subject)])))
       .toEqual(expectedSubjectDigests)
     expect(Object.fromEntries(catalog.subjects.map((subject: { id: string; entrypoints: Array<{ path: string; symbols: string[]; responsibility: string }> }) => [subject.id, subject.entrypoints.map((entry) => entry.path)])))
