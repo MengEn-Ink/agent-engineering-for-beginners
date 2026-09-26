@@ -545,6 +545,20 @@ describe('project presentation primitives', () => {
     )
   })
 
+  it('bounds printed source URLs without creating pagination overflow', () => {
+    const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
+    const print = style.slice(style.lastIndexOf('@media print'))
+    for (const selector of [
+      String.raw`\.project-source-links\s+a\[href\]`,
+      String.raw`\.project-source-links\s+a\[href\]::after`,
+    ]) {
+      expect(print).toMatch(new RegExp(
+        `${selector}\\s*\\{(?=[^}]*display:\\s*block)(?=[^}]*max-width:\\s*100%)(?=[^}]*overflow-wrap:\\s*anywhere)(?=[^}]*white-space:\\s*normal)[^}]*\\}`,
+        'su',
+      ))
+    }
+  })
+
   it('enforces the scoped Vue and TypeScript check during production builds', () => {
     const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
     const tsconfig = JSON.parse(readFileSync('tsconfig.projects.json', 'utf8'))

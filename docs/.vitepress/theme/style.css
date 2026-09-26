@@ -2303,8 +2303,18 @@ summary {
     grid-template-columns: 1fr;
   }
 
-  .project-source-links a[href]::after {
+  .project-source-links a[href] {
+    display: block;
+    max-width: 100%;
     overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .project-source-links a[href]::after {
+    display: block;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    white-space: normal;
     content: " (" attr(href) ")";
   }
 }
