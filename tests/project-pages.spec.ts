@@ -495,6 +495,7 @@ describe('project presentation primitives', () => {
   it('parses responsive project rules by media scope and effective cascade', async () => {
     const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
     expect(pkg.devDependencies.postcss).toBe('8.5.28')
+    expect(pkg.devDependencies['postcss-selector-parser']).toBe('7.1.6')
 
     const sourceComponent = readFileSync(
       'docs/.vitepress/theme/components/ProjectSourceLinks.vue',
@@ -507,6 +508,8 @@ describe('project presentation primitives', () => {
       .toContain('class="project-license-print-url"')
 
     const { default: postcss } = await import('postcss')
+    const { default: selectorParser } = await import('postcss-selector-parser')
+    expect(selectorParser).toBeTypeOf('function')
     const root = postcss.parse(readFileSync('docs/.vitepress/theme/style.css', 'utf8'))
     const rules: any[] = []
     root.walkRules((rule) => rules.push(rule))
@@ -561,11 +564,11 @@ describe('project presentation primitives', () => {
     }
 
     expectEffectiveRule(['.project-meta > ul > li'], 'root', {
-      'grid-template-columns': { value: 'minmax(0, 1fr)' },
-      'min-width': { value: '0' },
+      'grid-template-columns': { value: 'minmax(0, 1fr)', important: true },
+      'min-width': { value: '0', important: true },
     })
     expectEffectiveRule(['.project-meta > ul > li > *'], 'root', {
-      'min-width': { value: '0' },
+      'min-width': { value: '0', important: true },
     })
     expectEffectiveRule(['.project-source-links > li'], 'root', {
       'grid-template-columns': { value: 'minmax(0, 1fr)' },
@@ -613,6 +616,275 @@ describe('project presentation primitives', () => {
       'overflow-wrap': { value: 'anywhere', important: true },
       'white-space': { value: 'normal', important: true },
     })
+
+    const mediaAncestors = (rule: any) => {
+      const ancestors: string[] = []
+      let parent = rule.parent
+      while (parent && parent !== root) {
+        if (parent.type === 'atrule' && parent.name === 'media') ancestors.unshift(parent.params)
+        parent = parent.parent
+      }
+      return ancestors
+    }
+    const mediaBranches = (params: string) => postcss.list.comma(params)
+      .map((branch) => branch.trim().toLowerCase())
+    const branchAllowsPrint = (branch: string) => {
+      if (/\bnot\s+print\b/u.test(branch)) return false
+      if (/\b(?:only\s+)?screen\b/u.test(branch) && !/\bnot\s+screen\b/u.test(branch)) return false
+      return true
+    }
+    const branchAllowsMobile = (branch: string, width = 390) => {
+      if (/\bnot\s+screen\b/u.test(branch)) return false
+      if (/\bprint\b/u.test(branch) && !/\bnot\s+print\b/u.test(branch)) return false
+      const min = [...branch.matchAll(/min-width\s*:\s*(\d+)px/gu)].map((match) => Number(match[1]))
+      const max = [...branch.matchAll(/max-width\s*:\s*(\d+)px/gu)].map((match) => Number(match[1]))
+      return min.every((value) => width >= value) && max.every((value) => width <= value)
+    }
+    const appliesToPrint = (rule: any) => mediaAncestors(rule)
+      .every((params) => mediaBranches(params).some(branchAllowsPrint))
+    const appliesToMobile = (rule: any) => mediaAncestors(rule)
+      .every((params) => mediaBranches(params).some((branch) => branchAllowsMobile(branch)))
+    const selectorAnalysis = (selector: string) => {
+      const selectorRoot = selectorParser().astSync(selector)
+      const selectorNode: any = selectorRoot.nodes[0]
+      const specificity = [0, 0, 0]
+      const classes = new Set<string>()
+      const tags = new Set<string>()
+      const pseudos = new Set<string>()
+      selectorNode.walk((node: any) => {
+        if (node.type === 'id') specificity[0] += 1
+        else if (node.type === 'class' || node.type === 'attribute') specificity[1] += 1
+        else if (node.type === 'pseudo') {
+          if (node.value.startsWith('::')) specificity[2] += 1
+          else specificity[1] += 1
+        } else if (node.type === 'tag') specificity[2] += 1
+        if (node.type === 'class') classes.add(node.value)
+        if (node.type === 'tag') tags.add(node.value)
+        if (node.type === 'pseudo') pseudos.add(node.value)
+      })
+      const nodes = selectorNode.nodes as any[]
+      const lastCombinator = nodes.reduce(
+        (index, node, candidate) => node.type === 'combinator' ? candidate : index,
+        -1,
+      )
+      const lastCompound = nodes.slice(lastCombinator + 1)
+      return {
+        classes,
+        lastHasLi: lastCompound.some((node) => node.type === 'tag' && node.value === 'li'),
+        pseudos,
+        specificity,
+        tags,
+      }
+    }
+    const compareSpecificity = (left: number[], right: number[]) => {
+      for (let index = 0; index < 3; index += 1) {
+        if (left[index] !== right[index]) return left[index] - right[index]
+      }
+      return 0
+    }
+    const criticalCascadeViolations = (css: string) => {
+      const fixtureRoot = postcss.parse(css)
+      const fixtureRules: any[] = []
+      fixtureRoot.walkRules((rule) => fixtureRules.push(rule))
+      const fixtureSelectors = (rule: any) => postcss.list.comma(rule.selector)
+        .map((value) => value.trim())
+      const fixtureDeclarations = (rule: any) => rule.nodes
+        .filter((node: any) => node.type === 'decl')
+      const fixtureMediaAncestors = (rule: any) => {
+        const ancestors: string[] = []
+        let parent = rule.parent
+        while (parent && parent !== fixtureRoot) {
+          if (parent.type === 'atrule' && parent.name === 'media') ancestors.unshift(parent.params)
+          parent = parent.parent
+        }
+        return ancestors
+      }
+      const fixtureAppliesToPrint = (rule: any) => fixtureMediaAncestors(rule)
+        .every((params) => mediaBranches(params).some(branchAllowsPrint))
+      const fixtureAppliesToMobile = (rule: any) => fixtureMediaAncestors(rule)
+        .every((params) => mediaBranches(params).some((branch) => branchAllowsMobile(branch)))
+      const exactRules = (selector: string, media: 'root' | 'print') => fixtureRules.filter((rule) => {
+        const exactSelector = fixtureSelectors(rule).length === 1 && fixtureSelectors(rule)[0] === selector
+        if (!exactSelector) return false
+        const ancestors = fixtureMediaAncestors(rule).map((value) => value.replace(/\s+/gu, '').toLowerCase())
+        return media === 'root' ? ancestors.length === 0 : ancestors.length === 1 && ancestors[0] === 'print'
+      })
+      const errors: string[] = []
+      const metaRules = exactRules('.project-meta > ul > li', 'root')
+      const printBaseRules = exactRules('.project-source-print-url', 'root')
+      const printRules = exactRules('.project-source-print-url', 'print')
+      if (metaRules.length !== 1) errors.push('missing approved mobile meta rule')
+      if (printBaseRules.length !== 1) errors.push('missing approved screen-hidden print URL rule')
+      if (printRules.length !== 1) errors.push('missing approved print URL rule')
+
+      const metaRule = metaRules[0]
+      const printRule = printRules[0]
+      const metaIndex = fixtureRules.indexOf(metaRule)
+      const printIndex = fixtureRules.indexOf(printRule)
+      const metaSpecificity = selectorAnalysis('.project-meta > ul > li').specificity
+      const printSpecificity = selectorAnalysis('.project-source-print-url').specificity
+      const metaExpected: Record<string, string> = {
+        'grid-template-columns': 'minmax(0, 1fr)',
+        'min-width': '0',
+      }
+      const printExpected: Record<string, string> = {
+        display: 'block',
+        'max-width': '100%',
+        'overflow-wrap': 'anywhere',
+        'white-space': 'normal',
+      }
+      if (metaRule) {
+        const actual = Object.fromEntries(fixtureDeclarations(metaRule).map((node: any) => [node.prop, node]))
+        for (const [property, value] of Object.entries(metaExpected)) {
+          if (actual[property]?.value !== value || !actual[property]?.important) {
+            errors.push(`approved mobile meta ${property} must be ${value} !important`)
+          }
+        }
+      }
+      if (printRule) {
+        const actual = Object.fromEntries(fixtureDeclarations(printRule).map((node: any) => [node.prop, node]))
+        for (const [property, value] of Object.entries(printExpected)) {
+          if (actual[property]?.value !== value || !actual[property]?.important) {
+            errors.push(`approved print URL ${property} must be ${value} !important`)
+          }
+        }
+      }
+
+      fixtureRules.forEach((rule, ruleIndex) => {
+        fixtureSelectors(rule).forEach((selector) => {
+          const analysis = selectorAnalysis(selector)
+          const declarationByProperty = Object.fromEntries(
+            fixtureDeclarations(rule).map((node: any) => [node.prop, node]),
+          )
+          const targetsMetaRow = analysis.classes.has('project-meta') && analysis.lastHasLi
+          if (targetsMetaRow && fixtureAppliesToMobile(rule)) {
+            for (const property of Object.keys(metaExpected)) {
+              const declaration = declarationByProperty[property]
+              if (!declaration || rule === metaRule) continue
+              if (declaration.important) {
+                errors.push(`competing mobile !important: ${selector} ${property}`)
+              } else if (metaRule && ruleIndex > metaIndex
+                && compareSpecificity(analysis.specificity, metaSpecificity) >= 0) {
+                errors.push(`later mobile override: ${selector} ${property}`)
+              }
+            }
+          }
+
+          if (analysis.classes.has('project-source-print-url') && fixtureAppliesToPrint(rule)) {
+            for (const property of Object.keys(printExpected)) {
+              const declaration = declarationByProperty[property]
+              if (!declaration || rule === printRule) continue
+              const approvedScreenDefault = rule === printBaseRules[0]
+                && property === 'display'
+                && declaration.value === 'none'
+                && !declaration.important
+              if (approvedScreenDefault) continue
+              if (declaration.important) {
+                errors.push(`competing print !important: ${selector} ${property}`)
+              } else if (printRule && ruleIndex > printIndex
+                && compareSpecificity(analysis.specificity, printSpecificity) >= 0) {
+                errors.push(`later print override: ${selector} ${property}`)
+              }
+            }
+          }
+
+          const hasLinkPseudo = analysis.tags.has('a')
+            && [...analysis.pseudos].some((pseudo) => pseudo.startsWith('::'))
+          if (hasLinkPseudo && fixtureDeclarations(rule).some((node: any) =>
+            node.prop === 'content' && /attr\(href\)/u.test(node.value))) {
+            errors.push(`link pseudo attr(href): ${selector}`)
+          }
+        })
+      })
+      return errors
+    }
+
+    const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
+    expect(criticalCascadeViolations(style)).toEqual([])
+    const legacyApprovedRulesRemain = (css: string) => {
+      const fixtureRoot = postcss.parse(css)
+      let meta = 0
+      let printUrl = 0
+      fixtureRoot.walkRules((rule) => {
+        const actual = postcss.list.comma(rule.selector).map((value) => value.trim())
+        if (actual.length === 1 && actual[0] === '.project-meta > ul > li' && rule.parent === fixtureRoot) meta += 1
+        if (actual.length === 1 && actual[0] === '.project-source-print-url'
+          && rule.parent?.type === 'atrule' && rule.parent.params.replace(/\s+/gu, '') === 'print') printUrl += 1
+      })
+      return meta === 1 && printUrl === 1
+    }
+    const ruleWithDeclarations = (
+      selector: string,
+      values: Array<[string, string, boolean?]>,
+    ) => {
+      const rule = postcss.rule({ selector })
+      for (const [prop, value, important = false] of values) {
+        rule.append(postcss.decl({ prop, value, important }))
+      }
+      return rule
+    }
+
+    const earlierPrint = root.clone()
+    const earlierPrintMedia = postcss.atRule({ name: 'media', params: 'print' })
+    earlierPrintMedia.append(ruleWithDeclarations(
+      '.project-source-links .project-source-print-url',
+      [['display', 'none', true]],
+    ))
+    earlierPrint.prepend(earlierPrintMedia)
+    expect(legacyApprovedRulesRemain(earlierPrint.toString())).toBe(true)
+    expect(criticalCascadeViolations(earlierPrint.toString()))
+      .toContain('competing print !important: .project-source-links .project-source-print-url display')
+
+    const laterSame = root.clone()
+    const laterPrintMedia = postcss.atRule({ name: 'media', params: 'print' })
+    laterPrintMedia.append(ruleWithDeclarations(
+      '.project-source-print-url',
+      [['display', 'none', true]],
+    ))
+    laterSame.append(laterPrintMedia)
+    expect(criticalCascadeViolations(laterSame.toString()))
+      .toContain('missing approved print URL rule')
+
+    const nestedNotScreen = root.clone()
+    const notScreenMedia = postcss.atRule({ name: 'media', params: 'not screen' })
+    const nestedColorMedia = postcss.atRule({ name: 'media', params: '(color)' })
+    nestedColorMedia.append(ruleWithDeclarations(
+      '.project-source-links .project-source-print-url',
+      [['white-space', 'nowrap', true]],
+    ))
+    notScreenMedia.append(nestedColorMedia)
+    nestedNotScreen.prepend(notScreenMedia)
+    expect(legacyApprovedRulesRemain(nestedNotScreen.toString())).toBe(true)
+    expect(criticalCascadeViolations(nestedNotScreen.toString()))
+      .toContain('competing print !important: .project-source-links .project-source-print-url white-space')
+
+    const mobileOverlap = root.clone()
+    const narrowMedia = postcss.atRule({ name: 'media', params: '(max-width: 390px)' })
+    narrowMedia.append(ruleWithDeclarations(
+      '.project-meta > ul > li.is-tight',
+      [['grid-template-columns', 'max-content'], ['min-width', 'max-content']],
+    ))
+    mobileOverlap.append(narrowMedia)
+    expect(legacyApprovedRulesRemain(mobileOverlap.toString())).toBe(true)
+    expect(criticalCascadeViolations(mobileOverlap.toString())).toEqual(expect.arrayContaining([
+      'later mobile override: .project-meta > ul > li.is-tight grid-template-columns',
+      'later mobile override: .project-meta > ul > li.is-tight min-width',
+    ]))
+
+    const commentAndWrongMedia = root.clone()
+    const commentRules: any[] = []
+    commentAndWrongMedia.walkRules((rule) => {
+      const actual = postcss.list.comma(rule.selector).map((value) => value.trim())
+      if (actual.length === 1 && actual[0] === '.project-meta > ul > li'
+        && rule.parent === commentAndWrongMedia) commentRules.push(rule)
+    })
+    const removedMeta = commentRules[0]
+    const wrongMedia = postcss.atRule({ name: 'media', params: '(min-width: 701px)' })
+    wrongMedia.append(removedMeta.clone())
+    removedMeta.replaceWith(postcss.comment({ text: removedMeta.toString() }))
+    commentAndWrongMedia.append(wrongMedia)
+    expect(criticalCascadeViolations(commentAndWrongMedia.toString()))
+      .toContain('missing approved mobile meta rule')
 
     const allowedProjectWrapping = new Set([
       '.project-meta code',

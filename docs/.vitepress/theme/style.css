@@ -2096,12 +2096,12 @@ summary {
 }
 
 .project-meta > ul > li {
-  grid-template-columns: minmax(0, 1fr);
-  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) !important;
+  min-width: 0 !important;
 }
 
 .project-meta > ul > li > * {
-  min-width: 0;
+  min-width: 0 !important;
 }
 
 .project-source-links > li {
