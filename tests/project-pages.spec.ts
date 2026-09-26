@@ -510,6 +510,13 @@ describe('project presentation primitives', () => {
     )
   })
 
+  it('constrains project metadata rows to the mobile content width', () => {
+    const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
+    expect(style).toMatch(
+      /\.project-meta\s*>\s*ul\s*>\s*li\s*\{(?=[^}]*min-width:\s*0)(?=[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\))[^}]*\}/su,
+    )
+  })
+
   it('constrains call-chain rows to the mobile content width', () => {
     const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
     expect(style).toMatch(
@@ -517,10 +524,24 @@ describe('project presentation primitives', () => {
     )
   })
 
-  it('wraps full fixed license URLs in the print fallback', () => {
+  it('targets only fixed license URL rows for aggressive print wrapping', () => {
+    const meta = readFileSync('docs/.vitepress/theme/components/ProjectMeta.vue', 'utf8')
     const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
+    expect(meta).toContain('class="project-license-print-url"')
     expect(style).toMatch(
-      /\.project-license-print\s+p\s*\{[^}]*overflow-wrap:\s*anywhere[^}]*word-break:\s*break-all/su,
+      /\.project-license-print-url\s*\{[^}]*overflow-wrap:\s*anywhere/su,
+    )
+    expect(style).not.toMatch(/\.project-license-print(?:-url|\s+p)\s*\{[^}]*word-break:/su)
+  })
+
+  it('uses paginatable block flow for project lists when printing', () => {
+    const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
+    const print = style.slice(style.lastIndexOf('@media print'))
+    expect(print).toMatch(
+      /\.project-meta\s*>\s*ul,\s*\.project-source-links,\s*\.project-call-chain\s*\{[^}]*display:\s*block/su,
+    )
+    expect(print).toMatch(
+      /\.project-meta\s*>\s*ul\s*>\s*li,\s*\.project-source-links\s*>\s*li,\s*\.project-call-chain\s+li\s*\{[^}]*display:\s*block[^}]*break-inside:\s*avoid/su,
     )
   })
 

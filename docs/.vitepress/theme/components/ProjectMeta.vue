@@ -52,7 +52,11 @@ const statusLabel = (status: string) => statusLabels[status] ?? status
               {{ scope.basis }} · {{ scope.expression }} · {{ scope.path_or_glob ?? scope.selector }} · {{ scope.scope }} — {{ scope.note }}
             </li>
           </ul>
-          <p v-for="source in subject.license_sources" :key="`print-license-${source.path}`">
+          <p
+            v-for="source in subject.license_sources"
+            :key="`print-license-${source.path}`"
+            class="project-license-print-url"
+          >
             许可证原文：{{ projectSourceUrl(subject.id, source.path) }}
           </p>
         </div>

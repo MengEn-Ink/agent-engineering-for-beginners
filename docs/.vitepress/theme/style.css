@@ -2095,6 +2095,15 @@ summary {
   border-top: 1px solid var(--reading-rule);
 }
 
+.project-meta > ul > li {
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+
+.project-meta > ul > li > * {
+  min-width: 0;
+}
+
 .project-source-links > li {
   grid-template-columns: minmax(0, 1fr);
 }
@@ -2186,9 +2195,8 @@ summary {
   display: none;
 }
 
-.project-license-print p {
+.project-license-print-url {
   overflow-wrap: anywhere;
-  word-break: break-all;
 }
 
 .project-meta summary {
@@ -2262,6 +2270,25 @@ summary {
 
   .project-meta details {
     display: none !important;
+  }
+
+  .project-meta > ul,
+  .project-source-links,
+  .project-call-chain {
+    display: block;
+  }
+
+  .project-meta > ul > li,
+  .project-source-links > li,
+  .project-call-chain li {
+    display: block;
+    break-inside: avoid;
+  }
+
+  .project-meta > ul > li > *,
+  .project-source-links > li > *,
+  .project-call-chain li > * {
+    display: block;
   }
 
   .project-license-print {
