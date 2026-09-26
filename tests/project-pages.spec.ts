@@ -1,9 +1,16 @@
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { contentItems, getContentItem } from '../docs/.vitepress/theme/data/contentRegistry'
+import { interviewQuestions } from '../docs/.vitepress/theme/data/interviewQuestions'
 import { createProjectCatalogLookup } from '../docs/.vitepress/theme/data/projectCatalogCore'
 import type { ProjectCatalog } from '../docs/.vitepress/theme/data/projectCatalogTypes'
-import { loadProjectCatalog } from '../scripts/project-catalog.mjs'
+import {
+  loadProjectCatalog,
+  validateProjectCatalogIntegration,
+} from '../scripts/project-catalog.mjs'
+import { validateBook } from '../scripts/validate-content.mjs'
 
 const projectCatalog = loadProjectCatalog(resolve('sources/project-index.yml')) as ProjectCatalog
 const {
@@ -19,6 +26,17 @@ const requiredProjectHeadings = [
   '高频面试点', '升级复核', '来源与归因',
 ]
 
+const projectRouteRecords = [
+  ['projects-index', '/projects/', '开源项目拆解', 'project'],
+  ['project-mcp-python-sdk', '/projects/mcp-python-sdk', 'MCP 规范与 Python SDK', 'project'],
+  ['project-aider', '/projects/aider', 'Aider 源码拆解', 'project'],
+  ['project-openhands', '/projects/openhands', 'OpenHands 源码拆解', 'project'],
+  ['project-agent-benchmarks', '/projects/agent-benchmarks', 'Agent 评测基准', 'project'],
+  ['project-dify', '/projects/dify', 'Dify 源码拆解', 'project'],
+  ['project-crewai', '/projects/crewai', 'CrewAI 源码拆解', 'project'],
+  ['project-history-autogpt-flowise', '/projects/history-autogpt-flowise', 'AutoGPT 与 Flowise：历史反例', 'project'],
+] as const
+
 function expectCoreProjectPage(path: string, projectId: string) {
   const text = readFileSync(path, 'utf8')
   const h2s = Array.from(text.matchAll(/^## (.+)$/gmu), (match) => match[1])
@@ -29,6 +47,76 @@ function expectCoreProjectPage(path: string, projectId: string) {
   expect(text).not.toMatch(/npm install|pip install|docker run|OPENAI_API_KEY|ANTHROPIC_API_KEY/u)
   expect(text).not.toMatch(/!\[[^\]]*\]\(https?:\/\//u)
 }
+
+describe('project routes and catalog overview', () => {
+  it('adds exactly eight project routes without changing the existing 31', () => {
+    const actual = projectRouteRecords.map(([id]) => getContentItem(id))
+    expect(actual.map(({ id, route, title, kind }) => [id, route, title, kind])).toEqual(
+      projectRouteRecords,
+    )
+    expect(contentItems).toHaveLength(39)
+    expect(projectCatalog.pages.map((page) => page.page_item_id))
+      .toEqual(projectRouteRecords.map(([id]) => id))
+    for (const page of projectCatalog.pages) {
+      expect(getContentItem(page.page_item_id).kind).toBe('project')
+    }
+  })
+
+  it('cross-validates real page and interview IDs instead of a second runtime allowlist', () => {
+    expect(validateProjectCatalogIntegration(projectCatalog, {
+      contentItems,
+      interviewQuestions,
+    })).toEqual([])
+  })
+
+  it('publishes the overview and keeps watch-only items external-only', () => {
+    const page = readFileSync('docs/projects/index.md', 'utf8')
+    expect(page).toContain('<ProjectOverview />')
+    expect(page).toContain('不是安装清单')
+    const component = readFileSync('docs/.vitepress/theme/components/ProjectOverview.vue', 'utf8')
+    expect(component).toContain("catalog_tier === 'watch-only'")
+    expect(component).not.toContain('getContentItem(subject.id)')
+  })
+
+  it('publishes the complete historical page with distinct factual boundaries', () => {
+    expectCoreProjectPage(
+      'docs/projects/history-autogpt-flowise.md',
+      'project-history-autogpt-flowise',
+    )
+    const page = readFileSync('docs/projects/history-autogpt-flowise.md', 'utf8')
+    expect(page).toContain('AutoGPT 上游仍活跃')
+    expect(page).toContain('Flowise 已归档并于 2026-08-31 EOL')
+    expect(page).toContain('PolyForm Shield')
+    expect(page).toContain('商业许可')
+    for (const id of ['IQ-02-B', 'IQ-07-C', 'IQ-10-A']) expect(page).toContain(id)
+    expect(page).not.toMatch(/推荐安装|生产级首选/u)
+  })
+
+  it('reports stable validation errors for malformed TypeScript integration sources', () => {
+    const fixtureRoot = mkdtempSync(join(tmpdir(), 'project-integration-'))
+    const dataRoot = join(fixtureRoot, 'docs/.vitepress/theme/data')
+    mkdirSync(dataRoot, { recursive: true })
+    const contentPath = join(dataRoot, 'contentRegistry.ts')
+    const interviewPath = join(dataRoot, 'interviewQuestions.ts')
+    writeFileSync(interviewPath, "export const interviewQuestions = [question('iq-02-b')]\n")
+
+    try {
+      writeFileSync(contentPath, 'export const contentItems = [\n')
+      expect(validateBook(fixtureRoot, { projectCatalogPath: resolve('sources/project-index.yml') }))
+        .toContain('contentItems TypeScript has parse diagnostics')
+
+      writeFileSync(contentPath, 'export const otherItems = []\n')
+      expect(validateBook(fixtureRoot, { projectCatalogPath: resolve('sources/project-index.yml') }))
+        .toContain('contentItems TypeScript is missing exported array contentItems')
+
+      writeFileSync(contentPath, "const dynamicId = 'projects-index'\nexport const contentItems = [{ id: dynamicId }]\n")
+      expect(validateBook(fixtureRoot, { projectCatalogPath: resolve('sources/project-index.yml') }))
+        .toContain('contentItems entry 0 requires a string-literal id')
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true })
+    }
+  })
+})
 
 describe('project presentation primitives', () => {
   it('loads the validated project catalog and fails closed on inherited IDs', () => {

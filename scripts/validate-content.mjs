@@ -1,8 +1,13 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { basename, extname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import ts from 'typescript'
 import { parse } from 'yaml'
-import { validateProjectCatalogFile } from './project-catalog.mjs'
+import {
+  loadProjectCatalog,
+  validateProjectCatalogFile,
+  validateProjectCatalogIntegration,
+} from './project-catalog.mjs'
 
 const forbiddenRules = [
   { label: '本机绝对路径', pattern: /\/Users\//g },
@@ -196,12 +201,90 @@ export function validateSourceRegistry(sourcePath) {
   return errors
 }
 
+function exportedArray(sourceFile, exportName) {
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement)
+      || !statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) continue
+    for (const declaration of statement.declarationList.declarations) {
+      if (ts.isIdentifier(declaration.name) && declaration.name.text === exportName
+        && declaration.initializer && ts.isArrayLiteralExpression(declaration.initializer)) {
+        return declaration.initializer
+      }
+    }
+  }
+  return null
+}
+
+function literalIdFromEntry(entry, exportName) {
+  if (exportName === 'contentItems' && ts.isObjectLiteralExpression(entry)) {
+    const property = entry.properties.find((candidate) =>
+      ts.isPropertyAssignment(candidate)
+      && ((ts.isIdentifier(candidate.name) && candidate.name.text === 'id')
+        || (ts.isStringLiteral(candidate.name) && candidate.name.text === 'id')),
+    )
+    return property && ts.isStringLiteral(property.initializer) ? property.initializer.text : null
+  }
+  if (exportName === 'interviewQuestions' && ts.isCallExpression(entry)) {
+    const [firstArgument] = entry.arguments
+    return firstArgument && ts.isStringLiteral(firstArgument) ? firstArgument.text : null
+  }
+  return null
+}
+
+function loadTypeScriptIdObjects(path, exportName) {
+  if (!existsSync(path)) return { items: [], errors: [`${exportName} TypeScript file is missing`] }
+  let sourceText
+  try {
+    sourceText = readFileSync(path, 'utf8')
+  } catch {
+    return { items: [], errors: [`${exportName} TypeScript file cannot be read`] }
+  }
+  const sourceFile = ts.createSourceFile(path, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
+  if (sourceFile.parseDiagnostics.length > 0) {
+    return { items: [], errors: [`${exportName} TypeScript has parse diagnostics`] }
+  }
+  const array = exportedArray(sourceFile, exportName)
+  if (!array) {
+    return { items: [], errors: [`${exportName} TypeScript is missing exported array ${exportName}`] }
+  }
+  const items = []
+  const errors = []
+  for (const [index, entry] of array.elements.entries()) {
+    const id = literalIdFromEntry(entry, exportName)
+    if (id === null) errors.push(`${exportName} entry ${index} requires a string-literal id`)
+    else items.push({ id })
+  }
+  return { items, errors }
+}
+
 export function validateBook(root = process.cwd(), options = {}) {
   const sourcePath = join(root, 'sources/source-index.yml')
   const projectCatalogPath = resolve(root, options.projectCatalogPath ?? 'sources/project-index.yml')
+  const projectCatalogErrors = validateProjectCatalogFile(projectCatalogPath)
+  const contentRegistry = loadTypeScriptIdObjects(
+    resolve(root, 'docs/.vitepress/theme/data/contentRegistry.ts'),
+    'contentItems',
+  )
+  const interviewQuestionRegistry = loadTypeScriptIdObjects(
+    resolve(root, 'docs/.vitepress/theme/data/interviewQuestions.ts'),
+    'interviewQuestions',
+  )
+  const integrationSourceErrors = [
+    ...contentRegistry.errors,
+    ...interviewQuestionRegistry.errors,
+  ]
+  const projectIntegrationErrors = projectCatalogErrors.length === 0
+    && integrationSourceErrors.length === 0
+    ? validateProjectCatalogIntegration(loadProjectCatalog(projectCatalogPath), {
+        contentItems: contentRegistry.items,
+        interviewQuestions: interviewQuestionRegistry.items,
+      })
+    : []
   return [
     ...validateSourceRegistry(sourcePath),
-    ...validateProjectCatalogFile(projectCatalogPath),
+    ...projectCatalogErrors,
+    ...integrationSourceErrors,
+    ...projectIntegrationErrors,
     ...validatePublishedFiles(root),
   ]
 }
