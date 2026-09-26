@@ -171,6 +171,8 @@ const validCatalog = {
     pin_kind: 'release',
     pinned_ref: 'v0.86.0',
     pinned_commit: sha,
+    verified_default_branch: 'main',
+    verified_default_head: 'c'.repeat(40),
     repository_status: 'active',
     archived: false,
     catalog_tier: 'core',
@@ -199,6 +201,20 @@ const validCatalog = {
 describe('project catalog schema', () => {
   it('accepts a valid catalog', () => {
     expect(validateProjectCatalog(validCatalog)).toEqual([])
+  })
+
+  it('requires a verified default branch and a full commit SHA for every subject', () => {
+    const missingBranch = structuredClone(validCatalog)
+    delete (missingBranch.subjects[0] as Partial<typeof missingBranch.subjects[0]>).verified_default_branch
+    expect(validateProjectCatalog(missingBranch)).toContain(
+      'Subject aider requires verified_default_branch',
+    )
+
+    const invalidHead = structuredClone(validCatalog)
+    invalidHead.subjects[0].verified_default_head = 'abc123'
+    expect(validateProjectCatalog(invalidHead)).toContain(
+      'Subject aider has invalid verified_default_head',
+    )
   })
 
   it('requires path and contribution licenses to use disjoint selectors', () => {
@@ -251,16 +267,25 @@ describe('project catalog schema', () => {
       'Chain aider-chain step entry references an undeclared entrypoint: aider/missing.py',
     ]))
     expect(validateProjectCatalogIntegration(validCatalog, {
-      contentRegistryText: "export const contentItems = [{ id: 'other' }]",
-      interviewQuestionsText: "question('iq-other', 1, 'x', '工程', '基础', 'x', 'x', [], [], 'x')",
+      contentItems: [{ id: 'other' }],
+      interviewQuestions: [{ id: 'iq-other' }],
     })).toEqual([
       'Project page is missing from contentRegistry: project-aider',
       'Project page project-aider references unknown interview question: iq-13-a',
     ])
     expect(validateProjectCatalogIntegration(validCatalog, {
-      contentRegistryText: "export const contentItems = [{ id: 'project-aider' }]",
-      interviewQuestionsText: "question('iq-13-a', 13, 'x', '工程', '基础', 'x', 'x', [], [], 'x')",
+      contentItems: [{ id: 'project-aider' }],
+      interviewQuestions: [{ id: 'iq-13-a' }],
     })).toEqual([])
+    expect(validateProjectCatalogIntegration(validCatalog, {
+      contentItems: [{ id: 'other' }],
+      interviewQuestions: [{ id: 'iq-other' }],
+      contentRegistryText: "// { id: 'project-aider' }",
+      interviewQuestionsText: "const unrelated = \"question('iq-13-a', only, in, a, string)\"",
+    } as never)).toEqual([
+      'Project page is missing from contentRegistry: project-aider',
+      'Project page project-aider references unknown interview question: iq-13-a',
+    ])
   })
 
   it('requires complete chains, unique steps, and page-owned subjects', () => {
@@ -351,6 +376,10 @@ function nonEmpty(value) {
   return typeof value === 'string' && value.trim() !== ''
 }
 
+function isRecord(value) {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 function validDate(value) {
   if (!nonEmpty(value) || !datePattern.test(value)) return false
   const parsed = new Date(`${value}T00:00:00Z`)
@@ -424,6 +453,12 @@ export function validateProjectCatalog(data) {
     }
     if (!pinKinds.has(subject.pin_kind)) errors.push(`Subject ${subject.id} has invalid pin_kind`)
     if (!shaPattern.test(subject.pinned_commit ?? '')) errors.push(`Subject ${subject.id} has invalid pinned_commit`)
+    if (!nonEmpty(subject.verified_default_branch)) {
+      errors.push(`Subject ${subject.id} requires verified_default_branch`)
+    }
+    if (!shaPattern.test(subject.verified_default_head ?? '')) {
+      errors.push(`Subject ${subject.id} has invalid verified_default_head`)
+    }
     if (!repositoryStatuses.has(subject.repository_status)) errors.push(`Subject ${subject.id} has invalid repository_status`)
     if (!subjectTiers.has(subject.catalog_tier)) errors.push(`Subject ${subject.id} has invalid catalog_tier`)
     if (typeof subject.archived !== 'boolean') errors.push(`Subject ${subject.id} archived must be boolean`)
@@ -545,17 +580,37 @@ export function validateProjectCatalog(data) {
   return errors
 }
 
-export function validateProjectCatalogIntegration(data, { contentRegistryText, interviewQuestionsText }) {
+export function validateProjectCatalogIntegration(data, sources) {
   const errors = []
-  const contentIds = new Set(Array.from(
-    contentRegistryText.matchAll(/\{\s*id:\s*'([^']+)'/gu),
-    (match) => match[1],
-  ))
-  const questionIds = new Set(Array.from(
-    interviewQuestionsText.matchAll(/question\(\s*'([^']+)'/gu),
-    (match) => match[1],
-  ))
-  for (const page of data.pages ?? []) {
+  const pages = Array.isArray(data?.pages) ? data.pages : []
+  const contentItems = Array.isArray(sources?.contentItems) ? sources.contentItems : []
+  const interviewQuestions = Array.isArray(sources?.interviewQuestions) ? sources.interviewQuestions : []
+  if (!Array.isArray(data?.pages)) errors.push('Project catalog integration requires pages')
+  if (!Array.isArray(sources?.contentItems)) errors.push('Project catalog integration requires contentItems')
+  if (!Array.isArray(sources?.interviewQuestions)) {
+    errors.push('Project catalog integration requires interviewQuestions')
+  }
+  const contentIds = new Set()
+  for (const [index, item] of contentItems.entries()) {
+    if (!isRecord(item) || !nonEmpty(item.id)) {
+      errors.push(`Content registry item at index ${index} requires non-empty id`)
+    } else {
+      contentIds.add(item.id)
+    }
+  }
+  const questionIds = new Set()
+  for (const [index, question] of interviewQuestions.entries()) {
+    if (!isRecord(question) || !nonEmpty(question.id)) {
+      errors.push(`Interview question at index ${index} requires non-empty id`)
+    } else {
+      questionIds.add(question.id)
+    }
+  }
+  for (const [index, page] of pages.entries()) {
+    if (!isRecord(page)) {
+      errors.push(`Project catalog integration page at index ${index} must be an object`)
+      continue
+    }
     if (!contentIds.has(page.page_item_id)) {
       errors.push(`Project page is missing from contentRegistry: ${page.page_item_id}`)
     }
@@ -594,7 +649,10 @@ Create `scripts/project-catalog.d.mts` so later TypeScript modules do not import
 ```ts
 export function parseProjectCatalog(text: string): unknown
 export function validateProjectCatalog(data: unknown): string[]
-export function validateProjectCatalogIntegration(data: unknown, sources: { contentRegistryText: string; interviewQuestionsText: string }): string[]
+export function validateProjectCatalogIntegration(data: unknown, sources: {
+  contentItems: readonly { id?: unknown }[]
+  interviewQuestions: readonly { id?: unknown }[]
+}): string[]
 export function validateProjectCatalogFile(path: string): string[]
 export function loadProjectCatalog(path: string): unknown
 ```
@@ -610,7 +668,7 @@ pnpm vitest run tests/project-catalog.spec.ts -t 'project catalog schema'
 pnpm test && pnpm validate && pnpm build
 ```
 
-Expected: 7 focused tests pass, followed by a green full suite, validation, and production build.
+Expected: 8 focused tests pass, followed by a green full suite, validation, and production build.
 
 - [ ] **Step 5: Commit the parser**
 
@@ -795,20 +853,35 @@ const expectedSubjectFacts = {
   'hermes-agent': ['NousResearch/hermes-agent', 'v2026.9.24', 'f97608f178d1ffeca59860195ab7da295f7c8e5f', 'active', false, 'watch-only', 'LICENSE:821556e6336796450ab852d375117b48a4887e71d255794fd6318d99982a5ab6'],
   openclaw: ['openclaw/openclaw', 'v2026.9.6', 'eb377ac59e6c9fd6c7705028034812becf00271b', 'active', false, 'watch-only', 'LICENSE:73571b25326281d369087f469842c02444fe39faaecebda4d82ed21ff3a1c29d|THIRD_PARTY_NOTICES.md:c1d1bbc550feee74853eba104e347341569cbbbe37a9f77659993ca0766277d5'],
 }
+const expectedDefaultHeads = {
+  'mcp-spec': ['main', 'ab3a39c13bd23be691c2760e1c6c5c15a64582e1'],
+  'mcp-python-sdk': ['main', 'f1b6589088534632fef92238ee9750951e3c0185'],
+  aider: ['main', '5dc9490bb35f9729ef2c95d00a19ccd30c26339c'],
+  'openhands-canvas': ['main', '47a10808d78561546a02555d0d2c7fa96fa96300'],
+  'openhands-sdk': ['main', 'a350dc73ef9b4d3a801ffab2aed211a04d2120a9'],
+  'swe-bench': ['main', '02e7a74ffd0b707aab73d203fe87bdc7c76afc8e'],
+  'tau2-bench': ['main', 'b7ea9074c1cba482b30687fecdb5c8425fd6f619'],
+  dify: ['main', 'f4602cc1fe8448486e185be74152699322ccec3f'],
+  crewai: ['main', '4ed2abc7bbf504a634d3b733f2a97e0fbe8d44ec'],
+  autogpt: ['master', '5e84f064d3779acc49c86c51e2167ba8f660c93d'],
+  flowise: ['main', '9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb'],
+  'hermes-agent': ['main', 'd0288be5b3330d2442e3907185b8e9d0958297bb'],
+  openclaw: ['main', '51ec96836f768c07c80e9d11af872014e7436d69'],
+}
 const expectedSubjectDigests = {
-  'mcp-spec': '492729a2b1d5e3690d4d4eb8ffb8a6f9089a8d3e21b7a284d49b6c9100788801',
-  'mcp-python-sdk': '21a74ad2294a17ef639fb92539bee85e299dd9cc71fea3e6db72d615da7db867',
-  aider: '5e52014bcd913a55fbbaed8dcdf44cff28bcf19d6d6af5b33264c0bb1caec388',
-  'openhands-canvas': '05fb380eafe106924eb9bb17f712d73b75c8b0c7e8d0cd10696cb830798c5ed4',
-  'openhands-sdk': 'a4ea3a15cab7a116af2beaf8715d8586d6fd5b472b1054adad949dc8aa222133',
-  'swe-bench': 'e356c00937817246deae70028e1d8068a2e9426e33f5d77e5b44e485adb3efaa',
-  'tau2-bench': '9ce153cca427f514e1d8b1b727931efa4ab2f8767fac1019117219ef17bb99d9',
-  dify: '8a8a754b9535e7028992c81d37216196c1c485f545a14e424d79fd7f7a99597f',
-  crewai: 'c5fb7c7ffe10ec064e027756413c9ea678fc148cd3a2c2b91e4248cbec3546ef',
-  autogpt: '33d5cf4286bca6be740451dc94daf9c77d633318e95f38760b980c5699d66bf4',
-  flowise: '4c2438da4a88f32b9f6089b64b35bbb383bf60d6b8a9258a5af1e2f5a3b360f5',
-  'hermes-agent': 'b1e7efda63633c8af2b155954e2a0145428c19795399837ac745f3681e0a66c4',
-  openclaw: '9eb64f3e66b9ca1449a291d1abcdd39493e1ab262467c7b86dceae6792bded62',
+  'mcp-spec': '911ce4822c6c2a9a08ea69979905bd0ab7d809fe125130dc5d64fba3826b0a4b',
+  'mcp-python-sdk': '44c444c5693d70a6303caa5c73199bb66f64b4cad976a3b7531636aa543e2bca',
+  aider: 'e05d3f6975d9073915a8c08023631b926b674e84e25f8f417f4ef01058e0f7b9',
+  'openhands-canvas': '20adab4e8847459cccb32b0e35c691be4d9ecf62beec281231eb7b461c1b35f6',
+  'openhands-sdk': '058bd4781231926efe7b2f5b0da0f625044db08ba9761bdf38b8254f53842560',
+  'swe-bench': '6a56d49723da575a8a3cc7d25f0c2518a55b9e123d4842e90a0b1750cb49bd81',
+  'tau2-bench': '595043b096692a7a1b7013dd97db7d3f13a502af5d4cb312b899f0cce4be7b80',
+  dify: '829d3713451b9ab8d4ee5006a08887e250abc6ef304497d28436e9b53c210d9b',
+  crewai: '4fbcdba367ecc5a34c26073f43a562cf69d479101cd7fe2e1fe23857abf3892a',
+  autogpt: '04b3fc7cd80081e19a46f0a53cb47d3c30b18ba31f5e61c7a51e67d9958ac134',
+  flowise: 'c5b6637a3dd85cfc3a936a45a72e4753f2662b2749a27c52c7b73909f50cc90e',
+  'hermes-agent': 'a66ccc1c3e28d2f188954922f48ad62c53783cf5bac110000ffcd8771445ee5d',
+  openclaw: '4bbbb022c40f27ede7f2b9bea9faecfcfd9154728fe21ed556775c41a97d5fa3',
 }
 const expectedChainDigests = {
   'mcp-tool-call': '54b46cce64ce2559ae2656a61335d2b92df9df99fdf87e1b7215efe76d4a1ab4',
@@ -835,7 +908,7 @@ describe('real project catalog', () => {
     expect(Object.keys(catalog)).toEqual(['schema_version', 'defaults', 'pages', 'subjects', 'chains'])
     expect(catalog.schema_version).toBe(1)
     expect(catalog.defaults).toEqual({ verified_at: '2026-09-26', review_by: '2026-10-26' })
-    expect(digest(catalog)).toBe('4bcf91bbc4fdac68aee5f5d531a78025ee8218ebda7125c99839d36da4e49787')
+    expect(digest(catalog)).toBe('5af94d203b278b9e91a1900b0472494e394decf2e25f55270245023c19b21194')
     expect(catalog.pages.map((page: { page_item_id: string }) => page.page_item_id)).toEqual(pageIds)
     expect(catalog.subjects.map((subject: { id: string }) => subject.id)).toEqual(subjectIds)
     expect(Object.fromEntries(catalog.subjects.map((subject: any) => [subject.id, [
@@ -843,6 +916,10 @@ describe('real project catalog', () => {
       subject.repository_status, subject.archived, subject.catalog_tier,
       subject.license_sources.map((source: { path: string; sha256: string }) => `${source.path}:${source.sha256}`).join('|'),
     ]]))).toEqual(expectedSubjectFacts)
+    expect(Object.fromEntries(catalog.subjects.map((subject: any) => [subject.id, [
+      subject.verified_default_branch,
+      subject.verified_default_head,
+    ]]))).toEqual(expectedDefaultHeads)
     expect(Object.fromEntries(catalog.subjects.map((subject: { id: string }) => [subject.id, digest(subject)])))
       .toEqual(expectedSubjectDigests)
     expect(Object.fromEntries(catalog.subjects.map((subject: { id: string; entrypoints: Array<{ path: string; symbols: string[]; responsibility: string }> }) => [subject.id, subject.entrypoints.map((entry) => entry.path)])))
@@ -1028,7 +1105,7 @@ describe('real project catalog', () => {
 })
 ```
 
-The full-catalog SHA-256 assertion covers exact top-level structure and ordering. The per-subject assertion covers the complete parsed subject object, including `pin_kind`, `license_summary`, ordered `license_scopes`, `watch_url`, `license_sources`, and every entrypoint `path/symbols/responsibility`. The per-chain digest covers `page_item_id`, label, reading hint, misconception, and every ordered step field; changing any value requires an intentional expected-digest review. All three digest layers must be computed from the concatenated YAML snippets below after parsing; never hand-edit or guess a digest.
+The full-catalog SHA-256 assertion covers exact top-level structure and ordering. The per-subject assertion covers the complete parsed subject object, including `pin_kind`, `verified_default_branch`, `verified_default_head`, `license_summary`, ordered `license_scopes`, `watch_url`, `license_sources`, and every entrypoint `path/symbols/responsibility`. The per-chain digest covers `page_item_id`, label, reading hint, misconception, and every ordered step field; changing any value requires an intentional expected-digest review. All three digest layers must be computed from the concatenated YAML snippets below after parsing; never hand-edit or guess a digest.
 
 - [ ] **Step 2: Run only the existence test and verify RED**
 
@@ -1134,6 +1211,8 @@ subjects:
     pin_kind: release
     pinned_ref: '2026-07-28'
     pinned_commit: 5f5440bb26a62e2cf3440b92da5a667efa03b267
+    verified_default_branch: main
+    verified_default_head: ab3a39c13bd23be691c2760e1c6c5c15a64582e1
     repository_status: active
     archived: false
     catalog_tier: core
@@ -1165,6 +1244,8 @@ subjects:
     pin_kind: release
     pinned_ref: v2.2.0
     pinned_commit: 9972c21aa42054fb1450c5fc614761ed11847ec6
+    verified_default_branch: main
+    verified_default_head: f1b6589088534632fef92238ee9750951e3c0185
     repository_status: active
     archived: false
     catalog_tier: core
@@ -1193,6 +1274,8 @@ subjects:
     pin_kind: release
     pinned_ref: v0.86.0
     pinned_commit: a4be6ccd87ebaa59b361f3f028d116ce1761b626
+    verified_default_branch: main
+    verified_default_head: 5dc9490bb35f9729ef2c95d00a19ccd30c26339c
     repository_status: active
     archived: false
     catalog_tier: core
@@ -1228,6 +1311,8 @@ Append the next four subjects:
     pin_kind: release
     pinned_ref: v1.24.0
     pinned_commit: 7dc6805406ea3c76cb4a3ce407c3c72d481b0ac6
+    verified_default_branch: main
+    verified_default_head: 47a10808d78561546a02555d0d2c7fa96fa96300
     repository_status: active
     archived: false
     catalog_tier: core
@@ -1246,6 +1331,8 @@ Append the next four subjects:
     pin_kind: release
     pinned_ref: v1.49.6
     pinned_commit: fcc102a697874d54a357e36004e02c95040dbdc0
+    verified_default_branch: main
+    verified_default_head: a350dc73ef9b4d3a801ffab2aed211a04d2120a9
     repository_status: active
     archived: false
     catalog_tier: core
@@ -1267,6 +1354,8 @@ Append the next four subjects:
     pin_kind: tag
     pinned_ref: v5.0.1
     pinned_commit: 87ab1f6ced28f75ba73ca899dc759b019310944a
+    verified_default_branch: main
+    verified_default_head: 02e7a74ffd0b707aab73d203fe87bdc7c76afc8e
     repository_status: active
     archived: false
     catalog_tier: core
@@ -1286,6 +1375,8 @@ Append the next four subjects:
     pin_kind: release
     pinned_ref: v1.0.1
     pinned_commit: fc0055dc4e0a316c3f83133267fbd6faaa770992
+    verified_default_branch: main
+    verified_default_head: b7ea9074c1cba482b30687fecdb5c8425fd6f619
     repository_status: active
     archived: false
     catalog_tier: core
@@ -1316,6 +1407,8 @@ Append:
     pin_kind: release
     pinned_ref: 1.17.1
     pinned_commit: 8387590ace4a094de812b7847fc6a4c3a27cd52b
+    verified_default_branch: main
+    verified_default_head: f4602cc1fe8448486e185be74152699322ccec3f
     repository_status: active
     archived: false
     catalog_tier: core
@@ -1349,6 +1442,8 @@ Append:
     pin_kind: release
     pinned_ref: 1.15.22
     pinned_commit: 7a01af27912c2b142d8bac70d1894343f8b91bd1
+    verified_default_branch: main
+    verified_default_head: 4ed2abc7bbf504a634d3b733f2a97e0fbe8d44ec
     repository_status: active
     archived: false
     catalog_tier: core
@@ -1382,6 +1477,8 @@ Append:
     pin_kind: release
     pinned_ref: autogpt-platform-beta-v0.8.1
     pinned_commit: ead8f943f981ea650285eee3020c8ff0e7eda94d
+    verified_default_branch: master
+    verified_default_head: 5e84f064d3779acc49c86c51e2167ba8f660c93d
     repository_status: active
     archived: false
     catalog_tier: historical
@@ -1409,6 +1506,8 @@ Append:
     pin_kind: release
     pinned_ref: flowise@3.1.4
     pinned_commit: a65f81bb43ef66d3ce734bf0dff4223ae8041c95
+    verified_default_branch: main
+    verified_default_head: 9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb
     repository_status: eol
     archived: true
     catalog_tier: historical
@@ -1441,6 +1540,8 @@ Append:
     pin_kind: release
     pinned_ref: v2026.9.24
     pinned_commit: f97608f178d1ffeca59860195ab7da295f7c8e5f
+    verified_default_branch: main
+    verified_default_head: d0288be5b3330d2442e3907185b8e9d0958297bb
     repository_status: active
     archived: false
     catalog_tier: watch-only
@@ -1457,6 +1558,8 @@ Append:
     pin_kind: release
     pinned_ref: v2026.9.6
     pinned_commit: eb377ac59e6c9fd6c7705028034812becf00271b
+    verified_default_branch: main
+    verified_default_head: 51ec96836f768c07c80e9d11af872014e7436d69
     repository_status: active
     archived: false
     catalog_tier: watch-only
@@ -1822,9 +1925,13 @@ describe('project presentation primitives', () => {
 
   it('enforces the scoped Vue and TypeScript check during production builds', () => {
     const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
+    const tsconfig = JSON.parse(readFileSync('tsconfig.projects.json', 'utf8'))
     expect(pkg.scripts['typecheck:projects']).toBe('vue-tsc --noEmit -p tsconfig.projects.json')
     expect(pkg.scripts.build).toContain('pnpm typecheck:projects')
     expect(pkg.devDependencies['vue-tsc']).toBe('^3.3.11')
+    expect(pkg.devDependencies.typescript).toBe('^5.9.3')
+    expect(pkg.devDependencies['@types/node']).toBe('^24.10.0')
+    expect(tsconfig.compilerOptions.types).toEqual(['vitepress/client', 'node'])
   })
 })
 ```
@@ -1862,6 +1969,8 @@ export interface ProjectSubject {
   pin_kind: 'release' | 'tag' | 'commit'
   pinned_ref: string
   pinned_commit: string
+  verified_default_branch: string
+  verified_default_head: string
   repository_status: 'active' | 'archived' | 'eol'
   archived: boolean
   catalog_tier: 'core' | 'historical' | 'watch-only'
@@ -2010,7 +2119,7 @@ Create `tsconfig.projects.json`:
 }
 ```
 
-Run `pnpm add -D vue-tsc@3.3.11`. Add these scripts:
+Run `pnpm add -D vue-tsc@3.3.11 typescript@5.9.3 @types/node@24.10.0`. Add these scripts:
 
 ```json
 "typecheck:projects": "vue-tsc --noEmit -p tsconfig.projects.json",
@@ -3295,11 +3404,16 @@ git commit -m "docs: dissect Dify and CrewAI"
 
 - [ ] **Step 1: Write failing route, overview, and historical-boundary tests**
 
+Update the shared test imports to include `mkdirSync`, `mkdtempSync`, `rmSync`, `writeFileSync`, `tmpdir`, `join`, `contentItems`, `interviewQuestions`, and `validateBook`; the snippets below use the real exported objects and isolated malformed-source fixtures.
+
 ```ts
 import {
   loadProjectCatalog,
   validateProjectCatalogIntegration,
 } from '../scripts/project-catalog.mjs'
+import { contentItems, getContentItem } from '../docs/.vitepress/theme/data/contentRegistry'
+import { interviewQuestions } from '../docs/.vitepress/theme/data/interviewQuestions'
+import { validateBook } from '../scripts/validate-content.mjs'
 
 const projectRouteRecords = [
   ['projects-index', '/projects/', '开源项目拆解', 'project'],
@@ -3329,9 +3443,48 @@ describe('project routes and catalog overview', () => {
   it('cross-validates real page and interview IDs instead of a second runtime allowlist', () => {
     const catalog = loadProjectCatalog('sources/project-index.yml')
     expect(validateProjectCatalogIntegration(catalog, {
-      contentRegistryText: readFileSync('docs/.vitepress/theme/data/contentRegistry.ts', 'utf8'),
-      interviewQuestionsText: readFileSync('docs/.vitepress/theme/data/interviewQuestions.ts', 'utf8'),
+      contentItems,
+      interviewQuestions,
     })).toEqual([])
+  })
+
+  it('reports stable validation errors for malformed TypeScript integration sources', () => {
+    const fixtureRoot = mkdtempSync(join(tmpdir(), 'project-integration-'))
+    const dataRoot = join(fixtureRoot, 'docs/.vitepress/theme/data')
+    mkdirSync(dataRoot, { recursive: true })
+    const contentPath = join(dataRoot, 'contentRegistry.ts')
+    const interviewPath = join(dataRoot, 'interviewQuestions.ts')
+    writeFileSync(interviewPath, "export const interviewQuestions = [question('iq-02-b')]\n")
+
+    try {
+      writeFileSync(contentPath, 'export const contentItems = [\n')
+      expect(validateBook(fixtureRoot, { projectCatalogPath: resolve('sources/project-index.yml') }))
+        .toContain('contentItems TypeScript has parse diagnostics')
+
+      writeFileSync(contentPath, 'export const otherItems = []\n')
+      expect(validateBook(fixtureRoot, { projectCatalogPath: resolve('sources/project-index.yml') }))
+        .toContain('contentItems TypeScript is missing exported array contentItems')
+
+      writeFileSync(contentPath, "const dynamicId = 'projects-index'\nexport const contentItems = [{ id: dynamicId }]\n")
+      expect(validateBook(fixtureRoot, { projectCatalogPath: resolve('sources/project-index.yml') }))
+        .toContain('contentItems entry 0 requires a string-literal id')
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects interview IDs produced by any factory other than local question', () => {
+    const fixtureRoot = mkdtempSync(join(tmpdir(), 'project-integration-factory-'))
+    const dataRoot = join(fixtureRoot, 'docs/.vitepress/theme/data')
+    mkdirSync(dataRoot, { recursive: true })
+    writeFileSync(join(dataRoot, 'contentRegistry.ts'), "export const contentItems = [{ id: 'projects-index' }]\n")
+    writeFileSync(join(dataRoot, 'interviewQuestions.ts'), "export const interviewQuestions = [otherFactory('iq-04-a')]\n")
+    try {
+      expect(validateBook(fixtureRoot, { projectCatalogPath: resolve('sources/project-index.yml') }))
+        .toContain('interviewQuestions entry 0 must call local question with a string-literal id')
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true })
+    }
   })
 
   it('publishes the overview and keeps watch-only items external-only', () => {
@@ -3378,13 +3531,18 @@ const projectHtmlFiles = [
 beforeAll(() => {
   outputRoot = mkdtempSync(join(tmpdir(), 'project-ssr-'))
   execFileSync('pnpm', ['exec', 'vitepress', 'build', 'docs', '--outDir', outputRoot], {
-    cwd: process.cwd(), stdio: 'pipe', encoding: 'utf8',
+    cwd: process.cwd(), stdio: 'pipe', encoding: 'utf8', timeout: 120_000,
   })
 }, 120_000)
 
 afterAll(() => rmSync(outputRoot, { recursive: true, force: true }))
 
 describe('actual project SSR', () => {
+  it('bounds the VitePress subprocess independently of the Vitest hook', () => {
+    const source = readFileSync('tests/project-ssr.spec.ts', 'utf8')
+    expect(source).toMatch(/execFileSync\([\s\S]+timeout:\s*120_000/u)
+  })
+
   it('renders all eight approved routes', () => {
     expect(projectHtmlFiles.filter((file) => !existsSync(join(outputRoot, file)))).toEqual([])
   })
@@ -3539,28 +3697,106 @@ AutoGPT 检查 classic 与 platform 的边界和根许可证；Flowise 检查归
 
 - [ ] **Step 6: Wire the real integration check into `validateBook`**
 
-In `scripts/validate-content.mjs`, extend the Task 2 import to include `loadProjectCatalog` and `validateProjectCatalogIntegration`, then replace the Task 2 `validateBook` body with the complete integrated version below. Keeping the entire function here avoids an undefined `projectCatalogErrors` variable or a path computed outside `root`:
+In `scripts/validate-content.mjs`, add `import ts from 'typescript'`, extend the Task 2 import to include `loadProjectCatalog` and `validateProjectCatalogIntegration`, then parse the two exported arrays with the TypeScript AST and pass actual `{ id }` objects to the integration validator. Do not regex source text: comments, unrelated strings, aliased factories, or dynamic IDs must not become registry facts. Add these helpers and replace the Task 2 `validateBook` body with the complete integrated version below:
 
 ```js
+import ts from 'typescript'
 import {
   loadProjectCatalog,
   validateProjectCatalogFile,
   validateProjectCatalogIntegration,
 } from './project-catalog.mjs'
 
+function exportedArray(sourceFile, exportName) {
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement)
+      || !statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) continue
+    for (const declaration of statement.declarationList.declarations) {
+      if (ts.isIdentifier(declaration.name) && declaration.name.text === exportName
+        && declaration.initializer && ts.isArrayLiteralExpression(declaration.initializer)) {
+        return declaration.initializer
+      }
+    }
+  }
+  return null
+}
+
+function literalIdFromEntry(entry, exportName) {
+  if (exportName === 'contentItems' && ts.isObjectLiteralExpression(entry)) {
+    const property = entry.properties.find((candidate) =>
+      ts.isPropertyAssignment(candidate)
+      && ((ts.isIdentifier(candidate.name) && candidate.name.text === 'id')
+        || (ts.isStringLiteral(candidate.name) && candidate.name.text === 'id')),
+    )
+    return property && ts.isStringLiteral(property.initializer) ? property.initializer.text : null
+  }
+  if (exportName === 'interviewQuestions' && ts.isCallExpression(entry)
+    && ts.isIdentifier(entry.expression) && entry.expression.text === 'question') {
+    const [firstArgument] = entry.arguments
+    return firstArgument && ts.isStringLiteral(firstArgument) ? firstArgument.text : null
+  }
+  return null
+}
+
+function loadTypeScriptIdObjects(path, exportName) {
+  if (!existsSync(path)) return { items: [], errors: [`${exportName} TypeScript file is missing`] }
+  let sourceText
+  try {
+    sourceText = readFileSync(path, 'utf8')
+  } catch {
+    return { items: [], errors: [`${exportName} TypeScript file cannot be read`] }
+  }
+  const sourceFile = ts.createSourceFile(path, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
+  if (sourceFile.parseDiagnostics.length > 0) {
+    return { items: [], errors: [`${exportName} TypeScript has parse diagnostics`] }
+  }
+  const array = exportedArray(sourceFile, exportName)
+  if (!array) {
+    return { items: [], errors: [`${exportName} TypeScript is missing exported array ${exportName}`] }
+  }
+  const items = []
+  const errors = []
+  for (const [index, entry] of array.elements.entries()) {
+    if (exportName === 'interviewQuestions'
+      && (!ts.isCallExpression(entry) || !ts.isIdentifier(entry.expression)
+        || entry.expression.text !== 'question')) {
+      errors.push(`${exportName} entry ${index} must call local question with a string-literal id`)
+      continue
+    }
+    const id = literalIdFromEntry(entry, exportName)
+    if (id === null) errors.push(`${exportName} entry ${index} requires a string-literal id`)
+    else items.push({ id })
+  }
+  return { items, errors }
+}
+
 export function validateBook(root = process.cwd(), options = {}) {
   const sourcePath = join(root, 'sources/source-index.yml')
   const projectCatalogPath = resolve(root, options.projectCatalogPath ?? 'sources/project-index.yml')
   const projectCatalogErrors = validateProjectCatalogFile(projectCatalogPath)
+  const contentRegistry = loadTypeScriptIdObjects(
+    resolve(root, 'docs/.vitepress/theme/data/contentRegistry.ts'),
+    'contentItems',
+  )
+  const interviewQuestionRegistry = loadTypeScriptIdObjects(
+    resolve(root, 'docs/.vitepress/theme/data/interviewQuestions.ts'),
+    'interviewQuestions',
+  )
+  const integrationSourceErrors = [
+    ...contentRegistry.errors,
+    ...interviewQuestionRegistry.errors,
+  ]
   const projectIntegrationErrors = projectCatalogErrors.length === 0
+    && integrationSourceErrors.length === 0
     ? validateProjectCatalogIntegration(loadProjectCatalog(projectCatalogPath), {
-        contentRegistryText: readFileSync(resolve(root, 'docs/.vitepress/theme/data/contentRegistry.ts'), 'utf8'),
-        interviewQuestionsText: readFileSync(resolve(root, 'docs/.vitepress/theme/data/interviewQuestions.ts'), 'utf8'),
+        contentItems: contentRegistry.items,
+        interviewQuestions: interviewQuestionRegistry.items,
       })
     : []
   return [
     ...validateSourceRegistry(sourcePath),
     ...projectCatalogErrors,
+    ...integrationSourceErrors,
     ...projectIntegrationErrors,
     ...validatePublishedFiles(root),
   ]
@@ -4141,7 +4377,12 @@ git commit -m "feat: enforce project asset provenance"
 
 **Files:**
 
+- Modify: `sources/project-index.yml`
+- Modify: `scripts/project-catalog.mjs`
+- Modify: `scripts/project-catalog.d.mts`
+- Modify: `docs/.vitepress/theme/data/projectCatalogTypes.ts`
 - Create: `scripts/check-projects.mjs`
+- Modify: `tests/project-catalog.spec.ts`
 - Modify: `tests/source-freshness.spec.ts`
 - Modify: `package.json`
 - Modify: `.github/workflows/source-freshness.yml`
@@ -4170,6 +4411,8 @@ const projectSubject = {
   pin_kind: 'release',
   pinned_ref: 'v0.86.0',
   pinned_commit: 'a'.repeat(40),
+  verified_default_branch: 'main',
+  verified_default_head: 'a'.repeat(40),
   repository_status: 'active',
   archived: false,
   catalog_tier: 'core',
@@ -4178,6 +4421,52 @@ const projectSubject = {
   review_by: '2026-10-26',
   license_sources: [{ path: 'LICENSE.txt', sha256: licenseDigest }],
   entrypoints: [{ path: 'aider/main.py', symbols: ['main'], responsibility: 'Validate repository arguments.' }],
+}
+
+function projectFetchWithHead(headData: unknown) {
+  return async (url: string) => {
+    if (url.endsWith('/commits/v0.86.0')) return { status: 200, url, json: async () => ({ sha: 'a'.repeat(40) }) }
+    if (url.endsWith('/commits/main')) return { status: 200, url, json: async () => headData }
+    if (url.includes('/contents/aider/main.py')) return { status: 200, url, json: async () => ({ path: 'aider/main.py' }) }
+    if (url.includes('/contents/LICENSE.txt')) return { status: 200, url, json: async () => ({ path: 'LICENSE.txt', encoding: 'base64', content: Buffer.from(licenseText).toString('base64') }) }
+    if (url.endsWith('/releases/latest')) return { status: 200, url, json: async () => ({ tag_name: 'v0.86.0' }) }
+    return { status: 200, url, json: async () => ({ full_name: 'Aider-AI/aider', archived: false, default_branch: 'main' }) }
+  }
+}
+
+function projectFetchWithMalformedEndpoint(
+  malformedEndpoint: 'metadata' | 'ref' | 'entrypoint' | 'license' | 'release' | 'tags',
+  subject = projectSubject,
+) {
+  return async (url: string) => {
+    const api = `https://api.github.com/repos/${subject.canonical_repo}`
+    if (url === api) {
+      return { status: 200, url, json: async () => malformedEndpoint === 'metadata'
+        ? ({})
+        : ({ full_name: subject.canonical_repo, archived: subject.archived, default_branch: subject.verified_default_branch }) }
+    }
+    if (url.endsWith(`/commits/${subject.verified_default_branch}`)) {
+      return { status: 200, url, json: async () => ({ sha: subject.verified_default_head, commit: { committer: { date: '2026-09-26T00:00:00Z' } } }) }
+    }
+    if (url.endsWith(`/commits/${subject.pinned_ref}`)) {
+      return { status: 200, url, json: async () => malformedEndpoint === 'ref' ? ({}) : ({ sha: subject.pinned_commit }) }
+    }
+    if (url.includes('/contents/aider/main.py')) {
+      return { status: 200, url, json: async () => malformedEndpoint === 'entrypoint' ? ({}) : ({ path: 'aider/main.py' }) }
+    }
+    if (url.includes('/contents/LICENSE.txt')) {
+      return { status: 200, url, json: async () => malformedEndpoint === 'license'
+        ? ({})
+        : ({ path: 'LICENSE.txt', encoding: 'base64', content: Buffer.from(licenseText).toString('base64') }) }
+    }
+    if (url.endsWith('/releases/latest')) {
+      return { status: 200, url, json: async () => malformedEndpoint === 'release' ? ({}) : ({ tag_name: subject.pinned_ref }) }
+    }
+    if (url.endsWith('/tags?per_page=1')) {
+      return { status: 200, url, json: async () => malformedEndpoint === 'tags' ? ({}) : ([{ name: subject.pinned_ref }]) }
+    }
+    return { status: 404, url, json: async () => ({}) }
+  }
 }
 
 describe('project freshness checker', () => {
@@ -4223,13 +4512,69 @@ describe('project freshness checker', () => {
       fetchImpl: async (url: string) => {
         if (url.endsWith('/commits/v0.86.0')) return { status: 200, url, json: async () => ({ sha: 'a'.repeat(40) }) }
         if (url.endsWith('/commits/main')) return { status: 200, url, json: async () => ({ sha: 'c'.repeat(40), commit: { committer: { date: '2026-09-27T00:00:00Z' } } }) }
-        if (url.includes('/contents/LICENSE.txt')) return { status: 200, url, json: async () => ({ encoding: 'base64', content: Buffer.from(licenseText).toString('base64') }) }
+        if (url.includes('/contents/LICENSE.txt')) return { status: 200, url, json: async () => ({ path: 'LICENSE.txt', encoding: 'base64', content: Buffer.from(licenseText).toString('base64') }) }
         if (url.includes('/contents/')) return { status: 200, url, json: async () => ({ path: 'aider/main.py' }) }
         if (url.endsWith('/releases/latest')) return { status: 200, url, json: async () => ({ tag_name: 'v0.86.0' }) }
         return { status: 200, url, json: async () => ({ full_name: 'Aider-AI/aider', archived: false, default_branch: 'main', pushed_at: '2020-01-01T00:00:00Z' }) }
       },
     })
     expect(result.findings).toEqual(['project_update_available'])
+  })
+
+  it('reports a changed default-branch HEAD even when its commit date is the verified date', async () => {
+    const result = await checkProjectSubject(projectSubject, {
+      retryAttempts: 1,
+      now: new Date('2026-09-26T00:00:00Z'),
+      fetchImpl: projectFetchWithHead({
+        sha: 'c'.repeat(40),
+        commit: { committer: { date: '2026-09-26T00:00:00Z' } },
+      }),
+    })
+    expect(result.findings).toEqual(['project_update_available'])
+  })
+
+  it('fails closed when the default-branch HEAD response is empty', async () => {
+    const result = await checkProjectSubject(projectSubject, {
+      retryAttempts: 1,
+      now: new Date('2026-09-26T00:00:00Z'),
+      fetchImpl: projectFetchWithHead({}),
+    })
+    expect(result.findings).toEqual(expect.arrayContaining([
+      'repository_head_invalid',
+      'project_review_required',
+    ]))
+  })
+
+  it('reports both an update and invalid HEAD when a changed SHA has no commit date', async () => {
+    const result = await checkProjectSubject(projectSubject, {
+      retryAttempts: 1,
+      now: new Date('2026-09-26T00:00:00Z'),
+      fetchImpl: projectFetchWithHead({ sha: 'c'.repeat(40) }),
+    })
+    expect(result.findings).toEqual(expect.arrayContaining([
+      'project_update_available',
+      'repository_head_invalid',
+      'project_review_required',
+    ]))
+  })
+
+  it('requires review when repository metadata changes the default branch', async () => {
+    const result = await checkProjectSubject(projectSubject, {
+      retryAttempts: 1,
+      now: new Date('2026-09-26T00:00:00Z'),
+      fetchImpl: async (url: string) => {
+        if (url.endsWith('/commits/trunk')) return { status: 200, url, json: async () => ({ sha: 'a'.repeat(40), commit: { committer: { date: '2026-09-26T00:00:00Z' } } }) }
+        if (url.endsWith('/commits/v0.86.0')) return { status: 200, url, json: async () => ({ sha: 'a'.repeat(40) }) }
+        if (url.includes('/contents/aider/main.py')) return { status: 200, url, json: async () => ({ path: 'aider/main.py' }) }
+        if (url.includes('/contents/LICENSE.txt')) return { status: 200, url, json: async () => ({ path: 'LICENSE.txt', encoding: 'base64', content: Buffer.from(licenseText).toString('base64') }) }
+        if (url.endsWith('/releases/latest')) return { status: 200, url, json: async () => ({ tag_name: 'v0.86.0' }) }
+        return { status: 200, url, json: async () => ({ full_name: 'Aider-AI/aider', archived: false, default_branch: 'trunk' }) }
+      },
+    })
+    expect(result.findings).toEqual(expect.arrayContaining([
+      'default_branch_changed',
+      'project_review_required',
+    ]))
   })
 
   it('uses the shared Shanghai date boundary and escalates an expired review', async () => {
@@ -4239,7 +4584,7 @@ describe('project freshness checker', () => {
       fetchImpl: async (url: string) => {
         if (url.endsWith('/commits/v0.86.0')) return { status: 200, url, json: async () => ({ sha: 'a'.repeat(40) }) }
         if (url.endsWith('/commits/main')) return { status: 200, url, json: async () => ({ sha: 'a'.repeat(40), commit: { committer: { date: '2026-09-26T00:00:00Z' } } }) }
-        if (url.includes('/contents/LICENSE.txt')) return { status: 200, url, json: async () => ({ encoding: 'base64', content: Buffer.from(licenseText).toString('base64') }) }
+        if (url.includes('/contents/LICENSE.txt')) return { status: 200, url, json: async () => ({ path: 'LICENSE.txt', encoding: 'base64', content: Buffer.from(licenseText).toString('base64') }) }
         if (url.includes('/contents/')) return { status: 200, url, json: async () => ({ path: 'aider/main.py' }) }
         if (url.endsWith('/releases/latest')) return { status: 200, url, json: async () => ({ tag_name: 'v0.86.0' }) }
         return { status: 200, url, json: async () => ({ full_name: 'Aider-AI/aider', archived: false, default_branch: 'main' }) }
@@ -4262,6 +4607,46 @@ describe('project freshness checker', () => {
       fetchImpl: async () => { throw new Error('ECONNRESET') },
     })
     expect(network.findings).toContain('project_network_error')
+    const http = await checkProjectSubject(projectSubject, {
+      retryAttempts: 1,
+      now: new Date('2026-09-26T00:00:00Z'),
+      fetchImpl: async () => ({ status: 418, url: '', json: async () => ({}) }),
+    })
+    expect(http.findings).toContain('project_http_error')
+    const parseFailure = await checkProjectSubject(projectSubject, {
+      retryAttempts: 1,
+      now: new Date('2026-09-26T00:00:00Z'),
+      fetchImpl: async () => ({ status: 200, url: '', json: async () => { throw new Error('truncated json') } }),
+    })
+    expect(parseFailure.findings).toContain('project_parse_error')
+  })
+
+  it.each([
+    ['metadata', 'repository_metadata_invalid'],
+    ['ref', 'pinned_ref_response_invalid'],
+    ['entrypoint', 'entrypoint_response_invalid'],
+    ['license', 'license_response_invalid'],
+    ['release', 'project_release_response_invalid'],
+  ] as const)('fails closed for a malformed %s response', async (endpoint, finding) => {
+    const result = await checkProjectSubject(projectSubject, {
+      retryAttempts: 1,
+      now: new Date('2026-09-26T00:00:00Z'),
+      fetchImpl: projectFetchWithMalformedEndpoint(endpoint),
+    })
+    expect(result.findings).toEqual(expect.arrayContaining([finding, 'project_review_required']))
+  })
+
+  it('fails closed for a malformed tags response', async () => {
+    const tagSubject = { ...projectSubject, pin_kind: 'tag' }
+    const result = await checkProjectSubject(tagSubject, {
+      retryAttempts: 1,
+      now: new Date('2026-09-26T00:00:00Z'),
+      fetchImpl: projectFetchWithMalformedEndpoint('tags', tagSubject),
+    })
+    expect(result.findings).toEqual(expect.arrayContaining([
+      'project_tags_response_invalid',
+      'project_review_required',
+    ]))
   })
 
   it('retries JSON parsing before reporting an exhausted parse failure', async () => {
@@ -4283,6 +4668,144 @@ describe('project freshness checker', () => {
     expect(recovered).toMatchObject({ failure: null, data: { full_name: 'example/repo' } })
   })
 
+  it('retries a rate-limited 403 and caps the reset-header delay', async () => {
+    let attempts = 0
+    const sleeps: number[] = []
+    const recovered = await requestProjectJson('https://api.github.com/repos/example/repo', {
+      retryAttempts: 2,
+      retryDelayMs: 10,
+      maxRetryDelayMs: 5_000,
+      now: new Date('2026-09-26T00:00:00Z'),
+      sleepImpl: async (delayMs: number) => { sleeps.push(delayMs) },
+      fetchImpl: async (url: string) => {
+        attempts += 1
+        if (attempts === 1) {
+          return {
+            status: 403,
+            url,
+            headers: new Headers({
+              'x-ratelimit-remaining': '0',
+              'x-ratelimit-reset': String(Date.parse('2026-09-26T00:01:00Z') / 1000),
+            }),
+            json: async () => ({}),
+          }
+        }
+        return { status: 200, url, headers: new Headers(), json: async () => ({ ok: true }) }
+      },
+    })
+    expect(attempts).toBe(2)
+    expect(sleeps).toEqual([5_000])
+    expect(recovered).toMatchObject({ failure: null, data: { ok: true } })
+  })
+
+  it('retries a 403 carrying Retry-After even without a remaining header', async () => {
+    let attempts = 0
+    const sleeps: number[] = []
+    const recovered = await requestProjectJson('https://api.github.com/repos/example/repo', {
+      retryAttempts: 2,
+      retryDelayMs: 10,
+      maxRetryDelayMs: 5_000,
+      now: new Date('2026-09-26T00:00:00Z'),
+      sleepImpl: async (delayMs: number) => { sleeps.push(delayMs) },
+      fetchImpl: async (url: string) => {
+        attempts += 1
+        return attempts === 1
+          ? { status: 403, url, headers: new Headers({ 'retry-after': '3' }), json: async () => ({}) }
+          : { status: 200, url, headers: new Headers(), json: async () => ({ ok: true }) }
+      },
+    })
+    expect(attempts).toBe(2)
+    expect(sleeps).toEqual([3_000])
+    expect(recovered.failure).toBeNull()
+  })
+
+  it('retries a 403 carrying an explicit rate-limit body signal', async () => {
+    let attempts = 0
+    const sleeps: number[] = []
+    const recovered = await requestProjectJson('https://api.github.com/repos/example/repo', {
+      retryAttempts: 2,
+      retryDelayMs: 25,
+      maxRetryDelayMs: 5_000,
+      now: new Date('2026-09-26T00:00:00Z'),
+      sleepImpl: async (delayMs: number) => { sleeps.push(delayMs) },
+      fetchImpl: async (url: string) => {
+        attempts += 1
+        return attempts === 1
+          ? { status: 403, url, headers: new Headers(), json: async () => ({ message: 'You have exceeded a secondary rate limit.' }) }
+          : { status: 200, url, headers: new Headers(), json: async () => ({ ok: true }) }
+      },
+    })
+    expect(attempts).toBe(2)
+    expect(sleeps).toEqual([25])
+    expect(recovered.failure).toBeNull()
+  })
+
+  it('honors Retry-After when retrying a 429', async () => {
+    let attempts = 0
+    const sleeps: number[] = []
+    const recovered = await requestProjectJson('https://api.github.com/repos/example/repo', {
+      retryAttempts: 2,
+      retryDelayMs: 10,
+      maxRetryDelayMs: 5_000,
+      now: new Date('2026-09-26T00:00:00Z'),
+      sleepImpl: async (delayMs: number) => { sleeps.push(delayMs) },
+      fetchImpl: async (url: string) => {
+        attempts += 1
+        return attempts === 1
+          ? { status: 429, url, headers: new Headers({ 'retry-after': '2' }), json: async () => ({}) }
+          : { status: 200, url, headers: new Headers(), json: async () => ({ ok: true }) }
+      },
+    })
+    expect(attempts).toBe(2)
+    expect(sleeps).toEqual([2_000])
+    expect(recovered.failure).toBeNull()
+  })
+
+  it('honors the reset header when retrying a 5xx response', async () => {
+    let attempts = 0
+    const sleeps: number[] = []
+    const recovered = await requestProjectJson('https://api.github.com/repos/example/repo', {
+      retryAttempts: 2,
+      retryDelayMs: 10,
+      maxRetryDelayMs: 5_000,
+      now: new Date('2026-09-26T00:00:00Z'),
+      sleepImpl: async (delayMs: number) => { sleeps.push(delayMs) },
+      fetchImpl: async (url: string) => {
+        attempts += 1
+        return attempts === 1
+          ? {
+              status: 503,
+              url,
+              headers: new Headers({ 'x-ratelimit-reset': String(Date.parse('2026-09-26T00:00:04Z') / 1000) }),
+              json: async () => ({}),
+            }
+          : { status: 200, url, headers: new Headers(), json: async () => ({ ok: true }) }
+      },
+    })
+    expect(attempts).toBe(2)
+    expect(sleeps).toEqual([4_000])
+    expect(recovered.failure).toBeNull()
+  })
+
+  it('does not retry an ordinary 403', async () => {
+    let attempts = 0
+    const sleeps: number[] = []
+    const result = await requestProjectJson('https://api.github.com/repos/example/repo', {
+      retryAttempts: 3,
+      retryDelayMs: 10,
+      maxRetryDelayMs: 5_000,
+      now: new Date('2026-09-26T00:00:00Z'),
+      sleepImpl: async (delayMs: number) => { sleeps.push(delayMs) },
+      fetchImpl: async (url: string) => {
+        attempts += 1
+        return { status: 403, url, headers: new Headers(), json: async () => ({}) }
+      },
+    })
+    expect(attempts).toBe(1)
+    expect(sleeps).toEqual([])
+    expect(result).toMatchObject({ status: 403, failure: 'http' })
+  })
+
   it('escalates a changed license digest to manual review', async () => {
     const result = await checkProjectSubject(projectSubject, {
       retryAttempts: 1,
@@ -4290,7 +4813,7 @@ describe('project freshness checker', () => {
       fetchImpl: async (url: string) => {
         if (url.endsWith('/commits/v0.86.0')) return { status: 200, url, json: async () => ({ sha: 'a'.repeat(40) }) }
         if (url.endsWith('/commits/main')) return { status: 200, url, json: async () => ({ sha: 'a'.repeat(40), commit: { committer: { date: '2026-09-26T00:00:00Z' } } }) }
-        if (url.includes('/contents/LICENSE.txt')) return { status: 200, url, json: async () => ({ encoding: 'base64', content: Buffer.from('changed license').toString('base64') }) }
+        if (url.includes('/contents/LICENSE.txt')) return { status: 200, url, json: async () => ({ path: 'LICENSE.txt', encoding: 'base64', content: Buffer.from('changed license').toString('base64') }) }
         if (url.includes('/contents/')) return { status: 200, url, json: async () => ({ path: 'aider/main.py' }) }
         if (url.endsWith('/releases/latest')) return { status: 200, url, json: async () => ({ tag_name: 'v0.86.0' }) }
         return { status: 200, url, json: async () => ({ full_name: 'Aider-AI/aider', archived: false, default_branch: 'main' }) }
@@ -4318,6 +4841,18 @@ describe('project freshness checker', () => {
     })
     expect([...seen.entries()].every(([url, auth]) => url.startsWith('https://api.github.com/') && auth === 'Bearer read-token')).toBe(true)
 
+    let externalAuthorization: string | undefined
+    await requestProjectJson('https://github.com/example/repo', {
+      githubToken: 'read-token',
+      retryAttempts: 1,
+      retryDelayMs: 0,
+      fetchImpl: async (_url: string, init?: { headers?: Record<string, string> }) => {
+        externalAuthorization = init?.headers?.authorization
+        return { status: 200, json: async () => ({}) }
+      },
+    })
+    expect(externalAuthorization).toBeUndefined()
+
     const outputRoot = mkdtempSync(join(tmpdir(), 'project-freshness-'))
     try {
       const report = await runProjectCheck({
@@ -4329,6 +4864,101 @@ describe('project freshness checker', () => {
       })
       expect(report.needs_review).toBe(true)
       expect(report.results[0].findings).toContain('project_schema_invalid')
+    } finally {
+      rmSync(outputRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('renders schema validation details in the Markdown report', async () => {
+    const outputRoot = mkdtempSync(join(tmpdir(), 'project-freshness-schema-report-'))
+    const outputMarkdown = join(outputRoot, 'project-freshness.md')
+    try {
+      await runProjectCheck({
+        projectPath: join(outputRoot, 'missing-project-index.yml'),
+        outputJson: join(outputRoot, 'project-freshness.json'),
+        outputMarkdown,
+        now: new Date('2026-09-26T00:00:00Z'),
+        fetchImpl: async () => { throw new Error('must not fetch') },
+      })
+      expect(readFileSync(outputMarkdown, 'utf8')).toContain('Missing sources/project-index.yml')
+    } finally {
+      rmSync(outputRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('bounds schema details in Markdown with deterministic truncation markers', async () => {
+    const outputRoot = mkdtempSync(join(tmpdir(), 'project-freshness-schema-limits-'))
+    const projectPath = join(outputRoot, 'project-index.yml')
+    const outputMarkdown = join(outputRoot, 'project-freshness.md')
+    const longId = 'x'.repeat(500)
+    writeFileSync(projectPath, stringify({
+      schema_version: 0,
+      defaults: {},
+      pages: [],
+      chains: [],
+      subjects: Array.from({ length: 25 }, () => ({ id: longId })),
+    }))
+    try {
+      await runProjectCheck({
+        projectPath,
+        outputJson: join(outputRoot, 'project-freshness.json'),
+        outputMarkdown,
+        now: new Date('2026-09-26T00:00:00Z'),
+        fetchImpl: async () => { throw new Error('must not fetch') },
+      })
+      const markdown = readFileSync(outputMarkdown, 'utf8')
+      expect(markdown).toContain('[truncated]')
+      expect(markdown).toMatch(/additional schema errors omitted/u)
+      expect(markdown).not.toContain(longId)
+      expect(markdown.match(/^    - /gmu)?.length).toBeLessThanOrEqual(21)
+    } finally {
+      rmSync(outputRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('checks every catalog entrypoint and both pinned and default-branch license copies', async () => {
+    const catalog = parse(readFileSync('sources/project-index.yml', 'utf8')) as any
+    const subjects = catalog.subjects.map((subject: any) => ({ ...catalog.defaults, ...subject }))
+    expect(subjects).toHaveLength(13)
+    expect(subjects.flatMap((subject: any) => subject.entrypoints)).toHaveLength(66)
+    expect(subjects.flatMap((subject: any) => subject.license_sources)).toHaveLength(14)
+
+    const seen = new Set<string>()
+    const outputRoot = mkdtempSync(join(tmpdir(), 'project-freshness-catalog-'))
+    try {
+      const report = await runProjectCheck({
+        outputJson: join(outputRoot, 'project-freshness.json'),
+        outputMarkdown: join(outputRoot, 'project-freshness.md'),
+        now: new Date('2026-09-26T00:00:00Z'),
+        fetchImpl: async (url: string) => {
+          seen.add(url)
+          const subject = subjects.find((item: any) => url.startsWith(`https://api.github.com/repos/${item.canonical_repo}`))
+          if (!subject) return { status: 404, url, json: async () => ({}) }
+          const api = `https://api.github.com/repos/${subject.canonical_repo}`
+          if (url === api) return { status: 200, url, json: async () => ({ full_name: subject.canonical_repo, archived: subject.archived, default_branch: subject.verified_default_branch }) }
+          if (url.endsWith(`/commits/${encodeURIComponent(subject.verified_default_branch)}`)) return { status: 200, url, json: async () => ({ sha: subject.verified_default_head, commit: { committer: { date: `${subject.verified_at}T00:00:00Z` } } }) }
+          if (url.includes('/commits/')) return { status: 200, url, json: async () => ({ sha: subject.pinned_commit }) }
+          if (url.includes('/contents/')) {
+            const path = decodeURIComponent(url.split('/contents/')[1].split('?')[0])
+            return { status: 200, url, json: async () => ({ path, encoding: 'base64', content: Buffer.from('license fixture').toString('base64') }) }
+          }
+          if (url.endsWith('/tags?per_page=1')) return { status: 200, url, json: async () => ([{ name: subject.pinned_ref }]) }
+          return { status: 200, url, json: async () => ({ tag_name: subject.pinned_ref }) }
+        },
+      })
+
+      expect(report.results).toHaveLength(13)
+      for (const subject of subjects) {
+        for (const entrypoint of subject.entrypoints) {
+          const path = entrypoint.path.split('/').map(encodeURIComponent).join('/')
+          expect(seen).toContain(`https://api.github.com/repos/${subject.canonical_repo}/contents/${path}?ref=${subject.pinned_commit}`)
+        }
+        for (const license of subject.license_sources) {
+          const path = license.path.split('/').map(encodeURIComponent).join('/')
+          expect(seen).toContain(`https://api.github.com/repos/${subject.canonical_repo}/contents/${path}?ref=${subject.pinned_commit}`)
+          expect(seen).toContain(`https://api.github.com/repos/${subject.canonical_repo}/contents/${path}?ref=${subject.verified_default_branch}`)
+        }
+      }
     } finally {
       rmSync(outputRoot, { recursive: true, force: true })
     }
@@ -4348,6 +4978,11 @@ describe('project freshness checker', () => {
     expect(isProjectReportBlocking(buildProjectFreshnessReport([
       { id: 'network', license_source_paths: ['LICENSE'], findings: ['project_network_error'] },
     ]))).toBe(true)
+  })
+
+  it('exposes the local project-check command', () => {
+    const packageJson = JSON.parse(readFileSync('package.json', 'utf8'))
+    expect(packageJson.scripts['projects:check']).toBe('node scripts/check-projects.mjs')
   })
 
   it('keeps write permission and repository execution in separate workflow jobs', () => {
@@ -4390,31 +5025,137 @@ import { validateProjectCatalogFile } from './project-catalog.mjs'
 import { reviewDateInTimeZone } from './review-date.mjs'
 
 const retryable = new Set([408, 429, 500, 502, 503, 504])
+const shaPattern = /^[0-9a-f]{40}$/iu
+const maxSchemaErrors = 20
+const maxSchemaErrorLength = 240
 
-export async function requestProjectJson(url, { fetchImpl, githubToken, retryAttempts, retryDelayMs }) {
+function responseHeader(response, name) {
+  if (typeof response?.headers?.get === 'function') return response.headers.get(name)
+  if (!response?.headers || typeof response.headers !== 'object') return null
+  const key = Object.keys(response.headers).find((item) => item.toLowerCase() === name.toLowerCase())
+  return key ? String(response.headers[key]) : null
+}
+
+function nowMilliseconds(now) {
+  const value = typeof now === 'function' ? now() : now
+  return value instanceof Date ? value.getTime() : new Date(value).getTime()
+}
+
+function headerDelayMs(response, now) {
+  const delays = []
+  const retryAfter = responseHeader(response, 'retry-after')
+  if (retryAfter !== null && retryAfter.trim() !== '') {
+    const seconds = Number(retryAfter)
+    const delay = Number.isFinite(seconds)
+      ? seconds * 1_000
+      : Date.parse(retryAfter) - nowMilliseconds(now)
+    if (Number.isFinite(delay)) delays.push(Math.max(0, delay))
+  }
+  const resetHeader = responseHeader(response, 'x-ratelimit-reset')
+  if (resetHeader !== null && resetHeader.trim() !== '') {
+    const reset = Number(resetHeader)
+    if (Number.isFinite(reset)) delays.push(Math.max(0, (reset * 1_000) - nowMilliseconds(now)))
+  }
+  return delays.length > 0 ? Math.max(...delays) : null
+}
+
+function retryDelay(response, { attempt, retryDelayMs, maxRetryDelayMs, now }) {
+  const requested = headerDelayMs(response, now) ?? retryDelayMs * attempt
+  return Math.min(Math.max(0, requested), maxRetryDelayMs)
+}
+
+async function isRateLimited403(response) {
+  if (response.status !== 403) return false
+  if (responseHeader(response, 'x-ratelimit-remaining') === '0') return true
+  const retryAfter = responseHeader(response, 'retry-after')
+  if (retryAfter !== null && retryAfter.trim() !== '') return true
+  try {
+    const body = await response.json()
+    const message = typeof body?.message === 'string' ? body.message : ''
+    return /(?:secondary\s+)?rate\s+limit|abuse\s+detection/iu.test(message)
+  } catch {
+    return false
+  }
+}
+
+function isRecord(value) {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function nonEmpty(value) {
+  return typeof value === 'string' && value.trim() !== ''
+}
+
+function validCommitSha(value) {
+  return typeof value === 'string' && shaPattern.test(value)
+}
+
+function validCommitDate(value) {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value))
+}
+
+function validBase64Content(value) {
+  if (typeof value !== 'string') return false
+  const compact = value.replace(/\s/gu, '')
+  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/u.test(compact)) {
+    return false
+  }
+  return Buffer.from(compact, 'base64').toString('base64') === compact
+}
+
+export async function requestProjectJson(url, {
+  fetchImpl = fetch,
+  githubToken,
+  retryAttempts = 3,
+  retryDelayMs = 250,
+  maxRetryDelayMs = 60_000,
+  now = new Date(),
+  sleepImpl = (delayMs) => new Promise((done) => setTimeout(done, delayMs)),
+} = {}) {
   for (let attempt = 1; attempt <= retryAttempts; attempt += 1) {
     try {
+      const isGitHubApi = new URL(url).hostname === 'api.github.com'
       const response = await fetchImpl(url, {
         signal: AbortSignal.timeout(12_000),
         headers: {
           accept: 'application/vnd.github+json',
           'user-agent': 'agent-engineering-handbook-project-check/1.0',
-          ...(githubToken ? { authorization: `Bearer ${githubToken}` } : {}),
+          ...(githubToken && isGitHubApi ? { authorization: `Bearer ${githubToken}` } : {}),
         },
       })
-      if (retryable.has(response.status) && attempt < retryAttempts) {
-        await new Promise((done) => setTimeout(done, retryDelayMs * attempt))
+      const responseIsRetryable = retryable.has(response.status) || await isRateLimited403(response)
+      if (responseIsRetryable && attempt < retryAttempts) {
+        await sleepImpl(retryDelay(response, {
+          attempt,
+          retryDelayMs,
+          maxRetryDelayMs,
+          now,
+        }))
         continue
       }
-      if (response.status >= 400) return { status: response.status, data: null, failure: retryable.has(response.status) ? 'transient' : 'http' }
-      try { return { status: response.status, data: await response.json(), failure: null } }
-      catch {
-        if (attempt === retryAttempts) return { status: response.status, data: null, failure: 'parse' }
-        await new Promise((done) => setTimeout(done, retryDelayMs * attempt))
+      if (response.status >= 400) {
+        return {
+          status: response.status,
+          data: null,
+          failure: responseIsRetryable ? 'transient' : 'http',
+        }
+      }
+      try {
+        return { status: response.status, data: await response.json(), failure: null }
+      } catch {
+        if (attempt === retryAttempts) {
+          return { status: response.status, data: null, failure: 'parse' }
+        }
+        await sleepImpl(retryDelay(response, {
+          attempt,
+          retryDelayMs,
+          maxRetryDelayMs,
+          now,
+        }))
       }
     } catch {
       if (attempt === retryAttempts) return { status: 0, data: null, failure: 'network' }
-      await new Promise((done) => setTimeout(done, retryDelayMs * attempt))
+      await sleepImpl(Math.min(retryDelayMs * attempt, maxRetryDelayMs))
     }
   }
   return { status: 0, data: null, failure: 'network' }
@@ -4432,8 +5173,9 @@ function requireReview(findings, detail) {
 }
 
 function githubContentSha256(data) {
-  if (data?.encoding !== 'base64' || typeof data?.content !== 'string') return null
-  return createHash('sha256').update(Buffer.from(data.content.replace(/\n/gu, ''), 'base64')).digest('hex')
+  if (data?.encoding !== 'base64' || typeof data.content !== 'string') return null
+  const content = Buffer.from(data.content.replace(/\n/gu, ''), 'base64')
+  return createHash('sha256').update(content).digest('hex')
 }
 
 export async function checkProjectSubject(subject, {
@@ -4442,55 +5184,101 @@ export async function checkProjectSubject(subject, {
   now = new Date(),
   retryAttempts = 3,
   retryDelayMs = 250,
+  maxRetryDelayMs = 60_000,
+  sleepImpl = (delayMs) => new Promise((done) => setTimeout(done, delayMs)),
 } = {}) {
   const api = `https://api.github.com/repos/${subject.canonical_repo}`
-  const options = { fetchImpl, githubToken, retryAttempts, retryDelayMs }
+  const options = {
+    fetchImpl,
+    githubToken,
+    retryAttempts,
+    retryDelayMs,
+    maxRetryDelayMs,
+    now,
+    sleepImpl,
+  }
   const findings = []
   let defaultBranch = null
+
   const metadata = await requestProjectJson(api, options)
-  if (metadata.failure) recordFailure(findings, metadata)
-  else {
-    defaultBranch = metadata.data.default_branch
-    if (typeof metadata.data.full_name !== 'string'
-      || typeof metadata.data.archived !== 'boolean'
-      || typeof defaultBranch !== 'string' || defaultBranch === '') {
+  if (metadata.failure) {
+    recordFailure(findings, metadata)
+  } else {
+    const metadataData = metadata.data
+    defaultBranch = metadataData?.default_branch
+    if (!isRecord(metadataData)
+      || !nonEmpty(metadataData.full_name)
+      || typeof metadataData?.archived !== 'boolean'
+      || !nonEmpty(defaultBranch)) {
       requireReview(findings, 'repository_metadata_invalid')
     }
-    if (metadata.data.full_name !== subject.canonical_repo) requireReview(findings, 'canonical_repo_changed')
-    if (Boolean(metadata.data.archived) !== subject.archived) requireReview(findings, 'repository_status_changed')
+    if (nonEmpty(metadataData?.full_name) && metadataData.full_name !== subject.canonical_repo) {
+      requireReview(findings, 'canonical_repo_changed')
+    }
+    if (typeof metadataData?.archived === 'boolean' && metadataData.archived !== subject.archived) {
+      requireReview(findings, 'repository_status_changed')
+    }
+    if (nonEmpty(defaultBranch) && defaultBranch !== subject.verified_default_branch) {
+      requireReview(findings, 'default_branch_changed')
+    }
   }
 
   if (defaultBranch) {
     const head = await requestProjectJson(`${api}/commits/${encodeURIComponent(defaultBranch)}`, options)
-    if (head.failure) recordFailure(findings, head)
-    else if (head.data.sha !== subject.pinned_commit
-      && head.data.commit?.committer?.date
-      && reviewDateInTimeZone(new Date(head.data.commit.committer.date)) > subject.verified_at) {
-      findings.push('project_update_available')
+    if (head.failure) {
+      recordFailure(findings, head)
+    } else {
+      const headSha = head.data?.sha
+      const headDate = head.data?.commit?.committer?.date
+      if (validCommitSha(headSha) && headSha !== subject.verified_default_head) {
+        findings.push('project_update_available')
+      }
+      if (!isRecord(head.data) || !validCommitSha(headSha) || !validCommitDate(headDate)) {
+        requireReview(findings, 'repository_head_invalid')
+      }
     }
   }
 
   const ref = await requestProjectJson(`${api}/commits/${encodeURIComponent(subject.pinned_ref)}`, options)
   if (ref.failure) recordFailure(findings, ref)
-  else if (ref.data.sha !== subject.pinned_commit) requireReview(findings, 'pin_ref_mismatch')
+  else if (!isRecord(ref.data) || !validCommitSha(ref.data.sha)) {
+    requireReview(findings, 'pinned_ref_response_invalid')
+  } else if (ref.data.sha !== subject.pinned_commit) {
+    requireReview(findings, 'pin_ref_mismatch')
+  }
 
   for (const entrypoint of subject.entrypoints) {
     const encodedPath = entrypoint.path.split('/').map(encodeURIComponent).join('/')
-    const entry = await requestProjectJson(`${api}/contents/${encodedPath}?ref=${subject.pinned_commit}`, options)
-    if (entry.failure === 'http' && entry.status === 404) requireReview(findings, 'entrypoint_missing')
-    else if (entry.failure) recordFailure(findings, entry)
-    else if (entry.data.path !== entrypoint.path) requireReview(findings, 'entrypoint_response_invalid')
+    const entry = await requestProjectJson(
+      `${api}/contents/${encodedPath}?ref=${subject.pinned_commit}`,
+      options,
+    )
+    if (entry.failure === 'http' && entry.status === 404) {
+      requireReview(findings, 'entrypoint_missing')
+    } else if (entry.failure) {
+      recordFailure(findings, entry)
+    } else if (!isRecord(entry.data) || entry.data.path !== entrypoint.path) {
+      requireReview(findings, 'entrypoint_response_invalid')
+    }
   }
 
   for (const source of subject.license_sources) {
     const encodedPath = source.path.split('/').map(encodeURIComponent).join('/')
     const refs = [...new Set([subject.pinned_commit, defaultBranch].filter(Boolean))]
     for (const refName of refs) {
-      const license = await requestProjectJson(`${api}/contents/${encodedPath}?ref=${encodeURIComponent(refName)}`, options)
+      const license = await requestProjectJson(
+        `${api}/contents/${encodedPath}?ref=${encodeURIComponent(refName)}`,
+        options,
+      )
       if (license.failure === 'http' && license.status === 404) {
         requireReview(findings, 'license_source_missing')
       } else if (license.failure) {
         recordFailure(findings, license)
+      } else if (!isRecord(license.data)
+        || license.data.path !== source.path
+        || license.data.encoding !== 'base64'
+        || !validBase64Content(license.data.content)) {
+        requireReview(findings, 'license_response_invalid')
       } else if (githubContentSha256(license.data) !== source.sha256) {
         requireReview(findings, 'license_changed')
       }
@@ -4507,12 +5295,23 @@ export async function checkProjectSubject(subject, {
     } else if (latest.failure) {
       recordFailure(findings, latest)
     } else {
-      const latestRef = subject.pin_kind === 'tag' ? latest.data[0]?.name : latest.data.tag_name
-      if (!latestRef) requireReview(findings, 'project_release_missing')
-      else if (latestRef !== subject.pinned_ref) findings.push('project_update_available')
+      const validLatest = subject.pin_kind === 'tag'
+        ? Array.isArray(latest.data) && isRecord(latest.data[0]) && nonEmpty(latest.data[0].name)
+        : isRecord(latest.data) && nonEmpty(latest.data.tag_name)
+      if (!validLatest) {
+        requireReview(findings, subject.pin_kind === 'tag'
+          ? 'project_tags_response_invalid'
+          : 'project_release_response_invalid')
+      } else {
+        const latestRef = subject.pin_kind === 'tag' ? latest.data[0].name : latest.data.tag_name
+        if (latestRef !== subject.pinned_ref) findings.push('project_update_available')
+      }
     }
   }
-  if (subject.review_by < reviewDateInTimeZone(now)) requireReview(findings, 'project_review_due')
+
+  if (subject.review_by < reviewDateInTimeZone(now)) {
+    requireReview(findings, 'project_review_due')
+  }
   return {
     id: subject.id,
     license_source_paths: subject.license_sources.map((source) => source.path),
@@ -4524,25 +5323,52 @@ export function buildProjectFreshnessReport(results, generatedAt = new Date().to
   const flagged = results.filter((result) => result.findings.length > 0)
   return {
     generated_at: generatedAt,
-    summary: { total: results.length, healthy: results.length - flagged.length, needs_review: flagged.length },
+    summary: {
+      total: results.length,
+      healthy: results.length - flagged.length,
+      needs_review: flagged.length,
+    },
     needs_review: flagged.length > 0,
     results,
   }
 }
 
 const blockingFindings = new Set([
-  'project_review_required', 'project_transient_error', 'project_network_error',
-  'project_parse_error', 'project_http_error', 'project_schema_invalid',
+  'project_review_required',
+  'project_transient_error',
+  'project_network_error',
+  'project_parse_error',
+  'project_http_error',
+  'project_schema_invalid',
 ])
 
 export function isProjectReportBlocking(report) {
-  return report.results.some((result) => result.findings.some((finding) => blockingFindings.has(finding)))
+  return report.results.some(
+    (result) => result.findings.some((finding) => blockingFindings.has(finding)),
+  )
 }
 
 function renderProjectReport(report) {
   const lines = ['# Project freshness report', '', `Generated: ${report.generated_at}`, '']
   for (const result of report.results.filter((item) => item.findings.length > 0)) {
     lines.push(`- ${result.id}: ${result.findings.join(', ')}`)
+    if (result.license_source_paths.length > 0) {
+      lines.push(`  - License sources: ${result.license_source_paths.join(', ')}`)
+    }
+    if (Array.isArray(result.schema_errors) && result.schema_errors.length > 0) {
+      lines.push('  - Schema errors:')
+      for (const error of result.schema_errors.slice(0, maxSchemaErrors)) {
+        const normalized = String(error).replace(/\s+/gu, ' ').trim()
+        const marker = '... [truncated]'
+        const detail = normalized.length > maxSchemaErrorLength
+          ? `${normalized.slice(0, maxSchemaErrorLength - marker.length)}${marker}`
+          : normalized
+        lines.push(`    - ${detail}`)
+      }
+      if (result.schema_errors.length > maxSchemaErrors) {
+        lines.push(`    - ... ${result.schema_errors.length - maxSchemaErrors} additional schema errors omitted.`)
+      }
+    }
   }
   lines.push('', 'Automated findings request review; they never authorize content changes.', '')
   return lines.join('\n')
@@ -4555,6 +5381,10 @@ export async function runProjectCheck({
   fetchImpl = fetch,
   githubToken = process.env.GITHUB_TOKEN,
   now = new Date(),
+  retryAttempts = 3,
+  retryDelayMs = 250,
+  maxRetryDelayMs = 60_000,
+  sleepImpl = (delayMs) => new Promise((done) => setTimeout(done, delayMs)),
 } = {}) {
   const schemaErrors = validateProjectCatalogFile(projectPath)
   let report
@@ -4569,10 +5399,21 @@ export async function runProjectCheck({
     const data = parse(readFileSync(projectPath, 'utf8'))
     const subjects = data.subjects.map((subject) => ({ ...data.defaults, ...subject }))
     const results = []
-    for (const subject of subjects) results.push(await checkProjectSubject(subject, { fetchImpl, githubToken, now }))
+    for (const subject of subjects) {
+      results.push(await checkProjectSubject(subject, {
+        fetchImpl,
+        githubToken,
+        now,
+        retryAttempts,
+        retryDelayMs,
+        maxRetryDelayMs,
+        sleepImpl,
+      }))
+    }
     report = buildProjectFreshnessReport(results, now.toISOString())
   }
   mkdirSync(dirname(outputJson), { recursive: true })
+  mkdirSync(dirname(outputMarkdown), { recursive: true })
   writeFileSync(outputJson, `${JSON.stringify(report, null, 2)}\n`)
   writeFileSync(outputMarkdown, renderProjectReport(report))
   return report
@@ -4648,12 +5489,12 @@ pnpm test && pnpm validate && pnpm build
 GITHUB_TOKEN="$(gh auth token)" pnpm projects:check
 ```
 
-Expected: unit tests pass; real report has 13 results; ordinary upstream changes appear only as `project_update_available`, and no schema, canonical, pin-ref, entrypoint, license-source, or license-digest failure appears.
+Expected: unit tests pass; real report has 13 results; default-branch HEAD is compared directly with `verified_default_head`; ordinary upstream changes appear only as `project_update_available`; malformed endpoint shapes, bounded schema reporting, and rate-limit retry behavior are covered; no schema, canonical, pin-ref, entrypoint, license-source, or license-digest failure appears.
 
 - [ ] **Step 6: Commit project freshness automation**
 
 ```bash
-git add scripts/check-projects.mjs tests/source-freshness.spec.ts package.json .github/workflows/source-freshness.yml
+git add sources/project-index.yml scripts/project-catalog.mjs scripts/project-catalog.d.mts docs/.vitepress/theme/data/projectCatalogTypes.ts scripts/check-projects.mjs tests/project-catalog.spec.ts tests/source-freshness.spec.ts package.json .github/workflows/source-freshness.yml
 git commit -m "feat: monitor pinned project sources"
 ```
 

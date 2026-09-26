@@ -237,6 +237,7 @@ page 级 `catalog_tier: core` 表示该页面属于主项目目录，不等于�
 - `pinned_commit` 必须是 40 位小写十六进制 SHA；页面源码链接必须使用该 SHA，不使用 `main`、`master` 或可移动 tag。
 - `pinned_ref` 用于人类识别；`pin_kind` 明确是 `release`、`tag` 或 `commit`。
 - 一个 ref 若存在，远端解析结果必须等于 `pinned_commit`。
+- 每个 subject 必须记录设计日实测的 `verified_default_branch` 与 40 位 `verified_default_head`。默认分支更新检测比较当前 HEAD SHA 与 `verified_default_head`，不得再用提交日期或仓库 `pushed_at` 推断是否更新；默认分支名称变化单独触发人工复核。
 - 每个 `entrypoint` 的 schema 固定为 `path + symbols:string[] + responsibility`：`path` 在 subject 内唯一，`symbols` 至少包含一个非空字符串且不得重复，`responsibility` 非空；不再接受单数 `symbol` 字段。
 - `entrypoints` 必须在固定 commit 中存在；每个核心页面至少 3 个。普通核心页最多 8 个，MCP、OpenHands、评测、Dify、CrewAI 等复杂跨层、多轨或双轨页面最多 13 个；初始目录共固定 66 个文件级 entrypoint。
 - 调用链 step 的 `source_path` 必须匹配对应 subject 的一个 entrypoint，且 step 的单数 `symbol` 必须属于该 entrypoint 的 `symbols`；同一文件可通过数组声明多个实际使用符号。
@@ -271,6 +272,24 @@ page 级 `catalog_tier: core` 表示该页面属于主项目目录，不等于�
 | `flowise` | `FlowiseAI/Flowise` | `flowise@3.1.4` | `a65f81bb43ef66d3ce734bf0dff4223ae8041c95` | eol | true | historical | 按目录与显式文件分为商业许可与 Apache-2.0；2026-08-31 EOL |
 | `hermes-agent` | `NousResearch/hermes-agent` | `v2026.9.24` | `f97608f178d1ffeca59860195ab7da295f7c8e5f` | active | false | watch-only | MIT；只做长期自主能力与权限风险观察 |
 | `openclaw` | `openclaw/openclaw` | `v2026.9.6` | `eb377ac59e6c9fd6c7705028034812becf00271b` | active | false | watch-only | MIT，另有 `THIRD_PARTY_NOTICES.md`；只做高权限个人 Agent 风险观察 |
+
+设计日默认分支基线如下；每周检查以 SHA 比较为准，日期只用于验证 API 响应结构和展示复核时间：
+
+| subject ID | verified default branch | verified default HEAD |
+| --- | --- | --- |
+| `mcp-spec` | `main` | `ab3a39c13bd23be691c2760e1c6c5c15a64582e1` |
+| `mcp-python-sdk` | `main` | `f1b6589088534632fef92238ee9750951e3c0185` |
+| `aider` | `main` | `5dc9490bb35f9729ef2c95d00a19ccd30c26339c` |
+| `openhands-canvas` | `main` | `47a10808d78561546a02555d0d2c7fa96fa96300` |
+| `openhands-sdk` | `main` | `a350dc73ef9b4d3a801ffab2aed211a04d2120a9` |
+| `swe-bench` | `main` | `02e7a74ffd0b707aab73d203fe87bdc7c76afc8e` |
+| `tau2-bench` | `main` | `b7ea9074c1cba482b30687fecdb5c8425fd6f619` |
+| `dify` | `main` | `f4602cc1fe8448486e185be74152699322ccec3f` |
+| `crewai` | `main` | `4ed2abc7bbf504a634d3b733f2a97e0fbe8d44ec` |
+| `autogpt` | `master` | `5e84f064d3779acc49c86c51e2167ba8f660c93d` |
+| `flowise` | `main` | `9291856d1ea4a4ceea9f8fef8ce14f4f6c81e8eb` |
+| `hermes-agent` | `main` | `d0288be5b3330d2442e3907185b8e9d0958297bb` |
+| `openclaw` | `main` | `51ec96836f768c07c80e9d11af872014e7436d69` |
 
 ### 8.1 特殊许可证的 `license_scopes`
 
@@ -473,11 +492,13 @@ AutoGPT 只追踪 `classic/original_autogpt/autogpt/app/main.py`、`agents/agent
 1. 验证 canonical repo 未重定向且固定 commit 可访问；
 2. 验证 pinned ref 仍解析到 pinned commit；
 3. 验证所有 `entrypoints` 在固定 commit 中存在；
-4. 比较最新 release、默认分支 HEAD、archived 状态和许可证路径；
+4. 比较最新 release、默认分支名、默认分支 HEAD SHA、archived 状态和许可证路径；HEAD SHA 与 `verified_default_head` 不同即报告更新，不使用同日/跨日启发式；
 5. 新版本或新提交只产生 `project_update_available`；归档、迁移、许可证变化产生 `project_review_required`；
-6. HTTP 429/5xx、DNS、超时与 JSON 解析失败归为瞬时或网络错误，不能计为 healthy，也不能当永久死链；
+6. repository metadata、default-branch HEAD、pinned ref、entrypoint、license content、release/tag 等端点必须逐类校验响应 shape；语法合法但字段缺失或类型错误同样 fail closed；
 7. 页面超过 `review_by` 后静态 HTML 只显示中性“固定于 X，待按日期复核”，客户端可显示当前复核状态；页面与脚本共用 `Asia/Shanghai` 日期函数；
-8. 自动化只上传报告并创建权威 Issue 或草稿 PR，绝不抓取上游正文自动写入书稿。
+8. HTTP 429、限流型 403、5xx、DNS、超时与 JSON 解析失败归为瞬时或网络错误，不能计为 healthy，也不能当永久死链；重试读取 `Retry-After` 与 `X-RateLimit-Reset`，等待时间有上限，测试通过注入 `now` 与 `sleepImpl` 保持确定性；
+9. schema 错误必须进入 Markdown 报告，但最多展示 20 条、每条最多 240 字符，并使用确定性的截断与省略标记，避免 Issue 无界膨胀；
+10. 自动化只上传报告并创建权威 Issue 或草稿 PR，绝不抓取上游正文自动写入书稿。
 
 权限保持两段式：扫描 job 只有 `contents: read`，checkout 使用 `persist-credentials: false`；写 Issue 的 job 不 checkout、不安装依赖，只读取扫描 artifact 并调用 GitHub API。feature branch 手动运行不得更新默认分支权威 Issue；workflow 使用并发组避免互相关闭或覆盖告警。
 
