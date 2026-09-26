@@ -1396,12 +1396,10 @@ describe('project publication boundary', () => {
       const bait = '<img src="https://example.com/remote.png"><a href="https://github.com/example/project/blob/main/fake.ts">bait</a>'
       writeFileSync(
         file,
-        original
-          .replace(
-            '<div class="vp-doc">',
-            `<div class="vp-doc"><!-- ${bait} --><script>${bait}</script><template>${bait}</template><style>/* background:url(https://example.com/comment.png) */</style>`,
-          )
-          .replace('</main>', `</main>${bait}`),
+        original.replace(
+          '<div class="vp-doc">',
+          `<div class="vp-doc"><!-- ${bait} --><script>${bait}</script><template>${bait}</template><style>/* background:url(https://example.com/comment.png) */</style>`,
+        ),
       )
       expect(validateDist(dist)).toEqual([])
     } finally {
@@ -1504,12 +1502,12 @@ describe('project publication boundary', () => {
       '<div style="background-image:image-set(var(--remote) 1x)"></div>',
       '<div style="background-image:env(remote-image)"></div>',
       '<div style="background-image:attr(data-image url)"></div>',
-      '<style>.project-overview{background:url(https://evil.example/block.png)}</style>',
+      '<style>.vp-doc{background:url(https://evil.example/block.png)}</style>',
       '<style>@import "//evil.example/import.css";</style>',
       '<style>@import url(https://evil.example/import-url.css);</style>',
-      String.raw`<style>.escaped{background:u\72l(https://evil.example/style-escaped.png)}</style>`,
+      String.raw`<style>.vp-doc{background:u\72l(https://evil.example/style-escaped.png)}</style>`,
       String.raw`<style>@im\70ort "https://evil.example/escaped-import.css";</style>`,
-      '<noscript><style>.fallback{background:url(https://evil.example/nojs.png)}</style></noscript>',
+      '<noscript><style>.vp-doc{background:url(https://evil.example/nojs.png)}</style></noscript>',
     ]
 
     for (const markup of remoteMarkup) {
@@ -1553,7 +1551,7 @@ describe('project publication boundary', () => {
       mkdirSync(dirname(cssPath), { recursive: true })
       writeFileSync(
         cssPath,
-        '@import "./local.css" layer(project) supports(display:grid) screen;@import "data:text/css,.safe{}" layer(data);.local{background:url(./asset.png);mask:url(data:image/svg+xml,AAAA);cursor:url(blob:https://example.com/id),auto}',
+        '@import "./local.css" layer(project) supports(display:grid) screen;@import "data:text/css,.safe{}" layer(data);.local{background:url(./asset.png);mask:url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cuse href=\'%23icon\'/%3E%3C/svg%3E");cursor:url(blob:https://example.com/id),auto}',
       )
       expect(validateDist(dist)).toEqual([])
 

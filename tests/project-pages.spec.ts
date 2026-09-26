@@ -287,6 +287,86 @@ pip&nbsp;install package
     }
   })
 
+  it('recursively validates direct SVG data resources from CSS and HTML', () => {
+    const svgData = (body: string) =>
+      `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg">${body}</svg>`)}`
+    const remote = svgData('<image href="https://evil.example/nested.png"/>')
+    const remoteStyle = svgData('<style>.x{background:url(https://evil.example/style.png)}</style>')
+    const remoteBase64 = `data:IMAGE/SVG+XML;charset=UTF-8;base64,${Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg"><image href="https://evil.example/base64.png"/></svg>',
+    ).toString('base64')}`
+    const safeFragment = svgData('<use href="#local-icon"/>')
+    const safeLocal = svgData('<image href="/local.png"/>')
+
+    for (const candidate of [
+      remote,
+      remoteStyle,
+      remoteBase64,
+      'data:image/svg+xml,%ZZ',
+      'data:image/svg+xml,%3Csvg%3E',
+      'data:image/svg+xml;base64,/w==',
+    ]) {
+      expect(isRemoteImageCandidate(candidate), candidate).toBe(true)
+    }
+    expect(extractCssResourceCandidates(`.project-card{background:url("${remote}")}`)
+      .some(isRemoteImageCandidate)).toBe(true)
+    expect(extractProjectHtmlContract(
+      `<main class="vp-doc"><img src="${remote}"></main>`,
+    ).resources.some(isRemoteImageCandidate)).toBe(true)
+
+    for (const candidate of [safeFragment, safeLocal, 'data:image/png;base64,AAAA']) {
+      expect(isRemoteImageCandidate(candidate), candidate).toBe(false)
+    }
+
+    let nested = safeFragment
+    for (let depth = 0; depth < 4; depth += 1) {
+      nested = svgData(`<image href="${nested}"/>`)
+    }
+    expect(isRemoteImageCandidate(nested)).toBe(true)
+  })
+
+  it('recursively validates canonical local SVG resources without relay cycles', () => {
+    const unsafeOptions = {
+      sourcePath: 'assets/site.css',
+      distFiles: new Set(['relay.svg']),
+      distFileContents: new Map([
+        ['relay.svg', '<svg xmlns="http://www.w3.org/2000/svg"><image href="https://evil.example/relay.png"/></svg>'],
+      ]),
+    }
+    expect(extractCssResourceCandidates(
+      '.project-card{background-image:url(/relay.svg)}',
+      unsafeOptions,
+    ).some(isRemoteImageCandidate)).toBe(true)
+    expect(extractProjectHtmlContract(
+      '<main class="vp-doc"><img src="/relay.svg"></main>',
+      { cssOptions: unsafeOptions },
+    ).resources.some(isRemoteImageCandidate)).toBe(true)
+
+    const safeOptions = {
+      ...unsafeOptions,
+      distFileContents: new Map([
+        ['relay.svg', '<svg xmlns="http://www.w3.org/2000/svg"><use href="#local"/></svg>'],
+      ]),
+    }
+    expect(extractCssResourceCandidates(
+      '.project-card{background-image:url(/relay.svg)}',
+      safeOptions,
+    ).some(isRemoteImageCandidate)).toBe(false)
+
+    const cycleOptions = {
+      sourcePath: 'assets/site.css',
+      distFiles: new Set(['a.svg', 'b.svg']),
+      distFileContents: new Map([
+        ['a.svg', '<svg xmlns="http://www.w3.org/2000/svg"><image href="/b.svg"/></svg>'],
+        ['b.svg', '<svg xmlns="http://www.w3.org/2000/svg"><image href="/a.svg"/></svg>'],
+      ]),
+    }
+    expect(extractCssResourceCandidates(
+      '.project-card{background-image:url(/a.svg)}',
+      cycleOptions,
+    ).some(isRemoteImageCandidate)).toBe(true)
+  })
+
   it('collects real SVG and CSS resources without classifying ordinary anchors as resources', () => {
     const backslashUrl = String.raw`https:\\evil.example\asset.svg`
     const controlUrl = 'h\tt\ntps://evil.example/control.css'
@@ -664,6 +744,10 @@ ${escapedImportTarget}
         consumer: '.project-card{content:var(--label)}',
         sources: [':root{--label:"published"}'],
       },
+      {
+        consumer: '.project-card svg{fill:var(--paint);stroke:var(--paint);filter:var(--filter);marker-start:var(--marker)}',
+        sources: [':root{--paint:currentColor;--filter:url(#local-filter);--marker:url(#local-marker)}'],
+      },
     ]
     for (const { consumer, sources } of safeCases) {
       const resources = extractCssResourceCandidates(consumer, {
@@ -676,6 +760,7 @@ ${escapedImportTarget}
 
     const unsafeCases = [
       { consumer: '.project-card{background:var(--asset)}', sources: [':root{--asset:url(https://evil.example/remote.png)}'] },
+      { consumer: '.project-card svg{fill:var(--asset)}', sources: [':root{--asset:url(https://evil.example/paint.svg#x)}'] },
       { consumer: '.project-card{background-image:image(var(--asset),red)}', sources: [':root{--asset:"https://evil.example/string.png"}'] },
       { consumer: '.project-card{background:var(--asset)}', sources: [':root{--asset:red}', '.other{--asset:url(https://evil.example/remote.png)}'] },
       { consumer: '.project-card{background:var(--asset,url(https://evil.example/fallback.png))}', sources: [':root{--asset:red}'] },
@@ -694,6 +779,25 @@ ${escapedImportTarget}
       expect(resources.some(isRemoteImageCandidate), `${sources.join('\n')}\n${consumer}`)
         .toBe(true)
     }
+
+    const aliasConsumer = '.project-card{background-image:var(--asset)}'
+    const aliasSources = [
+      { css: ':root{--asset:var(--shared)}', sourcePath: 'assets/a.css' },
+      { css: ':root{--shared:url(./safe.svg)}', sourcePath: 'assets/icons/definitions.css' },
+      { css: aliasConsumer, sourcePath: 'assets/consumer.css' },
+    ]
+    expect(extractCssResourceCandidates(aliasConsumer, {
+      ...projectOptions,
+      sourcePath: 'assets/consumer.css',
+      distFiles: new Set(['assets/icons/safe.svg']),
+      allCssSources: aliasSources,
+    }).some(isRemoteImageCandidate)).toBe(false)
+    expect(extractCssResourceCandidates(aliasConsumer, {
+      ...projectOptions,
+      sourcePath: 'assets/consumer.css',
+      distFiles: new Set(['assets/a/safe.svg']),
+      allCssSources: aliasSources,
+    }).some(isRemoteImageCandidate)).toBe(true)
   })
 
   it('includes all project HTML style sources in the custom-property safety graph', () => {
@@ -722,17 +826,60 @@ ${escapedImportTarget}
     }).some(isRemoteImageCandidate)).toBe(true)
   })
 
+  it('scans full-document CSS resources with per-document selector reachability', () => {
+    const remote = extractProjectHtmlContract(`
+<html><head><style>.Layout{background:url(https://evil.example/head.png)}</style></head>
+<body><div class="Layout" style="background-image:url(https://evil.example/inline.png)">
+  <img src="https://evil.example/outer.png">
+  <style>.Layout{border-image:url(https://evil.example/body.png) 1}</style>
+  <main class="vp-doc"></main>
+</div></body></html>
+`)
+    expect(remote.resources).toEqual(expect.arrayContaining([
+      'https://evil.example/head.png',
+      'https://evil.example/inline.png',
+      'https://evil.example/body.png',
+      'https://evil.example/outer.png',
+    ]))
+    expect(remote.resources.some(isRemoteImageCandidate)).toBe(true)
+
+    const local = extractProjectHtmlContract(`
+<html><head><style>.Layout{background:url(/local-head.png)}</style></head>
+<body><div class="Layout" style="background-image:url(data:image/png;base64,AAAA)">
+  <img src="/local-outer.png">
+  <style>.definitely-absent{background:url(https://evil.example/unreachable.png)}</style>
+  <main class="vp-doc"></main>
+</div></body></html>
+`)
+    expect(local.resources).toEqual(expect.arrayContaining([
+      '/local-head.png',
+      '/local-outer.png',
+      'data:image/png;base64,AAAA',
+    ]))
+    expect(local.resources).not.toContain('https://evil.example/unreachable.png')
+    expect(local.resources.some(isRemoteImageCandidate)).toBe(false)
+  })
+
   it('fails closed for dynamic resource shorthands on project selectors', () => {
     for (const property of [
       'background',
       'border-image',
+      'backdrop-filter',
       '-webkit-border-image',
+      '-webkit-backdrop-filter',
       'content',
+      'fill',
+      'filter',
       'list-style',
+      'marker',
+      'marker-end',
+      'marker-mid',
+      'marker-start',
       'mask',
       'mask-border',
       'mask-border-source',
       'offset',
+      'stroke',
       '-webkit-mask',
       '-webkit-mask-box-image',
       String.raw`b\61 ckground`,
@@ -749,6 +896,19 @@ ${escapedImportTarget}
       expect(resources, property).toContain(null)
       expect(resources.some(isRemoteImageCandidate), property).toBe(true)
     }
+    for (const css of [
+      '@font-face{src:var(--missing-font)}',
+      '@page{background:var(--missing-page-image)}',
+    ]) {
+      expect(extractCssResourceCandidates(css, {
+        dynamicResources: 'project',
+        projectClassTokenSets: [new Set(['project-card'])],
+      }).some(isRemoteImageCandidate), css).toBe(true)
+    }
+    expect(extractCssResourceCandidates(
+      '@font-face{src:url(/fonts/local.woff2)}@page{background:url(#local-page)}',
+      { dynamicResources: 'project', projectClassTokenSets: [new Set(['project-card'])] },
+    ).some(isRemoteImageCandidate)).toBe(false)
   })
 
   it('matches HTML and SVG attribute selector case against real document elements', () => {
@@ -832,16 +992,6 @@ ${escapedImportTarget}
     )
     expect(caseSensitiveCustomProperty.resources).toEqual([])
 
-    for (const safeOverride of [
-      '<span class="vp-icon" style="--icon:red"></span>',
-      '<style>.vp-icon{--icon:linear-gradient(red,blue)}</style>',
-    ]) {
-      const contract = extractProjectHtmlContract(
-        `${safeOverride}<main class="vp-doc"></main>`,
-      )
-      expect(contract.resources.some(isRemoteImageCandidate), safeOverride).toBe(false)
-    }
-
     for (const outerOverride of [
       `<span class="vp-icon" style="--icon:url(&quot;${unsafeIcon}&quot;)"></span>`,
       `<style>.vp-icon{--icon:url("${unsafeIcon}")}</style>`,
@@ -908,7 +1058,16 @@ ${escapedImportTarget}
     expect(extractCssResourceCandidates(vendorCss, {
       ...options,
       allCss: [vendorCss, auxiliaryIconCss],
-    }).some(isRemoteImageCandidate)).toBe(false)
+    }).some(isRemoteImageCandidate)).toBe(true)
+    for (const extraDefinition of [
+      '.vp-icon{--icon:red}',
+      '.vp-icon{--icon:linear-gradient(red,blue)}',
+    ]) {
+      expect(extractCssResourceCandidates(vendorCss, {
+        ...options,
+        allCss: [vendorCss, extraDefinition],
+      }).some(isRemoteImageCandidate), extraDefinition).toBe(true)
+    }
     expect(extractCssResourceCandidates(vendorCss, {
       ...options,
       allCss: [vendorCss, '.vp-icon{--Icon:var(--unrelated)}'],
@@ -917,6 +1076,12 @@ ${escapedImportTarget}
     const unsafeCases = [
       { css: vendorCss, version: '1.6.5' },
       { css: vendorCss.replace(genericSelector, `${genericSelector}.changed`), version: '1.6.4' },
+      {
+        css: vendorCss
+          .replaceAll(genericSelector, '.generic-changed')
+          .replaceAll(externalSelector, '.external-changed'),
+        version: '1.6.4',
+      },
       { css: vendorCss.replace('-webkit-mask:', 'background-image:'), version: '1.6.4' },
       { css: vendorCss.replace('var(--icon) no-repeat', 'var(--icon) no-repeat center'), version: '1.6.4' },
       { css: vendorCss.replace('var(--icon)', 'var(--icon, url(/fallback.svg))'), version: '1.6.4' },
@@ -1026,6 +1191,38 @@ ${escapedImportTarget}
       allCss: [wrongNamespaceCss],
       vitePressIconDefinitionHash: '59a70e0750649c2b2ab05cfcceeb7cd295911714652ae46ae11e96d1f765c334',
     }).some(isRemoteImageCandidate)).toBe(false)
+
+    const nestedSvgCases = [
+      {
+        icon: 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cstyle%3E%3Aroot%7B--img%3A%22https%3A%2F%2Fevil.example%2Fx.png%22%7D.x%7Bfill%3Aimage(var(--img%2C%22%23local%22)%2Cred)%7D%3C%2Fstyle%3E%3Crect%20class%3D%22x%22%2F%3E%3C%2Fsvg%3E',
+        hash: '8e3587ae7e154b2061b93cb38ac3552592fadf32ecb711fa8061e3b73b724afc',
+        unsafe: true,
+      },
+      {
+        icon: 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cstyle%3E%3Aroot%7B--img%3A%22%23paint%22%7D.x%7Bfill%3Aimage(var(--img)%2Cred)%7D%3C%2Fstyle%3E%3Crect%20class%3D%22x%22%2F%3E%3C%2Fsvg%3E',
+        hash: '9352433b137e86fac3e02f1197bd2830f842d4d18b87bfa3a1d9fb285379285a',
+        unsafe: false,
+      },
+      {
+        icon: 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cstyle%3E%3Aroot%7B--a%3Avar(--b)%3B--b%3Avar(--a)%7D.x%7Bfill%3Aimage(var(--a%2C%22%23local%22)%2Cred)%7D%3C%2Fstyle%3E%3Crect%20class%3D%22x%22%2F%3E%3C%2Fsvg%3E',
+        hash: '2a77addeb69d0b5fd764b2f9f8d36b59f7106b114dc1ad867937f820b02ad64c',
+        unsafe: true,
+      },
+      {
+        icon: 'data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cstyle%3E.x%7Bfill%3Aimage(var(--missing)%2Cred)%7D%3C%2Fstyle%3E%3Crect%20class%3D%22x%22%2F%3E%3C%2Fsvg%3E',
+        hash: 'cbcd9e6dbf30ee37d1f34bb0048612469781fe65a6389cbd3e1d2242a535b82c',
+        unsafe: true,
+      },
+    ]
+    for (const { icon, hash, unsafe } of nestedSvgCases) {
+      const css = vendorCss.replace(safeIcon, icon)
+      expect(extractCssResourceCandidates(css, {
+        ...options,
+        allCss: [css],
+        vitePressIconDefinitionHash: hash,
+        analysisCache: {},
+      }).some(isRemoteImageCandidate), icon).toBe(unsafe)
+    }
 
     for (const auxiliaryCss of [
       '.vpi-social-github{--icon:var(--other-icon)}',

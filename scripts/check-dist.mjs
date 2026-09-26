@@ -58,7 +58,7 @@ const projectCatalog = loadProjectCatalog(new URL('../sources/project-index.yml'
 const lockedVitePressVersion = readLockedVitePressVersion(
   readFileSync(new URL('../pnpm-lock.yaml', import.meta.url), 'utf8'),
 )
-const vitePressIconDefinitionHash = '0d5ba8815e543fa0aa7f6bf3bbaaf6a1c3021d0b86890a4353429e396ebf300a'
+const vitePressIconDefinitionHash = '11fd74f9afcd84381797239ab4cde4d59d159f6adaae1e8312df30997b17ffe1'
 
 export const approvedProjectFiles = new Set([
   'projects/index.html',
@@ -255,6 +255,9 @@ export function validateDist(distPath) {
     ...[...projectHtml].flatMap(([file, html]) =>
       extractProjectHtmlContract(html).cssSources.map((css) => ({ css, sourcePath: file }))),
   ]
+  const distFileContents = new Map([...indexed.files]
+    .filter(([file]) => file.toLowerCase().endsWith('.svg'))
+    .map(([file, path]) => [file, readFileSync(path, 'utf8')]))
   const cssOptions = {
     dynamicResources: 'project',
     projectClassTokens,
@@ -263,6 +266,7 @@ export function validateDist(distPath) {
     allCssSources,
     vitePressIconDefinitionHash,
     distFiles: new Set(relativeFiles),
+    distFileContents,
     analysisCache: {},
   }
   for (const [file, html] of projectHtml) {
