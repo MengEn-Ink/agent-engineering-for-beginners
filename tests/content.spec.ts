@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
@@ -58,11 +60,39 @@ const expectedProjectOutputs = [
   'projects/history-autogpt-flowise.html',
 ]
 const fixtureCoreProjectFiles = new Set(expectedProjectOutputs.slice(1, 7))
+const fixtureProjectCatalog = parse(readFileSync('sources/project-index.yml', 'utf8')) as {
+  pages: Array<{ page_item_id: string; subjects: string[] }>
+  subjects: Array<{
+    id: string
+    canonical_repo: string
+    pinned_commit: string
+    entrypoints: Array<{ path: string }>
+    license_sources: Array<{ path: string }>
+  }>
+}
 const fixtureProjectHeadings = [
   '30 秒结论', '为什么选', '版本与边界', '原创建筑图', '唯一纵向调用链',
   '关键源码入口', '一次请求的数据流', '阅读练习', '失败边界', '生产边界',
   '高频面试点', '升级复核', '来源与归因',
 ]
+
+function fixtureProjectSourceUrl(subject: (typeof fixtureProjectCatalog.subjects)[number], path: string) {
+  const encodedPath = path.split('/').map(encodeURIComponent).join('/')
+  return `https://github.com/${subject.canonical_repo}/blob/${subject.pinned_commit}/${encodedPath}`
+}
+
+function fixtureProjectSections(relative: string) {
+  const slug = relative.slice('projects/'.length, -'.html'.length)
+  const pageId = slug === 'index' ? 'projects-index' : `project-${slug}`
+  const page = fixtureProjectCatalog.pages.find((candidate) => candidate.page_item_id === pageId)!
+  const subjects = page.subjects.map((subjectId) =>
+    fixtureProjectCatalog.subjects.find((candidate) => candidate.id === subjectId)!)
+  const sourceAnchors = subjects.flatMap((subject) => subject.entrypoints.map((entry) =>
+    `<a href="${fixtureProjectSourceUrl(subject, entry.path)}">${entry.path}</a>`))
+  const licenseAnchors = subjects.flatMap((subject) => subject.license_sources.map((source) =>
+    `<a href="${fixtureProjectSourceUrl(subject, source.path)}">${source.path}</a>`))
+  return `<aside class="project-meta"><details>${licenseAnchors.join('')}</details></aside><ol class="project-source-links">${sourceAnchors.join('')}</ol>`
+}
 
 function createCompleteDistFixture() {
   const dist = mkdtempSync(join(tmpdir(), 'agent-book-project-dist-'))
@@ -93,8 +123,8 @@ function createCompleteDistFixture() {
       ? fixtureProjectHeadings.map((heading) => `<h2>${heading}</h2>`).join('')
       : ''
     writeFileSync(target, isOverview
-      ? '<main class="project-overview">开源项目拆解</main>'
-      : `<main>固定版本 关键源码入口 ${coreHeadings}<a href="https://github.com/example/project/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/src/index.ts">source</a></main>`)
+      ? '<main><div class="vp-doc"><section class="project-overview">开源项目拆解</section></div></main>'
+      : `<main><div class="vp-doc">固定版本 关键源码入口 ${coreHeadings}${fixtureProjectSections(relative)}</div></main>`)
   }
   return dist
 }
@@ -1137,6 +1167,32 @@ describe('progressive project publication boundary', () => {
 })
 
 describe('project publication boundary', () => {
+  it('canonicalizes Windows-style approved outputs before every dist check', () => {
+    const dist = createCompleteDistFixture()
+    try {
+      for (const relative of expectedProjectOutputs) {
+        renameSync(join(dist, relative), join(dist, relative.replaceAll('/', '\\')))
+      }
+      expect(validateDist(dist)).toEqual([])
+    } finally {
+      rmSync(dist, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects output paths that collide after POSIX normalization', () => {
+    const dist = createCompleteDistFixture()
+    try {
+      copyFileSync(
+        join(dist, 'projects/aider.html'),
+        join(dist, 'projects\\aider.html'),
+      )
+      expect(validateDist(dist))
+        .toContain('构建产物路径规范化后重复：projects/aider.html')
+    } finally {
+      rmSync(dist, { recursive: true, force: true })
+    }
+  })
+
   it('requires every approved project output', () => {
     for (const missing of expectedProjectOutputs) {
       const dist = createCompleteDistFixture()
@@ -1178,12 +1234,50 @@ describe('project publication boundary', () => {
     }
   })
 
+  it('ignores comment and script bait instead of treating it as course markup', () => {
+    const stages = ['基础认知', '核心机制', '生产工程', '应用模式', '项目拆解', '综合实战']
+    const links = publishedCourseItems.map(({ itemId }) => {
+      const route = getContentItem(itemId).route
+      return `<a href="/agent-engineering-for-beginners${route}">${itemId}</a>`
+    })
+    const bait = `<nav class="course-map">${stages.join('')}本地进度将在页面加载后显示${links.join('')}</nav>`
+    const html = `<!-- ${bait} --><script>${bait}</script><nav class="course-map">真实课程地图</nav>`
+
+    expect(validateCourseDist(html)).toContain('课程页必须包含 26 个唯一的公开课程链接')
+    expect(validateCourseDist(html)).toContain('课程页缺少 SSR 中性进度文案')
+  })
+
+  it('accepts only clean root-relative exact course URLs', () => {
+    const dist = createCompleteDistFixture()
+    try {
+      const coursePath = join(dist, 'course/index.html')
+      const original = readFileSync(coursePath, 'utf8')
+      const firstHref = '/agent-engineering-for-beginners/preface'
+      const invalidHrefs = [
+        `https://mengen-ink.github.io${firstHref}`,
+        `//mengen-ink.github.io${firstHref}`,
+        `${firstHref}?preview=1`,
+        `${firstHref}#iq-01-a`,
+        '/agent-engineering-for-beginners/chapters/../preface',
+        `${firstHref}/`,
+        '/agent-engineering-for-beginners/chapters/01-ai-native',
+      ]
+      for (const href of invalidHrefs) {
+        writeFileSync(coursePath, original.replace(firstHref, href))
+        expect(validateDist(dist), href)
+          .toContain('课程页必须包含 26 个唯一的公开课程链接')
+      }
+    } finally {
+      rmSync(dist, { recursive: true, force: true })
+    }
+  })
+
   it('enforces immutable, local, and complete static project output', () => {
     const dist = createCompleteDistFixture()
     try {
       writeFileSync(
         join(dist, 'projects/aider.html'),
-        '<main><a href="https://github.com/example/project/blob/main/src/index.ts">source</a><img src="https://example.com/remote.png"></main>',
+        '<main><div class="vp-doc"><ol class="project-source-links"><li><a href="https://github.com/example/project/blob/main/src/index.ts">source</a></li></ol><img src="https://example.com/remote.png"></div></main>',
       )
       expect(validateDist(dist)).toEqual(expect.arrayContaining([
         '项目页缺少固定版本：projects/aider.html',
@@ -1193,6 +1287,98 @@ describe('project publication boundary', () => {
         '项目页包含外链图片：projects/aider.html',
         '核心项目页缺少章节 30 秒结论：projects/aider.html',
       ]))
+    } finally {
+      rmSync(dist, { recursive: true, force: true })
+    }
+  })
+
+  it('ignores project contract bait in comments, scripts, and styles', () => {
+    const dist = createCompleteDistFixture()
+    try {
+      const file = join(dist, 'projects/aider.html')
+      const original = readFileSync(file, 'utf8')
+      const bait = '<img src="https://example.com/remote.png"><a href="https://github.com/example/project/blob/main/fake.ts">bait</a>'
+      writeFileSync(
+        file,
+        original
+          .replace(
+            '<div class="vp-doc">',
+            `<div class="vp-doc"><!-- ${bait} --><script>${bait}</script><style>${bait}</style><template>${bait}</template><noscript>${bait}</noscript>`,
+          )
+          .replace('</main>', `</main>${bait}`),
+      )
+      expect(validateDist(dist)).toEqual([])
+    } finally {
+      rmSync(dist, { recursive: true, force: true })
+    }
+  })
+
+  it('requires real project sections and h2 elements instead of string bait', () => {
+    const dist = createCompleteDistFixture()
+    try {
+      const bait = [
+        '固定版本',
+        '关键源码入口',
+        ...fixtureProjectHeadings.map((heading) => `<h2>${heading}</h2>`),
+        '<ol class="project-source-links"><a href="https://github.com/Aider-AI/aider/blob/a4be6ccd87ebaa59b361f3f028d116ce1761b626/aider/main.py">source</a></ol>',
+      ].join('')
+      writeFileSync(
+        join(dist, 'projects/aider.html'),
+        `<main><div class="vp-doc"><script type="application/json">${bait}</script><!-- ${bait} --></div></main>`,
+      )
+      expect(validateDist(dist)).toEqual(expect.arrayContaining([
+        '项目页缺少固定版本：projects/aider.html',
+        '项目页缺少源码入口：projects/aider.html',
+        '核心项目页缺少章节 30 秒结论：projects/aider.html',
+        '项目页源码与许可链接不符合 catalog：projects/aider.html',
+      ]))
+    } finally {
+      rmSync(dist, { recursive: true, force: true })
+    }
+  })
+
+  it('requires the exact catalog-derived project source and license URLs', () => {
+    const aider = fixtureProjectCatalog.subjects.find((subject) => subject.id === 'aider')!
+    const originalUrl = fixtureProjectSourceUrl(aider, aider.entrypoints[0].path)
+    const replacements = [
+      originalUrl.replace('github.com', 'github.example.com'),
+      originalUrl.replace('/Aider-AI/aider/', '/someone-else/aider/'),
+      originalUrl.replace(`/blob/${aider.pinned_commit}/`, '/blob/develop/'),
+      originalUrl.replace('/aider/main.py', '/aider/wrong.py'),
+      originalUrl.replace('https://', 'https://user@'),
+      originalUrl.replace('github.com/', 'github.com:444/'),
+      `${originalUrl}?plain=1`,
+      `${originalUrl}#L1`,
+    ]
+
+    for (const replacement of replacements) {
+      const dist = createCompleteDistFixture()
+      try {
+        const file = join(dist, 'projects/aider.html')
+        writeFileSync(file, readFileSync(file, 'utf8').replace(originalUrl, replacement))
+        expect(validateDist(dist), replacement)
+          .toContain('项目页源码与许可链接不符合 catalog：projects/aider.html')
+      } finally {
+        rmSync(dist, { recursive: true, force: true })
+      }
+    }
+  })
+
+  it('rejects missing and unexpected project source or license anchors', () => {
+    const aider = fixtureProjectCatalog.subjects.find((subject) => subject.id === 'aider')!
+    const licenseUrl = fixtureProjectSourceUrl(aider, aider.license_sources[0].path)
+    const dist = createCompleteDistFixture()
+    try {
+      const file = join(dist, 'projects/aider.html')
+      const html = readFileSync(file, 'utf8')
+        .replace(`<a href="${licenseUrl}">${aider.license_sources[0].path}</a>`, '')
+        .replace(
+          '</ol>',
+          `<a href="https://github.com/Aider-AI/aider/blob/${aider.pinned_commit}/unexpected.ts">unexpected</a></ol>`,
+        )
+      writeFileSync(file, html)
+      expect(validateDist(dist))
+        .toContain('项目页源码与许可链接不符合 catalog：projects/aider.html')
     } finally {
       rmSync(dist, { recursive: true, force: true })
     }

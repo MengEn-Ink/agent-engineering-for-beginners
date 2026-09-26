@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { createMarkdownRenderer } from 'vitepress'
 import { describe, expect, it } from 'vitest'
 import { contentItems, getContentItem } from '../docs/.vitepress/theme/data/contentRegistry'
 import { interviewQuestions } from '../docs/.vitepress/theme/data/interviewQuestions'
@@ -10,6 +11,7 @@ import {
   loadProjectCatalog,
   validateProjectCatalogIntegration,
 } from '../scripts/project-catalog.mjs'
+import { extractProjectMarkdownContract } from '../scripts/publication-contracts.mjs'
 import { validateBook } from '../scripts/validate-content.mjs'
 
 const projectCatalog = loadProjectCatalog(resolve('sources/project-index.yml')) as ProjectCatalog
@@ -37,15 +39,21 @@ const projectRouteRecords = [
   ['project-history-autogpt-flowise', '/projects/history-autogpt-flowise', 'AutoGPT 与 Flowise：历史反例', 'project'],
 ] as const
 
+const markdown = await createMarkdownRenderer(resolve('docs'))
+
 function expectCoreProjectPage(path: string, projectId: string) {
   const text = readFileSync(path, 'utf8')
-  const h2s = Array.from(text.matchAll(/^## (.+)$/gmu), (match) => match[1])
+  const contract = extractProjectMarkdownContract(text, markdown)
   expect(text).toContain(`<ProjectMeta project-id="${projectId}" />`)
   expect(text).toContain(`<ProjectCallChain project-id="${projectId}" />`)
   expect(text).toContain(`<ProjectSourceLinks project-id="${projectId}" />`)
-  expect(h2s, path).toEqual(requiredProjectHeadings)
-  expect(text).not.toMatch(/npm install|pip install|docker run|OPENAI_API_KEY|ANTHROPIC_API_KEY/u)
-  expect(text).not.toMatch(/!\[[^\]]*\]\(https?:\/\//u)
+  expect(contract.headings, path).toEqual(requiredProjectHeadings)
+  expect(contract.text).not.toMatch(
+    /npm install|pip install|docker run|OPENAI_API_KEY|ANTHROPIC_API_KEY/u,
+  )
+  expect(contract.images, path).not.toEqual(expect.arrayContaining([
+    expect.stringMatching(/^https?:\/\//u),
+  ]))
 }
 
 describe('project routes and catalog overview', () => {
@@ -54,12 +62,15 @@ describe('project routes and catalog overview', () => {
     for (const [id, route] of projectRouteRecords) {
       const file = `docs${route.endsWith('/') ? `${route}index` : route}.md`
       const text = readFileSync(file, 'utf8')
-      expect(text, file).not.toMatch(/npm install|pip install|docker run|API_KEY/u)
-      expect(text, file).not.toMatch(/!\[[^\]]*\]\(https?:\/\//u)
+      const parsed = extractProjectMarkdownContract(text, markdown)
+      expect(parsed.text, file).not.toMatch(/npm install|pip install|docker run|API_KEY/u)
+      expect(parsed.images, file).not.toEqual(expect.arrayContaining([
+        expect.stringMatching(/^https?:\/\//u),
+      ]))
       if (coreIds.includes(id)) {
-        const h2s = Array.from(text.matchAll(/^## (.+)$/gmu), (match) => match[1])
-        expect(h2s, file).toEqual(requiredProjectHeadings)
-        expect(new Set(h2s).size, `${file}: duplicate H2`).toBe(requiredProjectHeadings.length)
+        expect(parsed.headings, file).toEqual(requiredProjectHeadings)
+        expect(new Set(parsed.headings).size, `${file}: duplicate H2`)
+          .toBe(requiredProjectHeadings.length)
         expect(text).toContain(`<ProjectMeta project-id="${id}" />`)
         expect(text).toContain(`<ProjectCallChain project-id="${id}" />`)
         expect(text).toContain(`<ProjectSourceLinks project-id="${id}" />`)
@@ -74,22 +85,75 @@ describe('project routes and catalog overview', () => {
       const route = getContentItem(page.page_item_id).route
       const file = `docs${route.endsWith('/') ? `${route}index` : route}.md`
       const text = readFileSync(file, 'utf8')
-      const actualLinks = Array.from(
-        text.matchAll(/\]\((\/chapters\/[^)#]+#iq-[^)]+)\)/gu),
-        (match) => match[1],
-      )
-      const expectedLinks = page.interview_question_ids.map((id) => {
-        const question = interviewQuestions.find((candidate) => candidate.id === id)!
-        return `${question.path}#${id}`
-      })
+      const actualLinks = extractProjectMarkdownContract(text, markdown).links
+      const expectedLinks = page.page_item_id === 'projects-index'
+        ? ['/case-study/delivery-agent']
+        : page.interview_question_ids.map((id) => {
+            const question = interviewQuestions.find((candidate) => candidate.id === id)!
+            return `${question.path}#${id}`
+          })
       expect(actualLinks, page.page_item_id).toEqual(expectedLinks)
+      expect(new Set(actualLinks).size, `${page.page_item_id}: duplicate interview links`)
+        .toBe(actualLinks.length)
     }
+  })
+
+  it('ignores fenced and commented fake Markdown contracts', () => {
+    const parsed = extractProjectMarkdownContract(`
+## Real heading
+
+\`\`\`md
+## Fake heading
+![remote](https://example.com/fake.png)
+[fake](/chapters/01-ai-native#iq-01-a)
+npm install fake-package
+FAKE_API_KEY=secret
+\`\`\`
+
+\`npm install inline-code\`
+<code><a href="/chapters/01-ai-native#iq-01-a">code link</a><img src="https://example.com/code.png">INLINE_API_KEY=secret</code>
+<code><code>nested</code><img src="https://example.com/nested-code.png">NESTED_API_KEY=secret</code>
+
+<!--
+## Comment heading
+![remote](https://example.com/comment.png)
+<a href="/chapters/01-ai-native#iq-01-a">comment link</a>
+-->
+`, markdown)
+
+    expect(parsed.headings).toEqual(['Real heading'])
+    expect(parsed.images).toEqual([])
+    expect(parsed.links).toEqual([])
+    expect(parsed.text).not.toMatch(/npm install|API_KEY/u)
+  })
+
+  it('collects real Markdown and inline HTML links and images in source order', () => {
+    const parsed = extractProjectMarkdownContract(`
+[first](/chapters/01-ai-native#iq-01-a)
+<a href="/chapters/01-ai-native#iq-01-a">duplicate</a>
+<a href="https://evil.example/chapters/01-ai-native#iq-01-a">evil</a>
+![markdown remote](https://example.com/markdown.png)
+<img src="https://example.com/html.png" alt="html remote">
+`, markdown)
+
+    expect(parsed.links).toEqual([
+      '/chapters/01-ai-native#iq-01-a',
+      '/chapters/01-ai-native#iq-01-a',
+      'https://evil.example/chapters/01-ai-native#iq-01-a',
+    ])
+    expect(parsed.images).toEqual([
+      'https://example.com/markdown.png',
+      'https://example.com/html.png',
+    ])
   })
 
   it('keeps project pages free of remote images for project asset provenance', () => {
     for (const path of projectRouteRecords.map(([, route]) =>
       `docs${route.endsWith('/') ? `${route}index` : route}.md`)) {
-      expect(readFileSync(path, 'utf8'), path).not.toMatch(/!\[[^\]]*\]\(https?:\/\//u)
+      const contract = extractProjectMarkdownContract(readFileSync(path, 'utf8'), markdown)
+      expect(contract.images, path).not.toEqual(expect.arrayContaining([
+        expect.stringMatching(/^https?:\/\//u),
+      ]))
     }
   })
 

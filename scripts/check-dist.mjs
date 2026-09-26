@@ -1,6 +1,15 @@
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
-import { join, posix, relative, resolve } from 'node:path'
+import { existsSync, readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { loadProjectCatalog } from './project-catalog.mjs'
+import {
+  extractCourseHtmlContract,
+  extractProjectHtmlContract,
+  indexDistFiles,
+  normalizeCleanCourseHref,
+  normalizePublishedOutputPath,
+  validatePinnedGithubSourceHref,
+} from './publication-contracts.mjs'
 
 const courseStages = [
   '基础认知',
@@ -41,8 +50,8 @@ const publishedCourseRoutes = [
 ]
 
 const forbiddenCourseMarkers = ['/labs/', '/capstone/', '标记已读', '加入书签']
-const siteOrigin = 'https://mengen-ink.github.io'
 const siteBase = '/agent-engineering-for-beginners'
+const projectCatalog = loadProjectCatalog(new URL('../sources/project-index.yml', import.meta.url))
 
 export const approvedProjectFiles = new Set([
   'projects/index.html',
@@ -73,20 +82,6 @@ const coreProjectHeadings = [
   '高频面试点', '升级复核', '来源与归因',
 ]
 
-function normalizePublishedOutputPath(file) {
-  if (
-    file.includes('\0')
-    || file.startsWith('/')
-    || file.startsWith('\\')
-    || /^[A-Za-z]:/u.test(file)
-  ) {
-    return null
-  }
-
-  const normalized = posix.normalize(file.replace(/\\/gu, '/'))
-  return normalized === '..' || normalized.startsWith('../') ? null : normalized
-}
-
 export function validatePublishedRouteBoundary(relativeFiles) {
   const forbidden = relativeFiles.filter((file) => {
     const normalized = normalizePublishedOutputPath(file)
@@ -99,32 +94,10 @@ export function validatePublishedRouteBoundary(relativeFiles) {
     : [`构建产物包含未批准项目、实验或综合实战页面：${forbidden.join(', ')}`]
 }
 
-function listFiles(root) {
-  if (!existsSync(root)) return []
-  return readdirSync(root).flatMap((entry) => {
-    const path = join(root, entry)
-    return statSync(path).isDirectory() ? listFiles(path) : [path]
-  })
-}
-
-function normalizeCourseHref(href) {
-  try {
-    const url = new URL(href, `${siteOrigin}${siteBase}/`)
-    if (url.origin !== siteOrigin || !url.pathname.startsWith(`${siteBase}/`)) return null
-    return url.pathname.slice(siteBase.length).replace(/\/$/u, '')
-  } catch {
-    return null
-  }
-}
-
 export function validateCourseDist(html) {
   const errors = []
-  const courseMarkup = html.match(/<nav class="course-map"[\s\S]*?<\/nav>/u)?.[0] ?? ''
-  const hrefs = Array.from(
-    courseMarkup.matchAll(/<a\b[^>]*\bhref=(["'])(.*?)\1/gu),
-    (match) => match[2],
-  )
-  const normalizedHrefs = hrefs.map(normalizeCourseHref)
+  const contract = extractCourseHtmlContract(html)
+  const normalizedHrefs = contract.hrefs.map((href) => normalizeCleanCourseHref(href, siteBase))
   const hasEveryRouteOnce = publishedCourseRoutes.every((route) =>
     normalizedHrefs.filter((href) => href === route).length === 1,
   )
@@ -137,34 +110,62 @@ export function validateCourseDist(html) {
   ) {
     errors.push('课程页必须包含 26 个唯一的公开课程链接')
   }
-  if (!courseMarkup.includes('本地进度将在页面加载后显示')) {
+  if (!contract.courseText.includes('本地进度将在页面加载后显示')) {
     errors.push('课程页缺少 SSR 中性进度文案')
   }
   for (const stage of courseStages) {
-    if (!courseMarkup.includes(stage)) errors.push(`课程页缺少阶段：${stage}`)
+    if (!contract.courseText.includes(stage)) errors.push(`课程页缺少阶段：${stage}`)
   }
   for (const marker of forbiddenCourseMarkers) {
-    if (html.includes(marker)) errors.push(`课程页包含未发布入口或写操作：${marker}`)
+    if (contract.pageText.includes(marker)) errors.push(`课程页包含未发布入口或写操作：${marker}`)
   }
 
   return errors
+}
+
+function projectSourceUrl(subject, sourcePath) {
+  const encodedPath = sourcePath.split('/').map(encodeURIComponent).join('/')
+  return `https://github.com/${subject.canonical_repo}/blob/${subject.pinned_commit}/${encodedPath}`
+}
+
+function expectedProjectHrefs(file) {
+  const slug = file.slice('projects/'.length, -'.html'.length)
+  const page = projectCatalog.pages.find((candidate) =>
+    candidate.page_item_id === `project-${slug}`)
+  const subjects = page.subjects.map((subjectId) =>
+    projectCatalog.subjects.find((candidate) => candidate.id === subjectId))
+  return {
+    sources: subjects.flatMap((subject) => subject.entrypoints.map((entry) =>
+      projectSourceUrl(subject, entry.path))),
+    licenses: subjects.flatMap((subject) => subject.license_sources.map((source) =>
+      projectSourceUrl(subject, source.path))),
+  }
+}
+
+function exactPinnedHrefs(actual, expected) {
+  return actual.length === expected.length
+    && new Set(actual).size === actual.length
+    && actual.every((href) => expected.some((candidate) =>
+      validatePinnedGithubSourceHref(href, candidate)))
 }
 
 export function validateDist(distPath) {
   if (!existsSync(distPath)) return [`构建产物不存在：${distPath}`]
 
   const errors = []
-  const relativeFiles = listFiles(distPath).map((file) => relative(distPath, file))
+  const indexed = indexDistFiles(distPath)
+  const relativeFiles = [...indexed.files.keys()]
+  errors.push(...indexed.errors)
   const leaked = relativeFiles.filter((file) => file.split(/[\\/]/).includes('superpowers'))
   if (leaked.length > 0) errors.push(`构建产物泄露 superpowers 页面：${leaked.join(', ')}`)
-  errors.push(...validatePublishedRouteBoundary(relativeFiles))
+  errors.push(...validatePublishedRouteBoundary(indexed.rawFiles))
   for (const file of approvedProjectFiles) {
     if (!relativeFiles.includes(file)) errors.push(`构建产物缺少项目页面：${file}`)
   }
   if (!relativeFiles.includes('index.html')) errors.push('构建产物缺少 index.html')
 
-  const coursePath = join(distPath, 'course', 'index.html')
-  if (!existsSync(coursePath)) {
+  const coursePath = indexed.files.get('course/index.html')
+  if (coursePath === undefined) {
     errors.push('构建产物缺少 course/index.html')
   } else {
     errors.push(...validateCourseDist(readFileSync(coursePath, 'utf8')))
@@ -172,7 +173,7 @@ export function validateDist(distPath) {
 
   for (const route of publishedCourseRoutes) {
     const relativeTarget = route.endsWith('/')
-      ? join(route.slice(1), 'index.html')
+      ? `${route.slice(1)}index.html`
       : `${route.slice(1)}.html`
     if (!relativeFiles.includes(relativeTarget)) {
       errors.push(`构建产物缺少公开课程目标：${relativeTarget}`)
@@ -180,22 +181,37 @@ export function validateDist(distPath) {
   }
 
   for (const file of dissectionProjectFiles) {
-    if (!relativeFiles.includes(file)) continue
-    const projectHtml = readFileSync(join(distPath, file), 'utf8')
-    if (!projectHtml.includes('固定版本')) errors.push(`项目页缺少固定版本：${file}`)
-    if (!projectHtml.includes('关键源码入口')) errors.push(`项目页缺少源码入口：${file}`)
-    if (/blob\/(?:main|master)\//u.test(projectHtml)) {
+    const projectPath = indexed.files.get(file)
+    if (projectPath === undefined) continue
+    const contract = extractProjectHtmlContract(readFileSync(projectPath, 'utf8'))
+    if (!contract.text.includes('固定版本')) errors.push(`项目页缺少固定版本：${file}`)
+    if (!contract.text.includes('关键源码入口')) errors.push(`项目页缺少源码入口：${file}`)
+    const projectHrefs = [...contract.sourceHrefs, ...contract.licenseHrefs]
+    if (projectHrefs.some((href) => /\/blob\/(?:main|master)\//u.test(href))) {
       errors.push(`项目页包含移动分支源码链接：${file}`)
     }
-    if (!/github\.com\/[^/]+\/[^/]+\/blob\/[0-9a-f]{40}\//u.test(projectHtml)) {
+    if (!projectHrefs.some((href) => /\/blob\/[0-9a-f]{40}\//u.test(href))) {
       errors.push(`项目页缺少固定 commit 源码链接：${file}`)
     }
-    if (/<img\b[^>]*src=["']https?:\/\//iu.test(projectHtml)) {
+    if (contract.images.some((src) => /^https?:\/\//iu.test(src))) {
       errors.push(`项目页包含外链图片：${file}`)
     }
+    const expected = expectedProjectHrefs(file)
+    if (
+      !exactPinnedHrefs(contract.sourceHrefs, expected.sources)
+      || !exactPinnedHrefs(contract.licenseHrefs, expected.licenses)
+    ) {
+      errors.push(`项目页源码与许可链接不符合 catalog：${file}`)
+    }
     if (coreProjectFiles.has(file)) {
+      if (
+        contract.headings.length !== coreProjectHeadings.length
+        || contract.headings.some((heading, index) => heading !== coreProjectHeadings[index])
+      ) {
+        errors.push(`核心项目页章节结构不匹配：${file}`)
+      }
       for (const heading of coreProjectHeadings) {
-        if (!projectHtml.includes(heading)) errors.push(`核心项目页缺少章节 ${heading}：${file}`)
+        if (!contract.headings.includes(heading)) errors.push(`核心项目页缺少章节 ${heading}：${file}`)
       }
     }
   }
