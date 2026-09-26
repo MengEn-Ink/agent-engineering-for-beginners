@@ -8,12 +8,17 @@
 
 完整课程地图：<https://mengen-ink.github.io/agent-engineering-for-beginners/course/>
 
+## 开源项目拆解
+
+`/projects/` 提供六个核心源码拆解：MCP 规范与 Python SDK、Aider、OpenHands、SWE-bench/τ²-bench、Dify、CrewAI。每页固定 commit（上游提交）、许可证作用域和一条纵向调用链；AutoGPT/Flowise 只作为历史反例，Hermes Agent/OpenClaw 只作为高权限观察项。
+
+这些页面是阅读型源码课程，不会安装或运行上游项目。Python Lab Kit 属于下一阶段；在独立设计、离线 fixture、成本上限和清理流程完成前，仓库不会发布 `/labs/`。
+
 ## 学习入口
 
 - 课程地图 `/course/` 展示完整课程与建议学习顺序；
 - 阅读路线 `/paths/` 是按目标挑选的课程子集，不代替完整课程；
-- 学习进度完全可选，只保存在当前浏览器本地，不需要账号或后端；
-- 独立项目页与 Python 实验是后续阶段交付，本阶段尚未提供。
+- 学习进度完全可选，只保存在当前浏览器本地，不需要账号或后端。
 
 ## 本地开发
 

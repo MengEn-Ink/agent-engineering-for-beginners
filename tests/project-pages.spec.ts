@@ -383,6 +383,18 @@ pip&nbsp;install package
   })
 })
 
+describe('project documentation handoff', () => {
+  it('documents the project catalog without claiming labs exist', () => {
+    const readme = readFileSync('README.md', 'utf8')
+    expect(readme).toContain('/projects/')
+    expect(readme).toContain('六个核心源码拆解')
+    expect(readme).toContain('固定 commit')
+    expect(readme).toContain('Python Lab Kit 属于下一阶段')
+    expect(readme).toContain('仓库不会发布 `/labs/`')
+    expect(readme).not.toMatch(/\]\([^)]*\/labs\//u)
+  })
+})
+
 describe('project presentation primitives', () => {
   it('loads the validated project catalog and fails closed on inherited IDs', () => {
     expect(getProjectPage('project-aider').subjects).toEqual(['aider'])
