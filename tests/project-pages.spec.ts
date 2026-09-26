@@ -553,7 +553,7 @@ describe('project presentation primitives', () => {
       String.raw`\.project-source-links\s+a\[href\]::after`,
     ]) {
       expect(print).toMatch(new RegExp(
-        `${selector}\\s*\\{(?=[^}]*display:\\s*block)(?=[^}]*max-width:\\s*100%)(?=[^}]*overflow-wrap:\\s*anywhere)(?=[^}]*white-space:\\s*normal)[^}]*\\}`,
+        `${selector}\\s*\\{(?=[^}]*display:\\s*block\\s*!important)(?=[^}]*max-width:\\s*100%\\s*!important)(?=[^}]*overflow-wrap:\\s*anywhere\\s*!important)(?=[^}]*white-space:\\s*normal\\s*!important)[^}]*\\}`,
         'su',
       ))
     }

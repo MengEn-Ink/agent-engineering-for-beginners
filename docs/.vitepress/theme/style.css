@@ -2304,17 +2304,17 @@ summary {
   }
 
   .project-source-links a[href] {
-    display: block;
-    max-width: 100%;
-    overflow-wrap: anywhere;
-    white-space: normal;
+    display: block !important;
+    max-width: 100% !important;
+    overflow-wrap: anywhere !important;
+    white-space: normal !important;
   }
 
   .project-source-links a[href]::after {
-    display: block;
-    max-width: 100%;
-    overflow-wrap: anywhere;
-    white-space: normal;
+    display: block !important;
+    max-width: 100% !important;
+    overflow-wrap: anywhere !important;
+    white-space: normal !important;
     content: " (" attr(href) ")";
   }
 }
