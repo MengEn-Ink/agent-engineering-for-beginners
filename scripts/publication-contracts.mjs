@@ -258,8 +258,12 @@ function hrefsWithin(roots, hiddenElements = hiddenHtmlElements) {
 }
 
 function parseSrcsetCandidates(srcset) {
+  if (typeof srcset !== 'string' || srcset.trim() === '') return [null]
   try {
-    return parseSrcset(srcset).map((candidate) => candidate.url)
+    const candidates = parseSrcset(srcset).map((candidate) => candidate.url)
+    return candidates.length > 0 && candidates.every((candidate) => candidate !== '')
+      ? candidates
+      : [null]
   } catch {
     return [null]
   }
@@ -278,7 +282,9 @@ function imageCandidatesWithin(roots, hiddenElements = hiddenImageHtmlElements) 
     }
     return [
       ...(attribute(node, 'src') === undefined ? [] : [attribute(node, 'src')]),
-      ...parseSrcsetCandidates(attribute(node, 'srcset') ?? ''),
+      ...(attribute(node, 'srcset') === undefined
+        ? []
+        : parseSrcsetCandidates(attribute(node, 'srcset'))),
     ]
   })
 }
@@ -851,11 +857,11 @@ function extractSvgXmlResourceCandidates(svg, options = {}) {
   }
 }
 
-function decodeSvgDataResource(candidate) {
+function decodeUtf8DataResource(candidate, expectedMediaType) {
   const comma = candidate.indexOf(',')
   if (comma < 0) return null
   const metadata = candidate.slice(5, comma).split(';').map((part) => part.trim())
-  if (metadata.shift()?.toLowerCase() !== 'image/svg+xml') return null
+  if (metadata.shift()?.toLowerCase() !== expectedMediaType) return null
   let base64 = false
   let charset = null
   for (const parameter of metadata) {
@@ -870,20 +876,34 @@ function decodeSvgDataResource(candidate) {
   }
   try {
     const payload = candidate.slice(comma + 1)
-    if (!base64) return decodeURIComponent(payload)
+    if (!base64) {
+      const decoded = decodeURIComponent(payload)
+      return Buffer.byteLength(decoded, 'utf8') <= 1_000_000 ? decoded : null
+    }
     if (!/^(?:[a-z0-9+/]{4})*(?:[a-z0-9+/]{2}==|[a-z0-9+/]{3}=)?$/iu.test(payload)) {
       return null
     }
-    return new TextDecoder('utf-8', { fatal: true }).decode(Buffer.from(payload, 'base64'))
+    const decoded = new TextDecoder('utf-8', { fatal: true }).decode(Buffer.from(payload, 'base64'))
+    return Buffer.byteLength(decoded, 'utf8') <= 1_000_000 ? decoded : null
   } catch {
     return null
   }
+}
+
+function decodeSvgDataResource(candidate) {
+  return decodeUtf8DataResource(candidate, 'image/svg+xml')
 }
 
 function isSvgDataResource(candidate) {
   const comma = candidate.indexOf(',')
   if (comma < 0) return false
   return candidate.slice(5, comma).split(';', 1)[0].trim().toLowerCase() === 'image/svg+xml'
+}
+
+function isCssDataResource(candidate) {
+  const comma = candidate.indexOf(',')
+  if (comma < 0) return false
+  return candidate.slice(5, comma).split(';', 1)[0].trim().toLowerCase() === 'text/css'
 }
 
 function localResourcePath(candidate, sourcePath) {
@@ -912,21 +932,54 @@ function normalizeSafeResourceCandidate(
   const value = candidate.trim()
   if (/^blob:/iu.test(value)) return null
   if (/^data:/iu.test(value)) {
-    const svg = decodeSvgDataResource(value)
-    if (svg === null) return null
-    const resources = extractSvgXmlResourceCandidates(svg, {
-      ...options,
-      sourcePath,
-      skipVitePressPolicy: true,
-    })
-    if (resources === null || !resources.every((nested) =>
-      normalizeSafeResourceCandidate(
-        nested,
-        options,
-        depth + 1,
+    if (isSvgDataResource(value)) {
+      const svg = decodeSvgDataResource(value)
+      if (svg === null) return null
+      const resources = extractSvgXmlResourceCandidates(svg, {
+        ...options,
         sourcePath,
+        resourceDepth: depth + 1,
+        resourceVisitedPaths: visitedPaths,
+        skipVitePressPolicy: true,
+      })
+      if (resources === null || !resources.every((nested) =>
+        normalizeSafeResourceCandidate(
+          nested,
+          options,
+          depth + 1,
+          sourcePath,
+          visitedPaths,
+        ) !== null)) return null
+      return value
+    }
+    if (isCssDataResource(value)) {
+      const css = decodeUtf8DataResource(value, 'text/css')
+      if (css === null) return null
+      const inheritedSources = (options.allCssSources ?? options.allCss ?? []).map((source) =>
+        typeof source === 'string'
+          ? { css: source, sourcePath: null }
+          : { css: source.css, sourcePath: source.sourcePath ?? null })
+      const cssSource = { css, sourcePath: value }
+      const nestedOptions = {
+        ...options,
+        sourcePath: value,
+        allCss: undefined,
+        allCssSources: [...inheritedSources, cssSource],
+        analysisCache: {},
+        resourceDepth: depth + 1,
+        resourceVisitedPaths: visitedPaths,
+        skipVitePressPolicy: true,
+      }
+      const resources = extractCssResourceCandidates(css, nestedOptions)
+      if (!resources.every((nested) => normalizeSafeResourceCandidate(
+        nested,
+        nestedOptions,
+        depth + 1,
+        value,
         visitedPaths,
       ) !== null)) return null
+      return value
+    }
     return value
   }
   if (isRemoteImageCandidate(value)) return null
@@ -942,6 +995,8 @@ function normalizeSafeResourceCandidate(
   const resources = extractSvgXmlResourceCandidates(svg, {
     ...options,
     sourcePath: relativePath,
+    resourceDepth: depth + 1,
+    resourceVisitedPaths: nextVisited,
     skipVitePressPolicy: true,
   })
   if (resources === null || !resources.every((nested) =>
@@ -963,11 +1018,32 @@ function validateDiscoveredResource(candidate, options, sourcePath) {
   if (typeof candidate !== 'string') return null
   const value = candidate.trim()
   if (isSvgDataResource(value)) {
-    return isSafeResourceCandidate(value, options, 0, sourcePath) ? candidate : null
+    return normalizeSafeResourceCandidate(
+      value,
+      options,
+      options.resourceDepth ?? 0,
+      sourcePath,
+      options.resourceVisitedPaths ?? new Set(),
+    ) === null ? null : candidate
+  }
+  if (isCssDataResource(value)) {
+    return normalizeSafeResourceCandidate(
+      value,
+      options,
+      options.resourceDepth ?? 0,
+      sourcePath,
+      options.resourceVisitedPaths ?? new Set(),
+    ) === null ? null : candidate
   }
   const relativePath = localResourcePath(value, sourcePath)
   if (relativePath !== null && options.distFileContents?.has(relativePath)) {
-    return isSafeResourceCandidate(value, options, 0, sourcePath) ? candidate : null
+    return normalizeSafeResourceCandidate(
+      value,
+      options,
+      options.resourceDepth ?? 0,
+      sourcePath,
+      options.resourceVisitedPaths ?? new Set(),
+    ) === null ? null : candidate
   }
   return candidate
 }
@@ -1150,7 +1226,7 @@ export function extractCssResourceCandidates(css, options = {}) {
     }
     if (
       !options.skipVitePressPolicy
-      && vitePressIconMaskPolicy.present
+      && (options.requireVitePressIconContract || vitePressIconMaskPolicy.present)
       && !vitePressIconMaskPolicy.valid
     ) {
       resources.push(null)
@@ -1242,11 +1318,18 @@ function browserResourceAttributesWithin(roots) {
         .map((candidate) => candidate.value)
     }
     if (node.namespaceURI !== htmlNamespace) return []
+    if (tagName === 'base' || ['embed', 'iframe', 'object'].includes(tagName)) return [null]
     if (tagName === 'link') {
       const rels = (attribute(node, 'rel') ?? '').toLowerCase().split(/\s+/u)
-      return rels.some((rel) => fetchingLinkRels.has(rel))
-        ? [attribute(node, 'href') ?? null]
+      const imageSrcset = attribute(node, 'imagesrcset')
+      const href = attribute(node, 'href')
+      const resources = rels.some((rel) => fetchingLinkRels.has(rel))
+        ? href === undefined
+          ? imageSrcset === undefined ? [null] : []
+          : [href]
         : []
+      if (imageSrcset !== undefined) resources.push(...parseSrcsetCandidates(imageSrcset))
+      return resources
     }
     return (htmlResourceAttributes.get(tagName) ?? [])
       .map((name) => attribute(node, name))
@@ -1627,7 +1710,7 @@ export function isRemoteImageCandidate(candidate) {
   try {
     const url = new URL(value, localImageBase)
     if (url.protocol === 'data:') {
-      return isSvgDataResource(value)
+      return isSvgDataResource(value) || isCssDataResource(value)
         ? !isSafeResourceCandidate(value, {}, 0, null)
         : false
     }

@@ -325,6 +325,31 @@ pip&nbsp;install package
     expect(isRemoteImageCandidate(nested)).toBe(true)
   })
 
+  it('recursively validates CSS data resources from CSS and HTML', () => {
+    const cssData = (css: string, base64 = false) => base64
+      ? `data:text/css;charset=UTF-8;base64,${Buffer.from(css).toString('base64')}`
+      : `data:TEXT/CSS;charset=utf-8,${encodeURIComponent(css)}`
+    const remote = cssData('.x{background:url(https://evil.example/data-css.png)}')
+    const remoteBase64 = cssData('@import "https://evil.example/data-import.css";', true)
+    const safe = cssData('.x{background:url(#local-fragment)}')
+
+    for (const candidate of [remote, remoteBase64, 'data:text/css,%ZZ']) {
+      expect(isRemoteImageCandidate(candidate), candidate).toBe(true)
+    }
+    expect(extractCssResourceCandidates(`@import url("${remote}");`)
+      .some(isRemoteImageCandidate)).toBe(true)
+    expect(extractProjectHtmlContract(
+      `<main class="vp-doc"><link rel="stylesheet" href="${remote}"></main>`,
+    ).resources.some(isRemoteImageCandidate)).toBe(true)
+    expect(isRemoteImageCandidate(safe)).toBe(false)
+
+    let nested = safe
+    for (let depth = 0; depth < 4; depth += 1) {
+      nested = cssData(`@import url("${nested}");`)
+    }
+    expect(isRemoteImageCandidate(nested)).toBe(true)
+  })
+
   it('recursively validates canonical local SVG resources without relay cycles', () => {
     const unsafeOptions = {
       sourcePath: 'assets/site.css',
@@ -364,6 +389,33 @@ pip&nbsp;install package
     expect(extractCssResourceCandidates(
       '.project-card{background-image:url(/a.svg)}',
       cycleOptions,
+    ).some(isRemoteImageCandidate)).toBe(true)
+
+    for (const svg of [
+      '<svg xmlns="http://www.w3.org/2000/svg"><style>.x{background:url(https://evil.example/style.png)}</style></svg>',
+      '<svg xmlns="http://www.w3.org/2000/svg"><style>@import "https://evil.example/import.css";</style></svg>',
+      '<svg xmlns="http://www.w3.org/2000/svg" xmlns:x="urn:bait"><x:g xml:base="https://evil.example/"><image href="#icon"/></x:g></svg>',
+    ]) {
+      expect(extractCssResourceCandidates(
+        '.project-card{background-image:url(/relay.svg)}',
+        {
+          ...unsafeOptions,
+          distFileContents: new Map([['relay.svg', svg]]),
+        },
+      ).some(isRemoteImageCandidate), svg).toBe(true)
+    }
+
+    const nestedOptions = {
+      sourcePath: 'assets/site.css',
+      distFiles: new Set(['assets/relay.svg', 'assets/nested.svg']),
+      distFileContents: new Map([
+        ['assets/relay.svg', '<svg xmlns="http://www.w3.org/2000/svg"><image href="nested.svg"/></svg>'],
+        ['assets/nested.svg', '<svg xmlns="http://www.w3.org/2000/svg"><image href="https://evil.example/nested.png"/></svg>'],
+      ]),
+    }
+    expect(extractCssResourceCandidates(
+      '.project-card{background-image:url(./relay.svg)}',
+      nestedOptions,
     ).some(isRemoteImageCandidate)).toBe(true)
   })
 
@@ -831,6 +883,8 @@ ${escapedImportTarget}
 <html><head><style>.Layout{background:url(https://evil.example/head.png)}</style></head>
 <body><div class="Layout" style="background-image:url(https://evil.example/inline.png)">
   <img src="https://evil.example/outer.png">
+  <link rel="preload" as="image" imagesrcset="/local.png 1x, https://evil.example/preload.png 2x" imagesizes="100vw">
+  <iframe srcdoc="&lt;img src='https://evil.example/srcdoc.png'&gt;"></iframe>
   <style>.Layout{border-image:url(https://evil.example/body.png) 1}</style>
   <main class="vp-doc"></main>
 </div></body></html>
@@ -840,6 +894,8 @@ ${escapedImportTarget}
       'https://evil.example/inline.png',
       'https://evil.example/body.png',
       'https://evil.example/outer.png',
+      'https://evil.example/preload.png',
+      null,
     ]))
     expect(remote.resources.some(isRemoteImageCandidate)).toBe(true)
 
@@ -847,6 +903,7 @@ ${escapedImportTarget}
 <html><head><style>.Layout{background:url(/local-head.png)}</style></head>
 <body><div class="Layout" style="background-image:url(data:image/png;base64,AAAA)">
   <img src="/local-outer.png">
+  <link rel="preload" as="image" imagesrcset="/local.png 1x, data:image/png;base64,AAAA 2x" imagesizes="100vw">
   <style>.definitely-absent{background:url(https://evil.example/unreachable.png)}</style>
   <main class="vp-doc"></main>
 </div></body></html>
@@ -854,10 +911,25 @@ ${escapedImportTarget}
     expect(local.resources).toEqual(expect.arrayContaining([
       '/local-head.png',
       '/local-outer.png',
+      '/local.png',
       'data:image/png;base64,AAAA',
     ]))
     expect(local.resources).not.toContain('https://evil.example/unreachable.png')
     expect(local.resources.some(isRemoteImageCandidate)).toBe(false)
+
+    for (const forbidden of [
+      '<base href="/local/">',
+      '<iframe src="/local-frame.html"></iframe>',
+      '<iframe srcdoc="&lt;p&gt;local&lt;/p&gt;"></iframe>',
+      '<object data="/local-object.svg"></object>',
+      '<embed src="/local-embed.pdf">',
+      '<link rel="preload" as="image" imagesrcset="">',
+      '<link rel="preload" as="image" imagesrcset=",">',
+    ]) {
+      expect(extractProjectHtmlContract(
+        `${forbidden}<main class="vp-doc"></main>`,
+      ).resources.some(isRemoteImageCandidate), forbidden).toBe(true)
+    }
   })
 
   it('fails closed for dynamic resource shorthands on project selectors', () => {
@@ -1048,6 +1120,7 @@ ${escapedImportTarget}
         selectorElements: document.selectorElements,
       }],
       vitePressVersion: '1.6.4',
+      requireVitePressIconContract: true,
       allCss: [vendorCss],
       vitePressIconDefinitionHash: 'b6072c6b7a4450fe7a21c3e5eed18ee5453c862880eaa7f16d4b26d632abe182',
     }
@@ -1075,6 +1148,7 @@ ${escapedImportTarget}
 
     const unsafeCases = [
       { css: vendorCss, version: '1.6.5' },
+      { css: '.unrelated{color:red}', version: '1.6.4' },
       { css: vendorCss.replace(genericSelector, `${genericSelector}.changed`), version: '1.6.4' },
       {
         css: vendorCss

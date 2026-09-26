@@ -258,6 +258,8 @@ export function validateDist(distPath) {
   const distFileContents = new Map([...indexed.files]
     .filter(([file]) => file.toLowerCase().endsWith('.svg'))
     .map(([file, path]) => [file, readFileSync(path, 'utf8')]))
+  const requireVitePressIconContract = cssAssets.some(({ file }) =>
+    file === 'vp-icons.css' || /^assets\/style\.[a-z0-9_-]+\.css$/iu.test(file))
   const cssOptions = {
     dynamicResources: 'project',
     projectClassTokens,
@@ -265,6 +267,7 @@ export function validateDist(distPath) {
     vitePressVersion: lockedVitePressVersion,
     allCssSources,
     vitePressIconDefinitionHash,
+    requireVitePressIconContract,
     distFiles: new Set(relativeFiles),
     distFileContents,
     analysisCache: {},
