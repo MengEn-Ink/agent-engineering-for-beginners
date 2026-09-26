@@ -230,19 +230,46 @@ export function validateDist(distPath) {
   }
 
   const projectContracts = new Map()
+  const projectHtml = new Map()
   const projectClassTokens = new Set()
   const projectDocuments = []
   for (const file of approvedProjectFiles) {
     const projectPath = indexed.files.get(file)
     if (projectPath === undefined) continue
-    const contract = extractProjectHtmlContract(readFileSync(projectPath, 'utf8'))
-    projectContracts.set(file, contract)
+    const html = readFileSync(projectPath, 'utf8')
+    const contract = extractProjectHtmlContract(html)
+    projectHtml.set(file, html)
     for (const className of contract.classTokens) projectClassTokens.add(className)
     projectDocuments.push({
       classTokens: contract.classTokens,
       attributeValues: contract.attributeValues,
       selectorElements: contract.selectorElements,
     })
+  }
+
+  const cssAssets = [...indexed.files]
+    .filter(([file]) => file.toLowerCase().endsWith('.css'))
+    .map(([file, path]) => ({ file, css: readFileSync(path, 'utf8') }))
+  const allCssSources = [
+    ...cssAssets.map(({ file, css }) => ({ css, sourcePath: file })),
+    ...[...projectHtml].flatMap(([file, html]) =>
+      extractProjectHtmlContract(html).cssSources.map((css) => ({ css, sourcePath: file }))),
+  ]
+  const cssOptions = {
+    dynamicResources: 'project',
+    projectClassTokens,
+    projectDocuments,
+    vitePressVersion: lockedVitePressVersion,
+    allCssSources,
+    vitePressIconDefinitionHash,
+    distFiles: new Set(relativeFiles),
+    analysisCache: {},
+  }
+  for (const [file, html] of projectHtml) {
+    const contract = extractProjectHtmlContract(html, {
+      cssOptions: { ...cssOptions, sourcePath: file },
+    })
+    projectContracts.set(file, contract)
     if (!exactHrefs(contract.hrefs, expectedProjectDocumentHrefs(file))) {
       errors.push(`项目页链接不符合公开契约：${file}`)
     }
@@ -253,20 +280,10 @@ export function validateDist(distPath) {
       errors.push(`项目页包含外链资源：${file}`)
     }
   }
-
-  const cssAssets = [...indexed.files]
-    .filter(([file]) => file.toLowerCase().endsWith('.css'))
-    .map(([file, path]) => ({ file, css: readFileSync(path, 'utf8') }))
-  const allCss = cssAssets.map(({ css }) => css)
   for (const { file, css } of cssAssets) {
     const resources = extractCssResourceCandidates(css, {
-      dynamicResources: 'project',
-      projectClassTokens,
-      projectDocuments,
-      vitePressVersion: lockedVitePressVersion,
-      allCss,
-      vitePressIconDefinitionHash,
-      distFiles: new Set(relativeFiles),
+      ...cssOptions,
+      sourcePath: file,
     })
     if (resources.some(isRemoteImageCandidate)) {
       errors.push(`构建产物 CSS 包含外链资源：${file}`)

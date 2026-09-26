@@ -79,17 +79,27 @@ const cssResourceFunctions = new Set([
   'url',
 ])
 const cssResourceProperties = new Set([
+  'background',
   'background-image',
+  'border-image',
   'border-image-source',
   'clip-path',
+  'content',
   'cursor',
+  'list-style',
   'list-style-image',
   'mask',
+  'mask-border',
+  'mask-border-source',
   'mask-image',
+  'offset',
   'offset-path',
   'shape-outside',
   'src',
+  '-webkit-border-image',
   '-webkit-mask',
+  '-webkit-mask-box-image',
+  '-webkit-mask-box-image-source',
   '-webkit-mask-image',
 ])
 const svgPresentationResourceAttributes = new Set([
@@ -110,6 +120,7 @@ const svgCssResourceProperties = new Set([
 ])
 const disallowedSvgResourceElements = new Set([
   'animate',
+  'animatecolor',
   'animatemotion',
   'animatetransform',
   'discard',
@@ -118,6 +129,7 @@ const disallowedSvgResourceElements = new Set([
 ])
 const disallowedSvgXmlResourceElements = new Set([
   'animate',
+  'animateColor',
   'animateMotion',
   'animateTransform',
   'discard',
@@ -141,6 +153,7 @@ const vitePressIconConsumers = new Map([
   [`${vitePressExternalIconSelector}\0-webkit-mask-image`, 'var(--icon)'],
   [`${vitePressExternalIconSelector}\0mask-image`, 'var(--icon)'],
 ])
+const vitePressIconConsumerHash = 'e6249fce861a48ee63402a01e2218f5f6f9dbde35a5def5a4dee6a1ac57af965'
 
 export function readLockedVitePressVersion(lockText) {
   try {
@@ -390,7 +403,7 @@ function imageSetResources(node, resolveVariable, resolvingVariables) {
     if (functionName === 'url') return [cssFunctionValue(candidate)]
     if (functionName === null) return [null]
     if (functionName === 'var') {
-      return resolveVariable?.(candidate, resolvingVariables) ?? [null]
+      return resolveVariable?.(candidate, resolvingVariables, true) ?? [null]
     }
     if (cssUnresolvedFunctions.has(functionName)) return [null]
     if (functionName === 'image') {
@@ -401,6 +414,7 @@ function imageSetResources(node, resolveVariable, resolvingVariables) {
       cssImageContainerFunctions.has(functionName),
       resolveVariable,
       resolvingVariables,
+      cssImageContainerFunctions.has(functionName),
     )
   })
 }
@@ -411,11 +425,17 @@ function imageFunctionResources(node, resolveVariable, resolvingVariables) {
     .map((candidate) => decodeCssEscapes(candidate.value))
   return [
     ...strings,
-    ...extractCssNodes(node.nodes ?? [], true, resolveVariable, resolvingVariables),
+    ...extractCssNodes(node.nodes ?? [], true, resolveVariable, resolvingVariables, true),
   ]
 }
 
-function extractCssNodes(nodes, resourceContext = false, resolveVariable, resolvingVariables) {
+function extractCssNodes(
+  nodes,
+  resourceContext = false,
+  resolveVariable,
+  resolvingVariables,
+  variableStringsAreResources = false,
+) {
   const resources = []
   for (const node of nodes) {
     if (node.type !== 'function') continue
@@ -429,7 +449,9 @@ function extractCssNodes(nodes, resourceContext = false, resolveVariable, resolv
     } else if (functionName === 'image') {
       resources.push(...imageFunctionResources(node, resolveVariable, resolvingVariables))
     } else if (resourceContext && functionName === 'var') {
-      resources.push(...(resolveVariable?.(node, resolvingVariables) ?? [null]))
+      resources.push(...(
+        resolveVariable?.(node, resolvingVariables, variableStringsAreResources) ?? [null]
+      ))
       resources.push(...extractCssNodes(node.nodes ?? [], false))
     } else if (resourceContext && cssUnresolvedFunctions.has(functionName)) {
       resources.push(null)
@@ -439,6 +461,8 @@ function extractCssNodes(nodes, resourceContext = false, resolveVariable, resolv
         resourceContext && cssImageContainerFunctions.has(functionName),
         resolveVariable,
         resolvingVariables,
+        variableStringsAreResources
+          || (resourceContext && cssImageContainerFunctions.has(functionName)),
       ))
     }
   }
@@ -460,6 +484,7 @@ function extractCssValueResources(
           resourceContext,
           resolveVariable,
           resolvingVariables,
+          false,
         )
   } catch {
     return [null]
@@ -514,7 +539,14 @@ function belongsToProjectRule(declaration, projectDocuments) {
           selectors.each((selector) => {
             let hasConservativePseudo = false
             selector.walkPseudos((node) => {
-              if ([':has', ':is', ':not', ':where'].includes(node.value.toLowerCase())) {
+              const pseudo = decodeCssEscapes(node.value)?.toLowerCase()
+              if (
+                pseudo === null
+                || (node.nodes?.length ?? 0) > 0
+                || [
+                  ':has', ':is', ':not', ':nth-child', ':nth-last-child', ':where',
+                ].includes(pseudo)
+              ) {
                 hasConservativePseudo = true
               }
             })
@@ -562,6 +594,135 @@ function normalizeDeclarationProperty(property) {
   return decoded.startsWith('--') ? decoded : decoded.toLowerCase()
 }
 
+function declarationAtRuleChain(declaration) {
+  const atRules = []
+  let container = declaration.parent?.parent
+  while (container && container.type !== 'root') {
+    if (container.type !== 'atrule') return null
+    const name = decodeCssEscapes(container.name)
+    if (name === null) return null
+    atRules.unshift({ name: name.toLowerCase(), params: container.params.trim() })
+    container = container.parent
+  }
+  return atRules
+}
+
+function cssSourceRecords(css, options) {
+  const configured = options.allCssSources ?? options.allCss ?? []
+  const records = configured.map((source) => typeof source === 'string'
+    ? { css: source, sourcePath: null }
+    : { css: source.css, sourcePath: source.sourcePath ?? null })
+  const current = { css, sourcePath: options.sourcePath ?? null }
+  if (records.length === 0) return [current]
+  if (!records.some((source) =>
+    source.css === current.css && source.sourcePath === current.sourcePath)) {
+    records.push(current)
+  }
+  return records
+}
+
+function collectCustomPropertyDefinitions(sources) {
+  const definitions = new Map()
+  for (const source of sources) {
+    if (typeof source.css !== 'string') return null
+    let root
+    try {
+      root = postcss.parse(source.css)
+    } catch {
+      return null
+    }
+    let invalidProperty = false
+    root.walkDecls((declaration) => {
+      const property = normalizeDeclarationProperty(declaration.prop)
+      if (property === null) {
+        invalidProperty = true
+        return
+      }
+      if (!property.startsWith('--')) return
+      const entries = definitions.get(property) ?? []
+      entries.push({ value: declaration.value, sourcePath: source.sourcePath })
+      definitions.set(property, entries)
+    })
+    if (invalidProperty) return null
+  }
+  return definitions
+}
+
+function parseVarFunction(node) {
+  const divider = (node.nodes ?? []).findIndex((candidate) =>
+    candidate.type === 'div' && candidate.value === ',')
+  const nameNodes = divider < 0 ? (node.nodes ?? []) : node.nodes.slice(0, divider)
+  const rawName = valueParser.stringify(nameNodes).trim()
+  const consumed = consumeCssName(rawName)
+  const name = consumed?.end === rawName.length ? decodeCssEscapes(consumed.raw) : null
+  if (name === null || !name.startsWith('--')) return null
+  const fallbackNodes = divider < 0 ? null : node.nodes.slice(divider + 1)
+  if (fallbackNodes !== null && !fallbackNodes.some((candidate) =>
+    candidate.type !== 'space' && candidate.type !== 'comment')) return null
+  return { name, fallbackNodes }
+}
+
+function extractCustomPropertyNodes(
+  nodes,
+  resolveVariable,
+  resolvingVariables,
+  stringsAreResources = false,
+) {
+  const resources = []
+  for (const node of nodes) {
+    if (node.type === 'string') {
+      if (stringsAreResources) resources.push(decodeCssEscapes(node.value))
+      continue
+    }
+    if (node.type !== 'function') continue
+    const functionName = decodeCssEscapes(node.value)?.toLowerCase()
+    if (functionName === null) {
+      resources.push(null)
+    } else if (functionName === 'url') {
+      resources.push(cssFunctionValue(node))
+    } else if (functionName === 'var') {
+      resources.push(...(
+        resolveVariable?.(node, resolvingVariables, stringsAreResources) ?? [null]
+      ))
+    } else if (functionName === 'env' || functionName === 'attr') {
+      resources.push(null)
+    } else if (functionName === 'image-set' || functionName === '-webkit-image-set') {
+      resources.push(...imageSetResources(node, resolveVariable, resolvingVariables))
+    } else {
+      resources.push(...extractCustomPropertyNodes(
+        node.nodes ?? [],
+        resolveVariable,
+        resolvingVariables,
+        stringsAreResources || cssImageContainerFunctions.has(functionName),
+      ))
+    }
+  }
+  return resources
+}
+
+function extractCustomPropertyValueResources(
+  value,
+  resolveVariable,
+  resolvingVariables,
+  stringsAreResources = false,
+) {
+  const trimmed = value.trim()
+  if (/^(?:initial|inherit|unset|revert|revert-layer)$/u.test(trimmed)) return [null]
+  try {
+    const normalized = normalizeCssFunctionIdentifiers(value)
+    return normalized === null
+      ? [null]
+      : extractCustomPropertyNodes(
+          valueParser(normalized).nodes,
+          resolveVariable,
+          resolvingVariables,
+          stringsAreResources,
+        )
+  } catch {
+    return [null]
+  }
+}
+
 function vitePressIconDefinitionHash(definitions) {
   const tuples = definitions.map((declaration) => {
     const selector = declaration.parent?.type === 'rule'
@@ -569,14 +730,24 @@ function vitePressIconDefinitionHash(definitions) {
       : null
     const property = normalizeDeclarationProperty(declaration.prop)
     if (selector === null || property !== '--icon') return null
-    const atRules = []
-    let container = declaration.parent?.parent
-    while (container && container.type !== 'root') {
-      if (container.type !== 'atrule') return null
-      const name = decodeCssEscapes(container.name)
-      if (name === null) return null
-      atRules.unshift({ name: name.toLowerCase(), params: container.params.trim() })
-      container = container.parent
+    const atRules = declarationAtRuleChain(declaration)
+    if (atRules === null) return null
+    return { atRules, selector, property, value: declaration.value.trim() }
+  })
+  if (tuples.some((tuple) => tuple === null)) return null
+  tuples.sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)))
+  return createHash('sha256').update(JSON.stringify(tuples)).digest('hex')
+}
+
+function vitePressIconConsumersHash(consumers) {
+  const tuples = consumers.map(({ declaration }) => {
+    const selector = declaration.parent?.type === 'rule'
+      ? normalizeSelectorSignature(declaration.parent.selector)
+      : null
+    const property = normalizeDeclarationProperty(declaration.prop)
+    const atRules = declarationAtRuleChain(declaration)
+    if (selector === null || property === null || atRules === null || declaration.important) {
+      return null
     }
     return { atRules, selector, property, value: declaration.value.trim() }
   })
@@ -585,7 +756,7 @@ function vitePressIconDefinitionHash(definitions) {
   return createHash('sha256').update(JSON.stringify(tuples)).digest('hex')
 }
 
-function extractSvgXmlResourceCandidates(svg) {
+function extractSvgXmlResourceCandidates(svg, options = {}) {
   if (/<!DOCTYPE/iu.test(svg)) return null
   let depth = 0
   let rootIsSvg = false
@@ -601,14 +772,14 @@ function extractSvgXmlResourceCandidates(svg) {
       }
       depth += 1
       const frame = { isStyle: node.uri === svgNamespace && node.local === 'style', text: '' }
-      elements.push(frame)
-      if (node.uri !== svgNamespace) return
-      if (disallowedSvgXmlResourceElements.has(node.local) || node.local === 'foreignObject') {
-        resources.push(null)
-      }
       const attributes = Object.values(node.attributes)
       if (attributes.some((candidate) =>
         candidate.uri === xmlNamespace && candidate.local === 'base')) {
+        resources.push(null)
+      }
+      elements.push(frame)
+      if (node.uri !== svgNamespace) return
+      if (disallowedSvgXmlResourceElements.has(node.local) || node.local === 'foreignObject') {
         resources.push(null)
       }
       if (svgXmlResourceHrefElements.has(node.local)) {
@@ -621,11 +792,16 @@ function extractSvgXmlResourceCandidates(svg) {
       for (const candidate of attributes) {
         if (candidate.uri !== '') continue
         if (svgPresentationResourceAttributes.has(candidate.local)) {
-          resources.push(...extractCssValueResources(candidate.value, true))
+          resources.push(...embeddedCssResourceCandidates(
+            `publication-resource{${candidate.local}:${candidate.value}}`,
+            true,
+            options,
+          ))
         } else if (candidate.local === 'style') {
           resources.push(...embeddedCssResourceCandidates(
             `publication-resource{${candidate.value}}`,
             true,
+            options,
           ))
         }
       }
@@ -641,7 +817,9 @@ function extractSvgXmlResourceCandidates(svg) {
     })
     parser.on('closetag', () => {
       const frame = elements.pop()
-      if (frame?.isStyle) resources.push(...embeddedCssResourceCandidates(frame.text, true))
+      if (frame?.isStyle) {
+        resources.push(...embeddedCssResourceCandidates(frame.text, true, options))
+      }
       depth -= 1
     })
     parser.write(svg).close()
@@ -665,24 +843,31 @@ function decodeSvgDataResource(candidate) {
   }
 }
 
-function isSafeVitePressIconResource(candidate, options, depth = 0) {
+function isSafeResourceCandidate(candidate, options, depth = 0, sourcePath = null) {
   if (depth > 2 || typeof candidate !== 'string') return false
   const value = candidate.trim()
   if (/^blob:/iu.test(value)) return false
   if (/^data:/iu.test(value)) {
     const svg = decodeSvgDataResource(value)
     if (svg === null) return false
-    const resources = extractSvgXmlResourceCandidates(svg)
+    const resources = extractSvgXmlResourceCandidates(svg, {
+      ...options,
+      sourcePath,
+      skipVitePressPolicy: true,
+    })
     if (resources === null) return false
     return resources.every((nested) =>
-      isSafeVitePressIconResource(nested, options, depth + 1))
+      isSafeResourceCandidate(nested, options, depth + 1, sourcePath))
   }
   if (isRemoteImageCandidate(value)) return false
-  if (depth > 0 && value.startsWith('#')) return true
-  if (depth > 0 && !options.distFiles) return false
-  if (!options.distFiles || (!value.startsWith('/') && depth === 0)) return true
+  if (value.startsWith('#')) return true
   try {
-    const url = new URL(value, localImageBase)
+    const base = new URL(sourcePath ?? '', localImageBase)
+    const url = new URL(value, base)
+    if (url.origin !== localImageBase.origin || url.username !== '' || url.password !== '') {
+      return false
+    }
+    if (!options.distFiles) return true
     const relativePath = url.pathname
       .replace(/^\/agent-engineering-for-beginners\//u, '')
       .replace(/^\//u, '')
@@ -692,24 +877,109 @@ function isSafeVitePressIconResource(candidate, options, depth = 0) {
   }
 }
 
+function createCustomPropertyResolver(css, options, sources = cssSourceRecords(css, options)) {
+  const cache = options.analysisCache
+  const definitions = cache && Object.hasOwn(cache, 'definitions')
+    ? cache.definitions
+    : collectCustomPropertyDefinitions(sources)
+  if (cache) cache.definitions = definitions
+  const resolvedDefinitions = cache?.resolvedDefinitions ?? new Map()
+  if (cache) cache.resolvedDefinitions = resolvedDefinitions
+  const validate = (resources, candidateSourcePath) => resources.map((candidate) =>
+    isSafeResourceCandidate(candidate, options, 0, candidateSourcePath) ? candidate : null)
+  const resolveDefinitions = (name, resolvingVariables, stringsAreResources) => {
+    const cacheKey = `${stringsAreResources ? 'resource-string' : 'plain-string'}\0${name}`
+    if (resolvedDefinitions.has(cacheKey)) return resolvedDefinitions.get(cacheKey)
+    if (definitions === null || resolvingVariables.has(name)) return [null]
+    const possibleDefinitions = definitions.get(name) ?? []
+    if (possibleDefinitions.length === 0) return [null]
+    const nextResolving = new Set(resolvingVariables)
+    nextResolving.add(name)
+    const resources = possibleDefinitions.flatMap((definition) => validate(
+      extractCustomPropertyValueResources(
+        definition.value,
+        (nested, nestedResolving, nestedStringsAreResources) => resolveAt(
+          nested,
+          nestedResolving,
+          definition.sourcePath,
+          nestedStringsAreResources,
+        ),
+        nextResolving,
+        stringsAreResources,
+      ),
+      definition.sourcePath,
+    ))
+    resolvedDefinitions.set(cacheKey, resources)
+    return resources
+  }
+  const resolveAt = (
+    node,
+    resolvingVariables = new Set(),
+    sourcePath = null,
+    stringsAreResources = false,
+  ) => {
+    if (definitions === null) return [null]
+    const parsed = parseVarFunction(node)
+    if (parsed === null || resolvingVariables.has(parsed.name)) return [null]
+    const nextResolving = new Set(resolvingVariables)
+    nextResolving.add(parsed.name)
+    const evaluateNodes = (nodes, candidateSourcePath) => validate(
+      extractCustomPropertyNodes(
+        nodes,
+        (nested, nestedResolving, nestedStringsAreResources) => resolveAt(
+          nested,
+          nestedResolving,
+          candidateSourcePath,
+          nestedStringsAreResources,
+        ),
+        nextResolving,
+        stringsAreResources,
+      ),
+      candidateSourcePath,
+    )
+    const fallbackResources = parsed.fallbackNodes === null
+      ? []
+      : evaluateNodes(parsed.fallbackNodes, sourcePath)
+    const possibleDefinitions = definitions.get(parsed.name) ?? []
+    if (possibleDefinitions.length === 0) {
+      return parsed.fallbackNodes === null ? [null] : fallbackResources
+    }
+    const definitionResources = resolveDefinitions(
+      parsed.name,
+      resolvingVariables,
+      stringsAreResources,
+    )
+    return [...definitionResources, ...fallbackResources]
+  }
+  return {
+    definitions,
+    forSource: (sourcePath) => (node, resolvingVariables, stringsAreResources) =>
+      resolveAt(node, resolvingVariables, sourcePath, stringsAreResources),
+    resolveName: (name, sourcePath) => {
+      const node = valueParser(`var(${name})`).nodes[0]
+      return resolveAt(node, new Set(), sourcePath, true)
+    },
+  }
+}
+
 function exactVitePressIconConsumer(declaration) {
   if (declaration.parent?.type !== 'rule' || declaration.important) return false
   const selector = normalizeSelectorSignature(declaration.parent.selector)
-  if (selector === null) return false
+  const atRules = declarationAtRuleChain(declaration)
+  if (selector === null || atRules === null || atRules.length !== 0) return false
   const property = normalizeDeclarationProperty(declaration.prop)
   return property !== null
     && vitePressIconConsumers.get(`${selector}\0${property}`) === declaration.value
 }
 
-function vitePressIconMaskPolicyIsValid(options) {
-  if (options.vitePressVersion !== vitePressIconMaskVersion) return false
+function vitePressIconMaskPolicyIsValid(options, sources, customProperties) {
   const definitions = []
   const contractDefinitions = []
   const consumers = []
-  for (const css of options.allCss ?? []) {
+  for (const source of sources) {
     let root
     try {
-      root = postcss.parse(css)
+      root = postcss.parse(source.css)
     } catch {
       return false
     }
@@ -719,7 +989,7 @@ function vitePressIconMaskPolicyIsValid(options) {
       const property = normalizeDeclarationProperty(declaration.prop)
       if (property === null) return
       if (property === '--icon') {
-        definitions.push(declaration)
+        definitions.push({ declaration, sourcePath: source.sourcePath })
         sheetDefinitions.push(declaration)
       }
       const selector = declaration.parent?.type === 'rule'
@@ -730,43 +1000,72 @@ function vitePressIconMaskPolicyIsValid(options) {
         && (selector === vitePressGenericIconSelector || selector === vitePressExternalIconSelector)
         && ['mask', '-webkit-mask', 'mask-image', '-webkit-mask-image'].includes(property)
       ) {
-        consumers.push(declaration)
-        sheetConsumers.push(declaration)
+        consumers.push({ declaration, sourcePath: source.sourcePath })
+        sheetConsumers.push({ declaration, sourcePath: source.sourcePath })
       }
     })
     if (sheetConsumers.length > 0) contractDefinitions.push(...sheetDefinitions)
   }
-  if (
+  const present = consumers.length > 0
+  const valid = options.vitePressVersion === vitePressIconMaskVersion
+    && (
     consumers.length !== vitePressIconConsumers.size
-    || new Set(consumers.map((declaration) =>
+    || new Set(consumers.map(({ declaration }) =>
       `${normalizeSelectorSignature(declaration.parent.selector)}\0${normalizeDeclarationProperty(declaration.prop)}`)).size
       !== vitePressIconConsumers.size
-    || !consumers.every(exactVitePressIconConsumer)
+    || !consumers.every(({ declaration }) => exactVitePressIconConsumer(declaration))
+    || vitePressIconConsumersHash(consumers) !== vitePressIconConsumerHash
     || vitePressIconDefinitionHash(contractDefinitions) !== options.vitePressIconDefinitionHash
-  ) {
-    return false
-  }
-  const safeDefinition = (declaration) => {
+      ? false
+      : true
+    )
+  if (!valid) return { present, valid: false }
+  const safeDefinition = ({ declaration, sourcePath }) => {
     if (declaration.important) return false
-    const resources = extractCssValueResources(declaration.value, true)
+    const resources = extractCustomPropertyValueResources(
+      declaration.value,
+      customProperties.forSource(sourcePath),
+      new Set(['--icon']),
+    )
     return resources.length > 0
-      && resources.every((candidate) => isSafeVitePressIconResource(candidate, options))
+      && resources.every((candidate) =>
+        isSafeResourceCandidate(candidate, options, 0, sourcePath))
   }
-  if (!definitions.every(safeDefinition)) return false
-  return consumers
-    .filter((declaration) =>
+  if (!definitions.every(safeDefinition)) return { present, valid: false }
+  return {
+    present,
+    valid: consumers
+    .filter(({ declaration }) =>
       normalizeSelectorSignature(declaration.parent.selector) === vitePressExternalIconSelector)
-    .every((declaration) => declaration.parent.nodes.some((candidate) =>
+    .every(({ declaration, sourcePath }) => declaration.parent.nodes.some((candidate) =>
       candidate.type === 'decl'
       && normalizeDeclarationProperty(candidate.prop) === '--icon'
-      && safeDefinition(candidate)))
+      && safeDefinition({ declaration: candidate, sourcePath }))),
+  }
 }
 
 export function extractCssResourceCandidates(css, options = {}) {
   try {
     const root = postcss.parse(css)
     const resources = []
-    const allowVitePressIconMasks = vitePressIconMaskPolicyIsValid(options)
+    const sources = cssSourceRecords(css, options)
+    const customProperties = createCustomPropertyResolver(css, options, sources)
+    const vitePressIconMaskPolicy = options.skipVitePressPolicy
+      ? { present: false, valid: false }
+      : options.analysisCache
+        && Object.hasOwn(options.analysisCache, 'vitePressIconMaskPolicy')
+        ? options.analysisCache.vitePressIconMaskPolicy
+        : vitePressIconMaskPolicyIsValid(options, sources, customProperties)
+    if (options.analysisCache && !options.skipVitePressPolicy) {
+      options.analysisCache.vitePressIconMaskPolicy = vitePressIconMaskPolicy
+    }
+    if (
+      !options.skipVitePressPolicy
+      && vitePressIconMaskPolicy.present
+      && !vitePressIconMaskPolicy.valid
+    ) {
+      resources.push(null)
+    }
     const projectDocuments = options.projectDocuments
       ?? (options.projectClassTokenSets ?? []).map((classTokens) => ({
         classTokens: new Set(classTokens),
@@ -785,9 +1084,12 @@ export function extractCssResourceCandidates(css, options = {}) {
         resources.push(null)
         return
       }
+      if (property === '--icon') {
+        resources.push(...customProperties.resolveName('--icon', options.sourcePath ?? null))
+      }
       const resourceProperties = options.resourceProperties ?? cssResourceProperties
       const dynamicResourceContext = resourceProperties.has(property)
-        && !(allowVitePressIconMasks && exactVitePressIconConsumer(declaration))
+        && !(vitePressIconMaskPolicy.valid && exactVitePressIconConsumer(declaration))
         && (
           options.dynamicResources !== 'project'
           || belongsToProjectRule(declaration, projectDocuments)
@@ -795,6 +1097,7 @@ export function extractCssResourceCandidates(css, options = {}) {
       resources.push(...extractCssValueResources(
         declaration.value,
         dynamicResourceContext,
+        customProperties.forSource(options.sourcePath ?? null),
       ))
     })
     root.walkAtRules((atRule) => {
@@ -857,28 +1160,28 @@ function browserResourceAttributesWithin(roots) {
   })
 }
 
-function cssDefinesVitePressIcon(css) {
-  try {
-    let definesIcon = false
-    postcss.parse(css).walkDecls((declaration) => {
-      if (normalizeDeclarationProperty(declaration.prop) === '--icon') definesIcon = true
-    })
-    return definesIcon
-  } catch {
-    return true
-  }
+function embeddedCssResourceCandidates(css, svgContext = false, options = {}) {
+  return extractCssResourceCandidates(css, {
+    ...options,
+    resourceProperties: svgContext ? svgCssResourceProperties : cssResourceProperties,
+  })
 }
 
-function embeddedCssResourceCandidates(css, svgContext = false) {
-  return [
-    ...extractCssResourceCandidates(css, {
-      resourceProperties: svgContext ? svgCssResourceProperties : cssResourceProperties,
-    }),
-    ...(cssDefinesVitePressIcon(css) ? [null] : []),
-  ]
+function embeddedCssSourcesWithin(roots) {
+  const inlineStyles = elementsWithin(
+    roots,
+    (node) => attribute(node, 'style') !== undefined,
+    hiddenResourceHtmlElements,
+  ).map((node) => `publication-resource{${attribute(node, 'style')}}`)
+  const styleBlocks = elementsWithin(
+    roots,
+    (node) => node.tagName === 'style',
+    hiddenResourceHtmlElements,
+  ).map((node) => visibleText(node, new Set(), hiddenResourceHtmlElements))
+  return [...inlineStyles, ...styleBlocks]
 }
 
-function resourceCandidatesWithin(roots) {
+function resourceCandidatesWithin(roots, cssOptions = {}) {
   const images = imageCandidatesWithin(roots)
   const attributes = browserResourceAttributesWithin(roots)
   const svgElements = elementsWithin(
@@ -888,7 +1191,11 @@ function resourceCandidatesWithin(roots) {
   )
   const presentationAttributes = svgElements.flatMap((node) => (node.attrs ?? [])
     .filter((candidate) => svgPresentationResourceAttributes.has(candidate.name))
-    .flatMap((candidate) => extractCssValueResources(candidate.value, true)))
+    .flatMap((candidate) => embeddedCssResourceCandidates(
+      `publication-resource{${candidate.name}:${candidate.value}}`,
+      true,
+      { ...cssOptions, dynamicResources: undefined },
+    )))
   const activeSvgResources = svgElements.flatMap((node) => (
     disallowedSvgResourceElements.has(node.tagName.toLowerCase())
     || (node.attrs ?? []).some((candidate) => candidate.name.toLowerCase() === 'xml:base')
@@ -901,7 +1208,11 @@ function resourceCandidatesWithin(roots) {
     hiddenResourceHtmlElements,
   ).flatMap((node) => {
     const css = `publication-resource{${attribute(node, 'style')}}`
-    return embeddedCssResourceCandidates(css, node.namespaceURI === svgNamespace)
+    return embeddedCssResourceCandidates(
+      css,
+      node.namespaceURI === svgNamespace,
+      { ...cssOptions, dynamicResources: undefined },
+    )
   })
   const styleBlocks = elementsWithin(
     roots,
@@ -911,7 +1222,7 @@ function resourceCandidatesWithin(roots) {
     node,
     new Set(),
     hiddenResourceHtmlElements,
-  ), node.namespaceURI === svgNamespace))
+  ), node.namespaceURI === svgNamespace, cssOptions))
   return {
     images,
     resources: [
@@ -1028,7 +1339,7 @@ export function extractCourseHtmlContract(html) {
   }
 }
 
-export function extractProjectHtmlContract(html) {
+export function extractProjectHtmlContract(html, options = {}) {
   const document = parse(html, { scriptingEnabled: false })
   const documentElements = elementsWithin(
     document.childNodes,
@@ -1041,17 +1352,8 @@ export function extractProjectHtmlContract(html) {
   const sourceSections = elementsWithin(vpDocs, (node) => hasClass(node, 'project-source-links'))
   const metaSections = elementsWithin(vpDocs, (node) => hasClass(node, 'project-meta'))
   const licenseSections = elementsWithin(metaSections, (node) => node.tagName === 'details')
-  const resources = resourceCandidatesWithin(vpDocs)
-  const documentDefinesVitePressIcon = documentElements.some((node) => {
-    const style = attribute(node, 'style')
-    if (style !== undefined
-      && cssDefinesVitePressIcon(`publication-resource{${style}}`)) return true
-    return node.tagName === 'style' && cssDefinesVitePressIcon(visibleText(
-      node,
-      new Set(),
-      hiddenResourceHtmlElements,
-    ))
-  })
+  const resources = resourceCandidatesWithin(vpDocs, options.cssOptions)
+  const cssSources = embeddedCssSourcesWithin(document.childNodes)
   const classTokens = new Set(documentElements
     .flatMap((node) => (attribute(node, 'class') ?? '').split(/\s+/u).filter(Boolean)))
   const attributeValues = new Map()
@@ -1079,10 +1381,8 @@ export function extractProjectHtmlContract(html) {
     text: normalizedVisibleText(vpDocs),
     headings,
     images: resources.images,
-    resources: [
-      ...resources.resources,
-      ...(documentDefinesVitePressIcon ? [null] : []),
-    ],
+    resources: resources.resources,
+    cssSources,
     classTokens,
     attributeValues,
     selectorElements,

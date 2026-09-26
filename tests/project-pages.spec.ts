@@ -590,6 +590,10 @@ ${escapedImportTarget}
       '*{mask-image:env(remote-mask)}',
       ':not(.definitely-absent){background-image:var(--remote)}',
       ':is(.definitely-absent,*){background-image:env(remote-image)}',
+      ':nth-child(1 of .project-card,.definitely-absent){mask:var(--remote)}',
+      ':nth-last-child(1 of .project-card,.definitely-absent){mask:var(--remote)}',
+      String.raw`:n\74h-child(1 of .project-card,.definitely-absent){mask:var(--remote)}`,
+      String.raw`:nth-l\61st-child(1 of .project-card,.definitely-absent){mask:var(--remote)}`,
       '.Layout:hover{background-image:var(--remote)}',
       '.VPDoc::before{mask-image:attr(data-mask url)}',
       '.broken:not([class="project-card"',
@@ -624,12 +628,6 @@ ${escapedImportTarget}
     }
 
     for (const css of [
-      ':root{--img:"https://evil.example/a.png"}.project-card{background-image:image(var(--img),red)}',
-      ':root{--a:var(--b);--b:url(/local.png)}.project-card{background-image:var(--a)}',
-      ':root{--a:initial}.project-card{background-image:var(--a,url(https://evil.example/fallback.png))}',
-      '.unrelated{--img:red}.project-card{background-image:var(--img,url(/local-fallback.png))}',
-      ':root{--a:var(--b);--b:var(--a)}.project-card{background-image:var(--a)}',
-      '.project-card{background-image:var(--missing,url(/local.png))}',
       '.project-card{background-image:env(local-image,url(/local.png))}',
       '.project-card{background-image:attr(data-image url,/local.png)}',
     ]) {
@@ -642,10 +640,102 @@ ${escapedImportTarget}
     }
   })
 
-  it('fails closed for dynamic mask shorthands on project selectors', () => {
+  it('validates resource vars against every custom-property definition and fallback', () => {
+    const projectOptions = {
+      dynamicResources: 'project',
+      projectClassTokenSets: [new Set(['project-card'])],
+      distFiles: new Set(['safe.svg', 'fallback.svg']),
+    }
+    const safeCases = [
+      { consumer: '.project-card{background:var(--asset)}', sources: [':root{--asset:red}'] },
+      {
+        consumer: String.raw`.project-card{b\61 ckground:var(--\61 sset)}`,
+        sources: [String.raw`:root{--\61 sset:url(/safe.svg)}`],
+      },
+      {
+        consumer: '.project-card{background-image:var(--asset)}',
+        sources: [':root{--asset:var(--nested);--nested:url(/safe.svg)}'],
+      },
+      {
+        consumer: '.project-card{background-image:var(--missing,url(/fallback.svg))}',
+        sources: [],
+      },
+      {
+        consumer: '.project-card{content:var(--label)}',
+        sources: [':root{--label:"published"}'],
+      },
+    ]
+    for (const { consumer, sources } of safeCases) {
+      const resources = extractCssResourceCandidates(consumer, {
+        ...projectOptions,
+        allCss: [...sources, consumer],
+      })
+      expect(resources.some(isRemoteImageCandidate), `${sources.join('\n')}\n${consumer}`)
+        .toBe(false)
+    }
+
+    const unsafeCases = [
+      { consumer: '.project-card{background:var(--asset)}', sources: [':root{--asset:url(https://evil.example/remote.png)}'] },
+      { consumer: '.project-card{background-image:image(var(--asset),red)}', sources: [':root{--asset:"https://evil.example/string.png"}'] },
+      { consumer: '.project-card{background:var(--asset)}', sources: [':root{--asset:red}', '.other{--asset:url(https://evil.example/remote.png)}'] },
+      { consumer: '.project-card{background:var(--asset,url(https://evil.example/fallback.png))}', sources: [':root{--asset:red}'] },
+      { consumer: '.project-card{background:var(--missing)}', sources: [] },
+      { consumer: '.project-card{background:var(--a)}', sources: [':root{--a:var(--b);--b:var(--a)}'] },
+      { consumer: '.project-card{background:var(--asset)}', sources: [String.raw`:root{--\61 sset:url(https://evil.example/escaped.png)}`] },
+      { consumer: '.project-card{background:var(--asset)}', sources: [':root{--asset:url(blob:https://example.com/id)}'] },
+      { consumer: '.project-card{background:var(--asset)}', sources: [':root{--asset:url(/missing.svg)}'] },
+      { consumer: '.project-card{background:var(--asset)}', sources: [':root{--asset:url("unterminated)}'] },
+    ]
+    for (const { consumer, sources } of unsafeCases) {
+      const resources = extractCssResourceCandidates(consumer, {
+        ...projectOptions,
+        allCss: [...sources, consumer],
+      })
+      expect(resources.some(isRemoteImageCandidate), `${sources.join('\n')}\n${consumer}`)
+        .toBe(true)
+    }
+  })
+
+  it('includes all project HTML style sources in the custom-property safety graph', () => {
+    const safePage = extractProjectHtmlContract(`
+<style>:root{--asset:red}</style>
+<main class="vp-doc"><div style="--accent:blue"></div></main>
+`)
+    expect(safePage).toHaveProperty('cssSources')
+    const consumer = '.project-card{background:var(--asset)}'
+    const options = {
+      dynamicResources: 'project',
+      projectClassTokenSets: [new Set(['project-card'])],
+    }
+    expect(extractCssResourceCandidates(consumer, {
+      ...options,
+      allCss: [consumer, ...(safePage.cssSources ?? [])],
+    }).some(isRemoteImageCandidate)).toBe(false)
+
+    const unsafePage = extractProjectHtmlContract(`
+<div style="--asset:url(https://evil.example/inline.png)"></div>
+<main class="vp-doc"></main>
+`)
+    expect(extractCssResourceCandidates(consumer, {
+      ...options,
+      allCss: [consumer, ...(safePage.cssSources ?? []), ...(unsafePage.cssSources ?? [])],
+    }).some(isRemoteImageCandidate)).toBe(true)
+  })
+
+  it('fails closed for dynamic resource shorthands on project selectors', () => {
     for (const property of [
+      'background',
+      'border-image',
+      '-webkit-border-image',
+      'content',
+      'list-style',
       'mask',
+      'mask-border',
+      'mask-border-source',
+      'offset',
       '-webkit-mask',
+      '-webkit-mask-box-image',
+      String.raw`b\61 ckground`,
       String.raw`m\61 sk`,
       String.raw`background-\69mage`,
     ]) {
@@ -731,6 +821,7 @@ ${escapedImportTarget}
       `<style>.vp-icon{--icon:url("${unsafeIcon}")}</style>`,
       '<svg xml:base="https://evil.example/"><image href="relative.png" /></svg>',
       '<svg><image href="/safe.png"><animate attributeName="href" values="/safe.png;https://evil.example/remote.png" /></image></svg>',
+      '<svg><animateColor attributeName="fill" values="red;url(https://evil.example/paint.svg#x)" /></svg>',
     ]) {
       const contract = extractProjectHtmlContract(`<main class="vp-doc">${markup}</main>`)
       expect(contract.resources, markup).toContain(null)
@@ -741,6 +832,16 @@ ${escapedImportTarget}
     )
     expect(caseSensitiveCustomProperty.resources).toEqual([])
 
+    for (const safeOverride of [
+      '<span class="vp-icon" style="--icon:red"></span>',
+      '<style>.vp-icon{--icon:linear-gradient(red,blue)}</style>',
+    ]) {
+      const contract = extractProjectHtmlContract(
+        `${safeOverride}<main class="vp-doc"></main>`,
+      )
+      expect(contract.resources.some(isRemoteImageCandidate), safeOverride).toBe(false)
+    }
+
     for (const outerOverride of [
       `<span class="vp-icon" style="--icon:url(&quot;${unsafeIcon}&quot;)"></span>`,
       `<style>.vp-icon{--icon:url("${unsafeIcon}")}</style>`,
@@ -748,7 +849,12 @@ ${escapedImportTarget}
       const contract = extractProjectHtmlContract(
         `${outerOverride}<main class="vp-doc"></main>`,
       )
-      expect(contract.resources, outerOverride).toContain(null)
+      const consumer = '.project-card{mask:var(--icon)}'
+      expect(extractCssResourceCandidates(consumer, {
+        dynamicResources: 'project',
+        projectClassTokenSets: [new Set(['project-card'])],
+        allCss: [consumer, ...contract.cssSources],
+      }).some(isRemoteImageCandidate), outerOverride).toBe(true)
     }
   })
 
@@ -825,6 +931,13 @@ ${escapedImportTarget}
         ),
         version: '1.6.4',
       },
+      {
+        css: vendorCss.replace(
+          `${genericSelector}{-webkit-mask:var(--icon) no-repeat;mask:var(--icon) no-repeat}`,
+          `@media not all{${genericSelector}{-webkit-mask:var(--icon) no-repeat;mask:var(--icon) no-repeat}}`,
+        ),
+        version: '1.6.4',
+      },
       { css: vendorCss + String.raw`.vp-icon{--\69 con:var(--runtime-icon)}`, version: '1.6.4' },
       { css: vendorCss.replace(`url("${safeIcon}")`, 'url("https://evil.example/icon.svg")'), version: '1.6.4' },
       { css: vendorCss.replace(`url("${safeIcon}")`, 'var(--other-icon)'), version: '1.6.4' },
@@ -887,6 +1000,14 @@ ${escapedImportTarget}
         ),
         version: '1.6.4',
         expectedHash: '555677f50f9425e2a0183ecb4502e629b74a1cd3fe21ee41ca357f5ae28239b6',
+      },
+      {
+        css: vendorCss.replace(
+          safeIcon,
+          "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' xmlns%3Ax='urn%3Abait'%3E%3Cx%3Ag xml%3Abase='https%3A%2F%2Fevil.example%2F'%3E%3Cimage href='%23icon'%2F%3E%3C%2Fx%3Ag%3E%3C%2Fsvg%3E",
+        ),
+        version: '1.6.4',
+        expectedHash: 'a143aa051147b0c46fd27b806cd5b837c16f769e96a7b387fb161ffdcd77ed41',
       },
     ]
     for (const { css, version, expectedHash } of unsafeCases) {
