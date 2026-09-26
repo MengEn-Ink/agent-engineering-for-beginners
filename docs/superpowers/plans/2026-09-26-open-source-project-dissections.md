@@ -7978,10 +7978,11 @@ const report = JSON.parse(readFileSync('reports/source-freshness.json', 'utf8'))
 const expected = new Map([
   ['langgraph-repository', ['repository_updated']],
   ['crewai-repository', ['repository_updated']],
+  ['pydantic-ai-repository', ['repository_updated']],
   ['langfuse-repository', ['repository_updated']],
   ['phoenix-repository', ['repository_updated']],
 ])
-if (JSON.stringify(report.summary) !== JSON.stringify({ total: 33, healthy: 29, needs_review: 4 })) {
+if (JSON.stringify(report.summary) !== JSON.stringify({ total: 33, healthy: 28, needs_review: 5 })) {
   throw new Error(`Unexpected source summary: ${JSON.stringify(report.summary)}`)
 }
 const actual = new Map(report.results.filter((result) => result.findings.length > 0)
@@ -7996,7 +7997,7 @@ git diff origin/main...HEAD --check
 git status --short
 ```
 
-Expected: all tests, validation, build, and dist checks pass; the source report matches the exact post-`5507d60` four-item review set; the project report has 13 subjects and no blocking finding.
+Expected: all tests, validation, build, and dist checks pass; the source report contains five non-blocking `repository_updated` notices (LangGraph, CrewAI, Pydantic AI, Langfuse, Phoenix); the project report contains four non-blocking `project_update_available` notices (OpenHands SDK, Dify, Hermes, OpenClaw), 13 subjects total, and no blocking finding. Preserve the reports and do not update baselines automatically.
 
 - [ ] **Step 7: Verify all eight pages at mobile and desktop widths**
 
@@ -8195,7 +8196,7 @@ Expected: both fresh HARs contain at least one request; the normal session has n
 
 - [ ] **Step 10: Verify route and public boundaries, then stop local processes**
 
-Retain the 79 positive clean/trailing-slash requests and five negative requests from the existing route matrix. Then run:
+Retain the existing route matrix, then add the project-specific directory/leaf forms: `/projects`, `/projects/`, and `/projects/index.html` are positive; each of the seven leaf routes is positive as clean and `.html`, while its trailing-slash form is negative. Then run:
 
 ```bash
 set -e
@@ -8224,7 +8225,7 @@ git push -u origin feat/open-source-project-dissections
 git rev-parse HEAD
 ```
 
-Send the final immutable feature HEAD, commit list, test counts, source/project freshness summaries, 79/5 route matrix, all 16 responsive page checks, seven PDF results, fresh HAR counts, and screenshots to the reviewer. Wait for explicit review approval before Task 14.
+Send the final immutable feature HEAD, commit list, test counts, source/project freshness summaries, the exact route matrix, all 16 responsive page checks, seven PDF results, fresh HAR counts, and screenshots to the reviewer. Wait for explicit review approval before Task 14.
 
 #### Final release-hardening amendments
 
@@ -8236,6 +8237,9 @@ These rules supersede narrower resource-checking excerpts earlier in this plan:
 - Route every `data:image/svg+xml`, `data:text/css`, and canonical local SVG through bounded recursive validation. SVG uses a namespace-aware XML parser and rejects SMIL, `xml:base`, XML stylesheet processing instructions, and remote nested resources. Recursive cache keys include source/content and definition-graph context.
 - The only dynamic resource exception is the exact VitePress 1.6.4 generated icon-mask contract. Production validation always requires the locked version plus the complete consumer/definition multiset, normalized declarations, and ancestor at-rule fingerprints; tests may opt out only through an internal explicit fixture option.
 - Normalize resource candidates once: source syntax decode, well-formed Unicode, C0/DEL rejection, outer whitespace trim, explicit-scheme classification, then source-base resolution only for schemeless paths. Module-private validated records prevent revalidation and double charging; the public contract exposes final safety classifications rather than reusable trust markers.
+- Validate the course page with two DOM parses: positive 26-item/stage/text evidence comes only from the normal scripting tree and excludes hidden, inert, no-JavaScript, code, template, and SVG evidence; the negative scan uses the no-JavaScript tree and checks the complete document for forbidden routes and write interactions.
+- Keep URL paths separate from filesystem paths. Production filesystem enumeration uses the host path flavor and rejects POSIX backslash filenames plus drive-relative/absolute, UNC, device, encoded-separator, traversal, collision, symlink, and malformed inputs before allowlist matching.
+- Use the deployed static-file route matrix: directory pages accept clean, trailing-slash, and `index.html` forms; leaf pages accept clean and `.html` forms, while leaf trailing slashes remain 404 unless the output layout changes and production proves otherwise.
 
 Before Task 14, rerun `pnpm test`, `pnpm validate`, `pnpm typecheck:projects`, `pnpm build`, strict freshness checks, the responsive browser matrix, seven fresh PDFs, and normal/no-JavaScript HAR checks from the same immutable HEAD.
 
@@ -8312,8 +8316,9 @@ for attempt in $(seq 1 12); do
   sleep 5
 done
 test "$cdn_ready" -eq 1
-routes=(
-  course paths preface
+directory_routes=(course paths radar projects)
+leaf_routes=(
+  preface
   chapters/01-ai-native chapters/02-workflow-agent chapters/03-react
   chapters/04-tools-mcp chapters/05-state-memory chapters/06-loop-graph
   chapters/07-multi-agent chapters/08-evaluation chapters/09-safety-recovery
@@ -8321,21 +8326,31 @@ routes=(
   chapters/13-coding-agent chapters/14-computer-use
   frontier/context-engineering frontier/interoperability-identity
   frontier/durable-execution frontier/agent-security-evaluation
-  case-study/delivery-agent radar radar/2026-09
+  case-study/delivery-agent radar/2026-09
   appendix/glossary appendix/review-checklist appendix/reading
   appendix/application-matrix appendix/chapter-template appendix/interview
   appendix/interview-training
-  projects projects/mcp-python-sdk projects/aider projects/openhands
+  projects/mcp-python-sdk projects/aider projects/openhands
   projects/agent-benchmarks projects/dify projects/crewai
   projects/history-autogpt-flowise
 )
 failures=()
-for route in "${routes[@]}"; do
-  for suffix in "" "/"; do
+for route in "${directory_routes[@]}"; do
+  for suffix in "" "/" "/index.html"; do
     url="$site_root/$route$suffix"
     code=$(curl -L -sS -o /dev/null -w '%{http_code}' "$url")
     if [ "$code" != '200' ]; then failures+=("$code $url"); fi
   done
+done
+for route in "${leaf_routes[@]}"; do
+  for suffix in "" ".html"; do
+    url="$site_root/$route$suffix"
+    code=$(curl -L -sS -o /dev/null -w '%{http_code}' "$url")
+    if [ "$code" != '200' ]; then failures+=("$code $url"); fi
+  done
+  url="$site_root/$route/"
+  code=$(curl -L -sS -o /dev/null -w '%{http_code}' "$url")
+  if [ "$code" != '404' ]; then failures+=("$code $url"); fi
 done
 root_code=$(curl -L -sS -o /dev/null -w '%{http_code}' "$site_root/")
 if [ "$root_code" != '200' ]; then failures+=("$root_code $site_root/"); fi
@@ -8348,7 +8363,7 @@ printf '%s\n' "${failures[@]}"
 test "${#failures[@]}" -eq 0
 ```
 
-Expected: all 79 positive requests return 200, all five negative requests return 404, and the failure array is empty.
+Expected: all 83 positive requests return 200, all 40 negative requests return 404, and the failure array is empty.
 
 - [ ] **Step 5: Run production browser, no-JavaScript, PDF, and HAR checks**
 

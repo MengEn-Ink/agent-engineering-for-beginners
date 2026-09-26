@@ -85,7 +85,7 @@ Hermes Agent 与 OpenClaw 只进入项目总览的“前沿高权限观察区”
 - 六个核心页面是 `kind: 'project'` 的公开 `CourseItem`。
 - 历史页也是 `kind: 'project'` 的内容记录，但其项目索引记录使用 `catalog_tier: historical`，不进入 `courseMap` 或完成度。
 - `/labs/`、`/capstone/` 与任何“开始实验”入口继续不存在并返回 404。
-- `/projects` 与 `/projects/`、每个 clean URL 与尾斜杠形式都必须能由预览和 Pages 正确解析。
+- 项目总览目录接受 `/projects`、`/projects/` 与 `/projects/index.html`；七个叶页只接受 clean URL 与 `.html`，叶页尾斜杠保持 404，与 GitHub Pages 的真实静态文件语义一致。
 
 ## 6. 课程地图、导航与学习状态
 
@@ -600,7 +600,7 @@ dist HTML ── parse5 ── publication-contracts.mjs ── check-dist.mjs
 - 页面引用的面试题 ID 全部存在于现有 42 题；题目数组、答案和分布不变。
 - AutoGPT/Flowise 只在历史页，Hermes/OpenClaw 只在 watch-only 区；它们不进入 CourseItem 或 readingPaths。
 - 不使用 Star、下载量或榜单名次证明工程质量；不声称本书取得官方 benchmark 成绩。
-- Markdown 契约使用 VitePress renderer 后的结构化节点与浏览器可见文本；注释、代码围栏、行内代码、`template/pre/svg/noscript/script/style` 不得伪造章节、链接、图片或禁用命令。
+- Markdown 契约使用 VitePress renderer 后的结构化节点与浏览器可见文本。课程正向证据使用 `scriptingEnabled: true` 的 DOM，并排除注释、代码、`template`、`noscript`、SVG 与 hidden/inert/`aria-hidden` 子树；禁发契约使用 `scriptingEnabled: false` 的完整 DOM，覆盖 no-JavaScript 与隐藏的真实交互节点，同时继续忽略不实例化的示例代码和 SVG `defs/symbol`。
 
 ### 18.2 课程与路由
 
@@ -608,9 +608,9 @@ dist HTML ── parse5 ── publication-contracts.mjs ── check-dist.mjs
 - 六个核心项目在课程地图各出现一次；总览和历史页不计完成度。
 - engineering 路径恰好 17 站，原 10 站顺序不变，后接六个核心项目和交付型案例。
 - `/course/` SSR 恰好包含 26 个唯一课程链接；每个目标 HTML 存在。
-- dist 路径先规范化为 POSIX 形式并保持大小写敏感；拒绝绝对路径、盘符、NUL、逃逸路径、规范化碰撞、符号链接和悬空符号链接。只允许本设计 8 个 `/projects` 页面，拒绝额外 `/projects/**` 与全部 `/labs/**`、`/capstone/**`、`/superpowers/**`。
+- dist 路径按真实 filesystem 来源解释并保持大小写敏感；POSIX 字面反斜杠文件名不得冒充目录分隔符，只有显式 Windows filesystem 输入才使用 `path.win32` 转换。转换前拒绝 drive-relative/absolute、UNC/device、NUL、逃逸路径、规范化碰撞、符号链接和悬空符号链接。只允许本设计 8 个 `/projects` 页面，拒绝额外 `/projects/**` 与全部 `/labs/**`、`/capstone/**`、`/superpowers/**`。
 - 课程页必须有且仅有 26 个规范的根相对 anchor；每个项目页的全部 anchor 必须与 catalog 推导出的页面、仓库、watch、许可证、源码和面试题集合完全相等，不接受缺失、重复、额外、query、fragment、userinfo、非标准端口或移动分支变体。
-- 新路由的 clean URL 与尾斜杠形式均为 200；全部旧 URL 保持 200。
+- 项目总览的 `/projects`、`/projects/`、`/projects/index.html` 均为 200；七个项目叶页的 clean URL 与 `.html` 为 200，叶页尾斜杠为 404；全部旧 URL 按其既有目录页或叶页静态形态保持兼容。
 - process docs 与项目研究草稿不进入 dist。
 
 ### 18.3 版权与来源
