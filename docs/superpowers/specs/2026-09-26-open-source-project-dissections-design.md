@@ -1,6 +1,6 @@
 # 优秀开源项目拆解页设计
 
-**状态：** 待审判者复核
+**状态：** 已实现，待发布总验收
 **日期：** 2026-09-26
 **阶段：** 课程化重构第 2/4 阶段
 **设计基线：** `main@815d7613ca639d462979b1e57024eafd897e176b`
@@ -510,7 +510,10 @@ AutoGPT 只追踪 `classic/original_autogpt/autogpt/app/main.py`、`agents/agent
 
 - 六张主架构图和调用链图使用本项目原创 Vue/SVG/CSS；图下注明依据的 subject、ref、commit 与源码路径。
 - 默认不放项目 Logo、README 图片、产品 UI 截图或第三方 benchmark 图表。
-- Markdown 与构建 HTML 都必须结构化解析图片候选；覆盖 Markdown image、`img/src`、`img/srcset`、`picture/source`、`noscript`、SVG `href`/`xlink:href`、协议相对地址、反斜杠/控制字符和畸形 URL。只允许明确的本地、`data:` 与 `blob:` 候选，任何无法解析的候选 fail closed。
+- Markdown 与构建 HTML 都必须结构化解析真实资源候选。构建产物检查覆盖八个批准页面的完整 document、所有 CSS chunk、HTML/SVG 资源属性、`srcset/imagesrcset`、inline style、`<style>`、CSS `url/image/image-set/cross-fade/@import`、变量别名、selectorless at-rule，以及本地或 data URI 中的嵌套 CSS/SVG；普通导航链接与 Markdown code/fence 诱饵不计作资源。
+- 项目页禁止 `base`、`iframe`、`object`、`embed`、SVG SMIL、`xml:base` 与 XML stylesheet PI。所有候选先按来源语法解码，再检查 Unicode 与控制字符，识别显式 scheme，最后按 source base 做 canonical URL、dist existence 与 provenance 校验；任何远程、blob、非法、无法静态求值或递归超限的资源 fail closed。
+- CSS custom property 使用全定义安全图：同名变量的每个可能定义和 fallback 都必须安全，且资源 occurrence 贯穿来源、base、lineage 与已验证状态。每个 CSS/document root 使用共享预算，整次发布扫描还有更高的总预算；深度、边数、步骤、累计解码字节或循环任一越界都阻断。
+- 唯一变量例外是锁定 `pnpm-lock.yaml` 中 VitePress 1.6.4 生成的四条 icon mask consumer。其 consumer/definition 多重集、selector、property、value 与完整祖先 at-rule 链均以固定指纹校验；任一版本、数量、重复、覆盖或上下文漂移都使例外失效。所有 `--icon` 定义仍须通过相同的本地/data-SVG 深审。
 - 代码只做短引或伪代码重述；直接引用必须精确到文件、固定 commit 和适用许可证，不复制大段实现。
 - 若确需直接素材，文件只能进入 `docs/public/project-assets/`，并登记到 `assets/provenance.yml`。
 

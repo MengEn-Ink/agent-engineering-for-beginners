@@ -6,7 +6,7 @@
 
 **Architecture:** `contentRegistry` remains the only owner of public page identity. A new `sources/project-index.yml` owns repository pins, repository status, catalog tier, license scopes, source entrypoints, page-to-subject mappings, and call-chain data; a Node loader validates it for tests, builds, and weekly freshness checks, while a VitePress data loader exposes the same serializable data to four SSR-safe Vue components. Markdown owns teaching prose, course/navigation files reference stable item IDs, and automation may report upstream changes but never rewrite or publish content.
 
-**Tech Stack:** VitePress 1.6, Vue 3, TypeScript, JavaScript ESM, YAML 2.8, Vitest 3.2, parse5 8.0.1, parse-srcset 1.0.2, PostCSS 8.5.28, postcss-selector-parser 7.1.6, GitHub Actions, GitHub REST API, GitHub Pages
+**Tech Stack:** VitePress 1.6.4, Vue 3, TypeScript, JavaScript ESM, YAML 2.8, Vitest 3.2, parse5 8.0.1, parse-srcset 1.0.2, PostCSS 8.5.28, postcss-selector-parser 7.1.6, postcss-value-parser 4.2.0, saxes 6.0.0, GitHub Actions, GitHub REST API, GitHub Pages
 
 ---
 
@@ -52,13 +52,13 @@
 - `docs/.vitepress/theme/components/ProjectMeta.vue` — retain the on-screen disclosure and add explicit wrapping print-only license URLs.
 - `docs/.vitepress/config.mts` — add project overview to the top nav and the exact eight-item project sidebar group.
 - `scripts/validate-content.mjs` — include project catalog and provenance validation.
-- `scripts/check-dist.mjs` — canonicalize output paths, reject symlinks/collisions, parse built HTML structurally, allow exactly eight project outputs, require 26 exact course targets, and keep all labs/capstone outputs forbidden.
+- `scripts/check-dist.mjs` — canonicalize output paths, reject symlinks/collisions, parse built HTML structurally, allow exactly eight project outputs, require 26 exact course targets, enforce the locked VitePress resource contract, and keep all labs/capstone outputs forbidden.
 - `tests/course-map.spec.ts` — exact 39-item registry, 26-item course graph, and 17-step engineering path.
-- `tests/content.spec.ts` — canonical path/symlink, structured HTML, strict course/project-anchor, remote-image, source-baseline, and public-boundary assertions.
+- `tests/content.spec.ts` — canonical path/symlink, structured HTML, strict course/project-anchor, recursive remote-resource, source-baseline, and public-boundary assertions.
 - `tests/source-freshness.spec.ts` — project freshness failure classification and token-scope regressions.
 - `.github/workflows/source-freshness.yml` — run the project scan in the read-only job and report from the token-isolated job.
-- `package.json` — add scoped Vue type checking and `projects:check`, plus direct parse5, parse-srcset, PostCSS, and selector-parser development dependencies.
-- `pnpm-lock.yaml` — lock `vue-tsc@3.3.11`, `parse5@8.0.1`, `parse-srcset@1.0.2`, `postcss@8.5.28`, and `postcss-selector-parser@7.1.6`.
+- `package.json` — add scoped Vue type checking and `projects:check`, plus direct parse5, parse-srcset, PostCSS, selector/value-parser, and strict XML-parser development dependencies.
+- `pnpm-lock.yaml` — lock `vue-tsc@3.3.11`, `parse5@8.0.1`, `parse-srcset@1.0.2`, `postcss@8.5.28`, `postcss-selector-parser@7.1.6`, `postcss-value-parser@4.2.0`, and `saxes@6.0.0`.
 - `sources/source-index.yml` — record the manually verified Pydantic AI v2.51.0 and Google ADK v2.10.0 rolling baselines.
 - `README.md` — add project-reading entry and preserve the no-backend/no-Lab boundary.
 
@@ -111,8 +111,10 @@ After this plan is approved and before Task 1, create the isolated implementatio
 ```bash
 set -e
 git fetch origin --prune
-git worktree add /Users/bytedance/work/agent-engineering-for-beginners/.trae/worktrees/open-source-project-dissections -b feat/open-source-project-dissections 815d7613ca639d462979b1e57024eafd897e176b
-git -C /Users/bytedance/work/agent-engineering-for-beginners/.trae/worktrees/open-source-project-dissections status --short --branch
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+IMPLEMENTATION_WORKTREE="$REPO_ROOT/.trae/worktrees/open-source-project-dissections"
+git worktree add "$IMPLEMENTATION_WORKTREE" -b feat/open-source-project-dissections 815d7613ca639d462979b1e57024eafd897e176b
+git -C "$IMPLEMENTATION_WORKTREE" status --short --branch
 ```
 
 Expected: branch `feat/open-source-project-dissections`, clean worktree, HEAD `815d7613ca639d462979b1e57024eafd897e176b`. All Task 1–13 commands run in that worktree; Task 14 runs there only after final reviewer approval.
@@ -8223,6 +8225,19 @@ git rev-parse HEAD
 ```
 
 Send the final immutable feature HEAD, commit list, test counts, source/project freshness summaries, 79/5 route matrix, all 16 responsive page checks, seven PDF results, fresh HAR counts, and screenshots to the reviewer. Wait for explicit review approval before Task 14.
+
+#### Final release-hardening amendments
+
+These rules supersede narrower resource-checking excerpts earlier in this plan:
+
+- Validate all eight approved project documents in full, not only `.vp-doc`. Reject `base`, `iframe`, `object`, and `embed`; parse `srcset` and preload-image `imagesrcset` structurally; require every stylesheet link to be a canonical, existing, regular dist `.css` file.
+- Parse every external CSS chunk, document `<style>` block, and owner-bound `style` attribute. Decode CSS identifiers before classifying properties or functions; traverse literal `url()`, `image()`, `image-set()`, `cross-fade()`, `@import`, all URL-bearing shorthand/presentation properties, and selectorless `@font-face`/`@page` declarations.
+- Model custom properties as a fail-closed all-definitions graph. Preserve each candidate's source/base and occurrence identity through aliases and fallbacks. Use short-circuit DFS and two shared budgets: one per CSS/document root and one per production `validateDist` run. Depth, edge/step, decoded-byte, cycle, malformed-input, or unresolved-resource failures stop the branch with a structured unsafe result.
+- Route every `data:image/svg+xml`, `data:text/css`, and canonical local SVG through bounded recursive validation. SVG uses a namespace-aware XML parser and rejects SMIL, `xml:base`, XML stylesheet processing instructions, and remote nested resources. Recursive cache keys include source/content and definition-graph context.
+- The only dynamic resource exception is the exact VitePress 1.6.4 generated icon-mask contract. Production validation always requires the locked version plus the complete consumer/definition multiset, normalized declarations, and ancestor at-rule fingerprints; tests may opt out only through an internal explicit fixture option.
+- Normalize resource candidates once: source syntax decode, well-formed Unicode, C0/DEL rejection, outer whitespace trim, explicit-scheme classification, then source-base resolution only for schemeless paths. Module-private validated records prevent revalidation and double charging; the public contract exposes final safety classifications rather than reusable trust markers.
+
+Before Task 14, rerun `pnpm test`, `pnpm validate`, `pnpm typecheck:projects`, `pnpm build`, strict freshness checks, the responsive browser matrix, seven fresh PDFs, and normal/no-JavaScript HAR checks from the same immutable HEAD.
 
 ### Task 14: Merge the approved branch, deploy Pages, and verify production
 
