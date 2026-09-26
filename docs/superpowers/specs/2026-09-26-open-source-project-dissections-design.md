@@ -238,7 +238,7 @@ page 级 `catalog_tier: core` 表示该页面属于主项目目录，不等于�
 - `pinned_ref` 用于人类识别；`pin_kind` 明确是 `release`、`tag` 或 `commit`。
 - 一个 ref 若存在，远端解析结果必须等于 `pinned_commit`。
 - 每个 `entrypoint` 的 schema 固定为 `path + symbols:string[] + responsibility`：`path` 在 subject 内唯一，`symbols` 至少包含一个非空字符串且不得重复，`responsibility` 非空；不再接受单数 `symbol` 字段。
-- `entrypoints` 必须在固定 commit 中存在；每个核心页面至少 3 个。普通核心页最多 8 个，MCP、OpenHands、评测等复杂跨层页面最多 10 个；初始目录共固定 52 个文件级 entrypoint。
+- `entrypoints` 必须在固定 commit 中存在；每个核心页面至少 3 个。普通核心页最多 8 个，MCP、OpenHands、评测等复杂跨层或双轨页面最多 12 个；初始目录共固定 57 个文件级 entrypoint。
 - 调用链 step 的 `source_path` 必须匹配对应 subject 的一个 entrypoint，且 step 的单数 `symbol` 必须属于该 entrypoint 的 `symbols`；同一文件可通过数组声明多个实际使用符号。
 - `repository_status` 只能是 `active`、`archived` 或 `eol`；`archived` 是独立布尔事实，允许表达“已归档且 EOL”。
 - `repository_status: active` 必须搭配 `archived: false`；`repository_status: archived` 必须搭配 `archived: true`；`repository_status: eol` 可按 GitHub 实际归档状态搭配布尔值。
@@ -297,7 +297,7 @@ page 级 `catalog_tier: core` 表示该页面属于主项目目录，不等于�
 3. **版本与边界卡**：canonical repo、固定 ref/SHA、核验日期、仓库状态、教学层级、许可证作用域；
 4. **原创架构图**：只画本页会追踪的组件，标明“源码事实”和“本书归纳”；
 5. **唯一纵向调用链**：从一个入口追到结果或评分，步骤有稳定编号；
-6. **关键源码入口**：3–10 个固定 commit 文件链接，写清文件职责，并显示该文件在本页使用的全部符号；
+6. **关键源码入口**：3–12 个固定 commit 文件链接，写清文件职责，并显示该文件在本页使用的全部符号；
 7. **一次请求的数据流**：输入、状态变化、工具或环境、输出证据；
 8. **阅读练习**：要求读者在固定源码中找证据，不要求安装依赖或调用模型；
 9. **失败边界**：至少一个确定性反例，说明哪一层负责停止、恢复或拒绝；
@@ -350,17 +350,18 @@ page 级 `catalog_tier: core` 表示该页面属于主项目目录，不等于�
 ### 10.3 OpenHands
 
 - **核心问题：** 用户界面、Agent Server、SDK agent 与 workspace 如何跨仓库协作并隔离执行权限。
-- **唯一链路：** Agent Canvas conversation API → TypeScript client/adapter → Agent Server conversation router/service → SDK Conversation → Agent → Tool/Workspace → Event 回流 Canvas。
+- **唯一链路：** 已有 Canvas conversation 的 `handleSendMessage` → `useSendMessage().send` → WebSocket `sendMessage` → Agent Server `events_socket`（通过 `EventService.subscribe_to_events` 注册订阅）→ `EventService.send_message` → `LocalConversation.send_message` 持久化用户 `MessageEvent` → `EventService.run` → `LocalConversation.arun` → `Agent.astep` → `_ahandle_tool_calls` 生成 `ActionEvent` → `Agent._aexecute_actions` → `ToolDefinition.__call__` 返回 `Observation` → `LocalConversation.__init__` 组装 persistence-first callback → `AsyncCallbackWrapper.__call__` → `EventService._pub_sub` → `_WebSocketSubscriber.__call__` → `_send_event` → Canvas `handleMainMessage`。
 - **关键入口：**
-  - Canvas：`src/api/conversation-service/agent-server-conversation-service.api.ts`
-  - Canvas：`src/api/agent-server-adapter.ts`
-  - Server：`openhands-agent-server/openhands/agent_server/conversation_router.py`
-  - Server：`openhands-agent-server/openhands/agent_server/conversation_service.py`
-  - SDK：`openhands-sdk/openhands/sdk/conversation/conversation.py`
+  - Canvas：`src/components/features/chat/chat-interface.tsx`
+  - Canvas：`src/hooks/use-send-message.ts`
+  - Canvas：`src/contexts/conversation-websocket-context.tsx`
+  - Server：`openhands-agent-server/openhands/agent_server/sockets.py`
+  - Server：`openhands-agent-server/openhands/agent_server/event_service.py`
+  - SDK：`openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py`
   - SDK：`openhands-sdk/openhands/sdk/agent/agent.py`
+  - SDK：`openhands-sdk/openhands/sdk/agent/response_dispatch.py`
   - SDK：`openhands-sdk/openhands/sdk/tool/tool.py`
-  - SDK：`openhands-sdk/openhands/sdk/workspace/workspace.py`
-- **必须讲清：** `OpenHands/OpenHands` 当前不是旧版单体 Python Agent 仓库；直接在宿主机运行的权限风险与 Docker/远端 workspace 的隔离边界必须单列。
+- **必须讲清：** `OpenHands/OpenHands` 当前不是旧版单体 Python Agent 仓库；本页只追踪已有会话的 message/action/durable-event 链，不追踪 conversation 创建链。`Workspace` 是工具构造与执行所消费的环境边界和配置来源，不是 tools 的 owner，也不是 `ToolDefinition.__call__` 之后的主链节点；streaming delta 是非持久旁路。durable append 的保证来自 `LocalConversation.__init__` 组装的 default callback 先执行、caller callback 后执行，再经 PubSub/WebSocket 回流；`EventService.run` 不拥有订阅。
 - **面试题：** `iq-09-b`、`iq-10-a`、`iq-13-c`。
 
 ### 10.4 SWE-bench 与 τ²-bench
@@ -368,17 +369,21 @@ page 级 `catalog_tier: core` 表示该页面属于主项目目录，不等于�
 - **核心问题：** Agent 输出如何进入可复现环境、轨迹和评分，为什么两个 benchmark 的分数不能直接横比。
 - **纵向双轨：**
   - SWE-bench：实例与预测 patch → evaluation runner → 容器环境 → 测试执行 → grading → report；
-  - τ²-bench：task → agent/user simulation → environment/tool → trajectory → evaluator/reward。
+  - τ²-bench：当前 CLI `main` 注册局部 `run_command` 并把 `tau2 run` 分派到 `run_domain` → `get_tasks` → `run_tasks` → `run_single_task` → `build_orchestrator` → `run_simulation` → `BaseOrchestrator.run` → environment tool call → trajectory → `evaluate_simulation` → `reward_info`；局部 `run_command` 不是可链接的顶层 symbol。
 - **关键入口：**
   - `swebench/harness/run_evaluation.py`
   - `swebench/harness/docker_utils.py`
   - `swebench/harness/grading.py`
   - `swebench/harness/reporting.py`
-  - `src/tau2/run.py`
+  - `src/tau2/cli.py`
+  - `src/tau2/runner/batch.py`
+  - `src/tau2/runner/helpers.py`
+  - `src/tau2/runner/build.py`
   - `src/tau2/runner/simulation.py`
+  - `src/tau2/orchestrator/orchestrator.py`
   - `src/tau2/environment/environment.py`
   - `src/tau2/evaluator/evaluator.py`
-- **必须讲清：** 本书只拆 harness，不公布自称官方的成绩；后续 10 条本地 fixture 是第三阶段自建微型回归集，不是 SWE-bench 或 τ²-bench 子集。
+- **必须讲清：** 本书只拆 harness，不公布自称官方的成绩；后续 10 条本地 fixture 是第三阶段自建微型回归集，不是 SWE-bench 或 τ²-bench 子集。`tau2.run.run_task` 与 `tau2.run.run_tasks` 只是旧 flat 参数 API 的 deprecated 兼容 shim，不能作为当前 CLI 主链入口。只有默认 `EvaluationType.ALL` 按 `task.reward_basis` 选择分量后相乘，ACTION 只有被选中时才是硬门禁；单项类型和 `*_IGNORE_BASIS` 各走自己的分支，early termination 返回 `0.0`，没有 criteria 时返回 `1.0`。
 - **面试题：** `iq-08-a`、`iq-08-b`、`iq-08-c`。
 
 ### 10.5 Dify
@@ -542,7 +547,7 @@ Markdown（解释、反例、练习、生产边界）
 - `contentRegistry` 新增且仅新增 8 条项目路由；ID、规范化 route 唯一。
 - `project-index.yml` 包含 13 个 subject：9 个核心页 subject、2 个历史 subject、2 个 watch-only subject。
 - 六个核心页、一个总览和一个历史页均存在；每页 `project-id` 与 registry、项目索引一致。
-- 六个核心页各包含模板 13 个部分、一个主调用链、3–10 个固定源码入口和至少一个失败边界；全目录精确包含 52 个文件级 entrypoint。
+- 六个核心页各包含模板 13 个部分、一个主调用链、3–12 个固定源码入口和至少一个失败边界；全目录精确包含 57 个文件级 entrypoint。OpenHands 页面固定 9 个入口，评测页固定 12 个入口（SWE-bench 4 个、τ²-bench 8 个）。
 - 页面所有源码链接使用 40 位固定 commit；不存在 `blob/main/` 或 `blob/master/`。
 - 许可证、仓库状态、教学层级和设计日 pin 与第 8 节逐项一致。
 - 页面引用的面试题 ID 全部存在于现有 42 题；题目数组、答案和分布不变。

@@ -14,7 +14,7 @@
 
 **Create:**
 
-- `sources/project-index.yml` — canonical project-page mapping, 13 pinned subjects, license scopes, 52 file-level source entrypoints, and seven primary chains.
+- `sources/project-index.yml` — canonical project-page mapping, 13 pinned subjects, license scopes, 57 file-level source entrypoints, and seven primary chains.
 - `scripts/project-catalog.mjs` — schema parser, discriminated license validation, cross-reference validation, and build-time loader.
 - `scripts/project-catalog.d.mts` — TypeScript declaration for the Node catalog loader.
 - `scripts/check-projects.mjs` — bounded GitHub freshness scan that writes project review reports without editing content.
@@ -119,7 +119,7 @@ Expected: branch `feat/open-source-project-dissections`, clean worktree, HEAD `8
 | Approved requirement | Implemented and proved by |
 | --- | --- |
 | Project schema, dual status axes, mixed-license model | Tasks 1–2 |
-| 8 page mappings, 13 exact subjects, 52 exact file-level source entries, 7 chains | Task 2 |
+| 8 page mappings, 13 exact subjects, 57 exact file-level source entries, 7 chains | Task 2 |
 | VitePress loader, pure Vitest lookup, Vue type gate | Task 3 |
 | Separate architecture graph, text call chain, source facts, print fallback | Task 3 |
 | Intermediate commits remain buildable while pages arrive | Task 4 and every task-level full gate |
@@ -661,10 +661,10 @@ const expectedEntrypoints = {
   'mcp-spec': ['schema/2026-07-28/schema.json'],
   'mcp-python-sdk': ['examples/snippets/servers/basic_tool.py', 'src/mcp/server/mcpserver/server.py', 'src/mcp/server/stdio.py', 'src/mcp/server/lowlevel/server.py', 'src/mcp/server/runner.py', 'src/mcp/shared/jsonrpc_dispatcher.py', 'src/mcp/server/mcpserver/tools/tool_manager.py', 'src/mcp/server/mcpserver/tools/base.py'],
   aider: ['aider/main.py', 'aider/coders/base_coder.py', 'aider/models.py', 'aider/repomap.py', 'aider/coders/editblock_coder.py', 'aider/io.py', 'aider/repo.py', 'aider/commands.py'],
-  'openhands-canvas': ['src/api/conversation-service/agent-server-conversation-service.api.ts', 'src/api/agent-server-adapter.ts'],
-  'openhands-sdk': ['openhands-agent-server/openhands/agent_server/conversation_router.py', 'openhands-agent-server/openhands/agent_server/conversation_service.py', 'openhands-sdk/openhands/sdk/conversation/conversation.py', 'openhands-sdk/openhands/sdk/agent/agent.py', 'openhands-sdk/openhands/sdk/tool/tool.py', 'openhands-sdk/openhands/sdk/workspace/workspace.py'],
+  'openhands-canvas': ['src/components/features/chat/chat-interface.tsx', 'src/hooks/use-send-message.ts', 'src/contexts/conversation-websocket-context.tsx'],
+  'openhands-sdk': ['openhands-agent-server/openhands/agent_server/sockets.py', 'openhands-agent-server/openhands/agent_server/event_service.py', 'openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py', 'openhands-sdk/openhands/sdk/agent/agent.py', 'openhands-sdk/openhands/sdk/agent/response_dispatch.py', 'openhands-sdk/openhands/sdk/tool/tool.py'],
   'swe-bench': ['swebench/harness/run_evaluation.py', 'swebench/harness/docker_utils.py', 'swebench/harness/grading.py', 'swebench/harness/reporting.py'],
-  'tau2-bench': ['src/tau2/run.py', 'src/tau2/runner/simulation.py', 'src/tau2/environment/environment.py', 'src/tau2/evaluator/evaluator.py'],
+  'tau2-bench': ['src/tau2/cli.py', 'src/tau2/runner/batch.py', 'src/tau2/runner/helpers.py', 'src/tau2/runner/build.py', 'src/tau2/runner/simulation.py', 'src/tau2/orchestrator/orchestrator.py', 'src/tau2/environment/environment.py', 'src/tau2/evaluator/evaluator.py'],
   dify: ['api/controllers/service_api/app/workflow.py', 'api/core/app/apps/workflow/app_generator.py', 'api/core/app/apps/workflow/app_runner.py', 'api/core/workflow/workflow_entry.py', 'api/core/workflow/node_factory.py', 'api/core/workflow/nodes/agent_v2/agent_node.py', 'api/core/app/apps/common/workflow_response_converter.py'],
   crewai: ['lib/crewai/src/crewai/crew.py', 'lib/crewai/src/crewai/process.py', 'lib/crewai/src/crewai/execution.py', 'lib/crewai/src/crewai/task.py', 'lib/crewai/src/crewai/agent/core.py', 'lib/crewai/src/crewai/agents/crew_agent_executor.py', 'lib/crewai/src/crewai/agents/step_executor.py', 'lib/crewai/src/crewai/tools/tool_usage.py'],
   autogpt: ['classic/original_autogpt/autogpt/app/main.py', 'classic/original_autogpt/autogpt/agents/agent.py'],
@@ -696,12 +696,35 @@ const expectedCoreEntrypointSymbols = {
     'aider/repo.py': ['GitRepo.commit', 'GitRepo.get_commit_message'],
     'aider/commands.py': ['Commands.cmd_test'],
   },
+  'openhands-canvas': {
+    'src/components/features/chat/chat-interface.tsx': ['handleSendMessage'],
+    'src/hooks/use-send-message.ts': ['useSendMessage().send'],
+    'src/contexts/conversation-websocket-context.tsx': ['ConversationWebSocketProvider.sendMessage', 'ConversationWebSocketProvider.handleMainMessage'],
+  },
+  'openhands-sdk': {
+    'openhands-agent-server/openhands/agent_server/sockets.py': ['events_socket', '_WebSocketSubscriber.__call__', '_send_event'],
+    'openhands-agent-server/openhands/agent_server/event_service.py': ['EventService.send_message', 'EventService.run', 'EventService.subscribe_to_events', 'AsyncCallbackWrapper.__call__', 'EventService._pub_sub'],
+    'openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py': ['LocalConversation.__init__', 'LocalConversation.send_message', 'LocalConversation.arun'],
+    'openhands-sdk/openhands/sdk/agent/agent.py': ['Agent.astep', 'Agent._get_action_event', 'Agent._aexecute_actions'],
+    'openhands-sdk/openhands/sdk/agent/response_dispatch.py': ['_ahandle_tool_calls'],
+    'openhands-sdk/openhands/sdk/tool/tool.py': ['ToolDefinition.__call__'],
+  },
+  'tau2-bench': {
+    'src/tau2/cli.py': ['main'],
+    'src/tau2/runner/batch.py': ['run_domain', 'run_tasks', 'run_single_task'],
+    'src/tau2/runner/helpers.py': ['get_tasks', 'load_tasks'],
+    'src/tau2/runner/build.py': ['build_orchestrator', 'build_environment', 'build_agent', 'build_user'],
+    'src/tau2/runner/simulation.py': ['run_simulation'],
+    'src/tau2/orchestrator/orchestrator.py': ['BaseOrchestrator.run', 'BaseOrchestrator._execute_tool_calls'],
+    'src/tau2/environment/environment.py': ['Environment.get_response', 'Environment.make_tool_call'],
+    'src/tau2/evaluator/evaluator.py': ['evaluate_simulation'],
+  },
 }
 const expectedChains = {
   'mcp-tool-call': ['schema:mcp-spec:schema/2026-07-28/schema.json:CallToolRequest', 'host-run:mcp-python-sdk:src/mcp/server/mcpserver/server.py:MCPServer.run', 'transport:mcp-python-sdk:src/mcp/server/stdio.py:stdio_server', 'server-run:mcp-python-sdk:src/mcp/server/lowlevel/server.py:Server.run', 'runner-loop:mcp-python-sdk:src/mcp/server/runner.py:serve_dual_era_loop', 'dispatcher-loop:mcp-python-sdk:src/mcp/shared/jsonrpc_dispatcher.py:JSONRPCDispatcher.run', 'dispatcher-request:mcp-python-sdk:src/mcp/shared/jsonrpc_dispatcher.py:JSONRPCDispatcher._dispatch_request', 'request:mcp-python-sdk:src/mcp/server/runner.py:ServerRunner._on_request', 'dispatch:mcp-python-sdk:src/mcp/server/lowlevel/server.py:get_request_handler', 'mcp-handler:mcp-python-sdk:src/mcp/server/mcpserver/server.py:MCPServer._handle_call_tool', 'mcp-call:mcp-python-sdk:src/mcp/server/mcpserver/server.py:MCPServer.call_tool', 'tool-lookup:mcp-python-sdk:src/mcp/server/mcpserver/tools/tool_manager.py:ToolManager.call_tool', 'tool-run:mcp-python-sdk:src/mcp/server/mcpserver/tools/base.py:Tool.run', 'tool-function:mcp-python-sdk:examples/snippets/servers/basic_tool.py:sum', 'serialize:mcp-python-sdk:src/mcp/server/runner.py:ServerRunner._serialize', 'dispatcher-response:mcp-python-sdk:src/mcp/shared/jsonrpc_dispatcher.py:JSONRPCDispatcher._write_result', 'stdout:mcp-python-sdk:src/mcp/server/stdio.py:stdio_server'],
   'aider-repo-to-verified-edit': ['cli:aider:aider/main.py:main', 'run:aider:aider/coders/base_coder.py:Coder.run', 'turn:aider:aider/coders/base_coder.py:Coder.run_one', 'context:aider:aider/coders/base_coder.py:Coder.send_message', 'repo-map:aider:aider/repomap.py:RepoMap.get_repo_map', 'send:aider:aider/coders/base_coder.py:Coder.send', 'completion:aider:aider/models.py:Model.send_completion', 'parse:aider:aider/coders/editblock_coder.py:EditBlockCoder.get_edits', 'apply-updates:aider:aider/coders/base_coder.py:Coder.apply_updates', 'dry-run:aider:aider/coders/editblock_coder.py:EditBlockCoder.apply_edits_dry_run', 'prepare:aider:aider/coders/base_coder.py:Coder.prepare_to_edit', 'apply:aider:aider/coders/editblock_coder.py:EditBlockCoder.apply_edits', 'write:aider:aider/io.py:InputOutput.write_text', 'auto-commit:aider:aider/coders/base_coder.py:Coder.auto_commit', 'commit:aider:aider/repo.py:GitRepo.commit', 'auto-lint:aider:aider/coders/base_coder.py:Coder.lint_edited', 'lint-commit:aider:aider/coders/base_coder.py:Coder.auto_commit', 'shell-confirm:aider:aider/io.py:InputOutput.confirm_ask', 'shell-run:aider:aider/coders/base_coder.py:Coder.handle_shell_commands', 'auto-test:aider:aider/commands.py:Commands.cmd_test', 'reflection:aider:aider/coders/base_coder.py:Coder.run_one'],
-  'openhands-canvas-to-workspace-event': ['canvas:openhands-canvas:src/api/conversation-service/agent-server-conversation-service.api.ts:AgentServerConversationService', 'router:openhands-sdk:openhands-agent-server/openhands/agent_server/conversation_router.py:start_conversation', 'service:openhands-sdk:openhands-agent-server/openhands/agent_server/conversation_service.py:ConversationService', 'conversation:openhands-sdk:openhands-sdk/openhands/sdk/conversation/conversation.py:Conversation', 'agent:openhands-sdk:openhands-sdk/openhands/sdk/agent/agent.py:Agent.step', 'tool:openhands-sdk:openhands-sdk/openhands/sdk/tool/tool.py:ToolDefinition.__call__', 'workspace:openhands-sdk:openhands-sdk/openhands/sdk/workspace/workspace.py:Workspace', 'event-return:openhands-canvas:src/api/agent-server-adapter.ts:toAppConversation'],
-  'benchmark-task-to-score': ['swe-input:swe-bench:swebench/harness/run_evaluation.py:main', 'swe-env:swe-bench:swebench/harness/docker_utils.py:exec_run_with_timeout', 'swe-grade:swe-bench:swebench/harness/grading.py:get_eval_report', 'swe-report:swe-bench:swebench/harness/reporting.py:make_run_report', 'tau-input:tau2-bench:src/tau2/run.py:run_task', 'tau-sim:tau2-bench:src/tau2/runner/simulation.py:run_simulation', 'tau-env:tau2-bench:src/tau2/environment/environment.py:Environment', 'tau-score:tau2-bench:src/tau2/evaluator/evaluator.py:evaluate_simulation'],
+  'openhands-canvas-to-workspace-event': ['chat-submit:openhands-canvas:src/components/features/chat/chat-interface.tsx:handleSendMessage', 'hook-send:openhands-canvas:src/hooks/use-send-message.ts:useSendMessage().send', 'canvas-send:openhands-canvas:src/contexts/conversation-websocket-context.tsx:ConversationWebSocketProvider.sendMessage', 'socket-receive:openhands-sdk:openhands-agent-server/openhands/agent_server/sockets.py:events_socket', 'service-message:openhands-sdk:openhands-agent-server/openhands/agent_server/event_service.py:EventService.send_message', 'conversation-message:openhands-sdk:openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py:LocalConversation.send_message', 'service-run:openhands-sdk:openhands-agent-server/openhands/agent_server/event_service.py:EventService.run', 'conversation-run:openhands-sdk:openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py:LocalConversation.arun', 'agent-step:openhands-sdk:openhands-sdk/openhands/sdk/agent/agent.py:Agent.astep', 'dispatch-tool-calls:openhands-sdk:openhands-sdk/openhands/sdk/agent/response_dispatch.py:_ahandle_tool_calls', 'execute-actions:openhands-sdk:openhands-sdk/openhands/sdk/agent/agent.py:Agent._aexecute_actions', 'tool-call:openhands-sdk:openhands-sdk/openhands/sdk/tool/tool.py:ToolDefinition.__call__', 'persist-event:openhands-sdk:openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py:LocalConversation.__init__', 'async-callback:openhands-sdk:openhands-agent-server/openhands/agent_server/event_service.py:AsyncCallbackWrapper.__call__', 'publish-event:openhands-sdk:openhands-agent-server/openhands/agent_server/event_service.py:EventService._pub_sub', 'subscriber-event:openhands-sdk:openhands-agent-server/openhands/agent_server/sockets.py:_WebSocketSubscriber.__call__', 'socket-send:openhands-sdk:openhands-agent-server/openhands/agent_server/sockets.py:_send_event', 'canvas-receive:openhands-canvas:src/contexts/conversation-websocket-context.tsx:ConversationWebSocketProvider.handleMainMessage'],
+  'benchmark-task-to-score': ['swe-input:swe-bench:swebench/harness/run_evaluation.py:main', 'swe-env:swe-bench:swebench/harness/docker_utils.py:exec_run_with_timeout', 'swe-grade:swe-bench:swebench/harness/grading.py:get_eval_report', 'swe-report:swe-bench:swebench/harness/reporting.py:make_run_report', 'tau-cli:tau2-bench:src/tau2/cli.py:main', 'tau-domain:tau2-bench:src/tau2/runner/batch.py:run_domain', 'tau-load:tau2-bench:src/tau2/runner/helpers.py:get_tasks', 'tau-batch:tau2-bench:src/tau2/runner/batch.py:run_tasks', 'tau-task:tau2-bench:src/tau2/runner/batch.py:run_single_task', 'tau-build:tau2-bench:src/tau2/runner/build.py:build_orchestrator', 'tau-sim:tau2-bench:src/tau2/runner/simulation.py:run_simulation', 'tau-orchestrator:tau2-bench:src/tau2/orchestrator/orchestrator.py:BaseOrchestrator.run', 'tau-environment:tau2-bench:src/tau2/environment/environment.py:Environment.make_tool_call', 'tau-trajectory:tau2-bench:src/tau2/runner/simulation.py:run_simulation', 'tau-evaluate:tau2-bench:src/tau2/evaluator/evaluator.py:evaluate_simulation', 'tau-reward:tau2-bench:src/tau2/evaluator/evaluator.py:evaluate_simulation'],
   'dify-request-to-graph-events': ['controller:dify:api/controllers/service_api/app/workflow.py:WorkflowRunApi.post', 'generator:dify:api/core/app/apps/workflow/app_generator.py:WorkflowAppGenerator', 'runner:dify:api/core/app/apps/workflow/app_runner.py:WorkflowAppRunner', 'entry:dify:api/core/workflow/workflow_entry.py:WorkflowEntry', 'factory:dify:api/core/workflow/node_factory.py:DifyNodeFactory', 'agent-node:dify:api/core/workflow/nodes/agent_v2/agent_node.py:DifyAgentNode', 'response:dify:api/core/app/apps/common/workflow_response_converter.py:WorkflowResponseConverter'],
   'crewai-kickoff-to-task-output': ['kickoff:crewai:lib/crewai/src/crewai/crew.py:Crew.kickoff', 'process:crewai:lib/crewai/src/crewai/process.py:Process', 'execution:crewai:lib/crewai/src/crewai/execution.py:begin_execution', 'task:crewai:lib/crewai/src/crewai/task.py:Task.execute_sync', 'agent:crewai:lib/crewai/src/crewai/agent/core.py:Agent.execute_task', 'executor:crewai:lib/crewai/src/crewai/agents/crew_agent_executor.py:CrewAgentExecutor.invoke', 'step:crewai:lib/crewai/src/crewai/agents/step_executor.py:StepExecutor.execute', 'tool:crewai:lib/crewai/src/crewai/tools/tool_usage.py:ToolUsage.use', 'output:crewai:lib/crewai/src/crewai/task.py:Task._export_output'],
   'autogpt-flowise-evolution': ['autogpt-entry:autogpt:classic/original_autogpt/autogpt/app/main.py:run_auto_gpt', 'autogpt-agent:autogpt:classic/original_autogpt/autogpt/agents/agent.py:Agent.execute', 'flowise-entry:flowise:packages/server/src/controllers/predictions/index.ts:createPrediction', 'flowise-service:flowise:packages/server/src/services/predictions/index.ts:buildChatflow'],
@@ -748,10 +771,10 @@ const expectedSubjectDigests = {
   'mcp-spec': '492729a2b1d5e3690d4d4eb8ffb8a6f9089a8d3e21b7a284d49b6c9100788801',
   'mcp-python-sdk': '21a74ad2294a17ef639fb92539bee85e299dd9cc71fea3e6db72d615da7db867',
   aider: '5e52014bcd913a55fbbaed8dcdf44cff28bcf19d6d6af5b33264c0bb1caec388',
-  'openhands-canvas': 'a276ba6d4ae6dcbe9bf28fd1f63727d143d8c5e293ffc49ed8f7baf49b946ddc',
-  'openhands-sdk': '238f8bc6be41b1216fc43af67e455cc5309d470603b657a8c08535e657425cb5',
+  'openhands-canvas': '05fb380eafe106924eb9bb17f712d73b75c8b0c7e8d0cd10696cb830798c5ed4',
+  'openhands-sdk': '49b57ad1cb32ce8084c8c0fa75ae6976543e76ca70893e858403699410bea8f8',
   'swe-bench': 'e356c00937817246deae70028e1d8068a2e9426e33f5d77e5b44e485adb3efaa',
-  'tau2-bench': 'cefff5beff7a90ca1ef02dd77c683f0474cdd2c0b591f5ed18d709e00536775d',
+  'tau2-bench': '9ce153cca427f514e1d8b1b727931efa4ab2f8767fac1019117219ef17bb99d9',
   dify: '6881c250b6f94d1ff50aa54d77a493cacb672796350e9c8281b2cc639563d683',
   crewai: 'c08cfcd2380dbb33b118271457a61aa9b716325f29e25613cc1ddb94a6bd7b56',
   autogpt: '33d5cf4286bca6be740451dc94daf9c77d633318e95f38760b980c5699d66bf4',
@@ -762,8 +785,8 @@ const expectedSubjectDigests = {
 const expectedChainDigests = {
   'mcp-tool-call': '54b46cce64ce2559ae2656a61335d2b92df9df99fdf87e1b7215efe76d4a1ab4',
   'aider-repo-to-verified-edit': '222bc344a8184b8ff7cac95a1e36f620a50a58cacb0f61b459132238164486ce',
-  'openhands-canvas-to-workspace-event': '6ee7c2a9660f5f8a0d8457ebf2707ebaea0f6367f9ac8eabffa69f825580c79d',
-  'benchmark-task-to-score': 'b7227cce3a43907b38fde1fbbde5548e0d148d6de88ddd9d3ecf5042b1876f49',
+  'openhands-canvas-to-workspace-event': 'e28817b291e43fa1371c2e2174421af65921b4a8e5c7089216b69d475fbb702e',
+  'benchmark-task-to-score': 'fc1b273a3f59963d7e35c73718ca408b468dc92ad999dc179faf736cffc1df89',
   'dify-request-to-graph-events': '060d82f9c004cfb20a95ccf3a951383bb7715b47ba25abb1232dcfc9034b6a50',
   'crewai-kickoff-to-task-output': '4a3711ad6debf20e72f0732a6719b0bf9a7e2ae9153cc141a8bb800eb9d9c058',
   'autogpt-flowise-evolution': '2d20650faa158737e729becfdc9559ed3d1f419bbcffccf2977f4eb946d722df',
@@ -784,7 +807,7 @@ describe('real project catalog', () => {
     expect(Object.keys(catalog)).toEqual(['schema_version', 'defaults', 'pages', 'subjects', 'chains'])
     expect(catalog.schema_version).toBe(1)
     expect(catalog.defaults).toEqual({ verified_at: '2026-09-26', review_by: '2026-10-26' })
-    expect(digest(catalog)).toBe('30b8858ca207c0b68d3e1173e658d53f37d9edd2560e6312f5d72474a6121c41')
+    expect(digest(catalog)).toBe('0f46cd636fafd2e62a593558aa0efc8ed700cfe2326197104333f4d9e7b549c5')
     expect(catalog.pages.map((page: { page_item_id: string }) => page.page_item_id)).toEqual(pageIds)
     expect(catalog.subjects.map((subject: { id: string }) => subject.id)).toEqual(subjectIds)
     expect(Object.fromEntries(catalog.subjects.map((subject: any) => [subject.id, [
@@ -804,25 +827,50 @@ describe('real project catalog', () => {
       ]))
     expect(coreSubjects).toEqual(expectedCoreEntrypointSymbols)
     const sourceEntries = catalog.subjects.flatMap((subject: { entrypoints: Array<{ path: string; symbols: string[]; responsibility: string }> }) => subject.entrypoints)
-    expect(sourceEntries).toHaveLength(52)
+    expect(sourceEntries).toHaveLength(57)
     expect(sourceEntries.every((entry: { path: string; symbols: string[]; responsibility: string }) =>
       [entry.path, entry.responsibility].every((value) => value.trim().length > 0)
         && entry.symbols.length > 0
         && entry.symbols.every((symbol) => symbol.trim().length > 0),
     )).toBe(true)
-    const complexCrossLayerPages = new Set([
-      'project-mcp-python-sdk', 'project-openhands', 'project-agent-benchmarks',
-    ])
-    for (const page of catalog.pages.filter((item: { counted_in_course: boolean }) => item.counted_in_course)) {
-      const count = page.subjects.reduce((total: number, subjectId: string) =>
-        total + catalog.subjects.find((subject: { id: string }) => subject.id === subjectId).entrypoints.length, 0)
-      expect(count).toBeGreaterThanOrEqual(3)
-      expect(count).toBeLessThanOrEqual(complexCrossLayerPages.has(page.page_item_id) ? 10 : 8)
-    }
     expect(Object.fromEntries(catalog.chains.map((chain: { id: string; steps: Array<{ id: string; subject_id: string; source_path: string; symbol: string }> }) => [
       chain.id,
       chain.steps.map((step) => `${step.id}:${step.subject_id}:${step.source_path}:${step.symbol}`),
     ]))).toEqual(expectedChains)
+    const subjectsById = Object.fromEntries(catalog.subjects.map((subject: { id: string; entrypoints: unknown[] }) => [subject.id, subject]))
+    expect(subjectsById['openhands-canvas'].entrypoints).toHaveLength(3)
+    expect(subjectsById['openhands-sdk'].entrypoints).toHaveLength(6)
+    expect(subjectsById['tau2-bench'].entrypoints).toHaveLength(8)
+    expect([...subjectsById['swe-bench'].entrypoints, ...subjectsById['tau2-bench'].entrypoints]).toHaveLength(12)
+    const entrypointPaths = (id: string) => subjectsById[id].entrypoints.map((entry: { path: string }) => entry.path)
+    expect(entrypointPaths('openhands-canvas')).not.toEqual(expect.arrayContaining([
+      'src/api/conversation-service/agent-server-conversation-service.api.ts',
+      'src/api/agent-server-adapter.ts',
+    ]))
+    expect(entrypointPaths('openhands-sdk')).not.toEqual(expect.arrayContaining([
+      'openhands-agent-server/openhands/agent_server/conversation_router.py',
+      'openhands-agent-server/openhands/agent_server/conversation_service.py',
+      'openhands-sdk/openhands/sdk/conversation/conversation.py',
+      'openhands-sdk/openhands/sdk/workspace/workspace.py',
+      'openhands-sdk/openhands/sdk/conversation/local_conversation.py',
+    ]))
+    expect(entrypointPaths('tau2-bench')).not.toContain('src/tau2/run.py')
+    expect(subjectsById['tau2-bench'].entrypoints.find((entry: { path: string }) => entry.path === 'src/tau2/cli.py').symbols)
+      .not.toContain('run')
+    const openHandsChain = catalog.chains.find((chain: { id: string }) => chain.id === 'openhands-canvas-to-workspace-event')
+    expect(openHandsChain.misconception).toContain('environment and configuration source')
+    expect(JSON.stringify(openHandsChain)).not.toMatch(/owns tool resources|owner boundary/iu)
+    expect(openHandsChain.steps.map((step: { track?: string }) => step.track)).toEqual([
+      ...Array(6).fill('message 入站'),
+      ...Array(6).fill('action / observation 执行'),
+      ...Array(6).fill('durable event 回流'),
+    ])
+    const benchmarkChain = catalog.chains.find((chain: { id: string }) => chain.id === 'benchmark-task-to-score')
+    const trackSizes = Object.values(Object.groupBy(
+      benchmarkChain.steps,
+      (step: { track?: string }) => step.track ?? 'main',
+    )).map((steps) => steps?.length ?? 0)
+    expect(Math.max(...trackSizes)).toBeLessThanOrEqual(12)
     const aiderChain = catalog.chains.find((chain: { id: string }) => chain.id === 'aider-repo-to-verified-edit')
     expect(aiderChain.steps.map((step: { id: string; track?: string; label: string }) =>
       [step.id, step.track, step.label],
@@ -1082,8 +1130,9 @@ Append the next four subjects:
     license_sources: [{ path: LICENSE, sha256: e1d1fa9f3a8d7bef24449d488fcd8f00f8f272cac297bb9bed161eb6175b876a }]
     watch_url: https://github.com/OpenHands/OpenHands/releases/latest
     entrypoints:
-      - { path: src/api/conversation-service/agent-server-conversation-service.api.ts, symbols: [AgentServerConversationService], responsibility: Translate Canvas actions into Agent Server requests. }
-      - { path: src/api/agent-server-adapter.ts, symbols: [toAppConversation], responsibility: Normalize server conversation data for Canvas. }
+      - { path: src/components/features/chat/chat-interface.tsx, symbols: [handleSendMessage], responsibility: Admit a user message from the active Canvas conversation. }
+      - { path: src/hooks/use-send-message.ts, symbols: [useSendMessage().send], responsibility: Prepare the Canvas message and delegate it to the conversation transport. }
+      - { path: src/contexts/conversation-websocket-context.tsx, symbols: [ConversationWebSocketProvider.sendMessage, ConversationWebSocketProvider.handleMainMessage], responsibility: Send Canvas messages and fold returned server events into the client event store. }
 
   - id: openhands-sdk
     canonical_repo: OpenHands/software-agent-sdk
@@ -1099,12 +1148,12 @@ Append the next four subjects:
     license_sources: [{ path: LICENSE, sha256: 14a9b631c658eee682c6c2973525fbdf808c3457176bc47513052c559cc5ce86 }]
     watch_url: https://github.com/OpenHands/software-agent-sdk/releases/latest
     entrypoints:
-      - { path: openhands-agent-server/openhands/agent_server/conversation_router.py, symbols: [start_conversation], responsibility: Admit and route conversation operations. }
-      - { path: openhands-agent-server/openhands/agent_server/conversation_service.py, symbols: [ConversationService], responsibility: Create and coordinate SDK conversations. }
-      - { path: openhands-sdk/openhands/sdk/conversation/conversation.py, symbols: [Conversation], responsibility: Own conversation state and event progression. }
-      - { path: openhands-sdk/openhands/sdk/agent/agent.py, symbols: [Agent.step], responsibility: Produce and evaluate the next agent actions. }
+      - { path: openhands-agent-server/openhands/agent_server/sockets.py, symbols: [events_socket, _WebSocketSubscriber.__call__, _send_event], responsibility: Subscribe the WebSocket to an existing conversation and send published events back to Canvas. }
+      - { path: openhands-agent-server/openhands/agent_server/event_service.py, symbols: [EventService.send_message, EventService.run, EventService.subscribe_to_events, AsyncCallbackWrapper.__call__, EventService._pub_sub], responsibility: Forward messages to LocalConversation and bridge its durable callback through PubSub. }
+      - { path: openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py, symbols: [LocalConversation.__init__, LocalConversation.send_message, LocalConversation.arun], responsibility: Compose persistence-first callbacks and drive the local conversation event loop. }
+      - { path: openhands-sdk/openhands/sdk/agent/agent.py, symbols: [Agent.astep, Agent._get_action_event, Agent._aexecute_actions], responsibility: Derive action events and coordinate their execution. }
+      - { path: openhands-sdk/openhands/sdk/agent/response_dispatch.py, symbols: [_ahandle_tool_calls], responsibility: Translate model tool calls into ActionEvent values. }
       - { path: openhands-sdk/openhands/sdk/tool/tool.py, symbols: [ToolDefinition.__call__], responsibility: Convert an action into a bounded tool invocation. }
-      - { path: openhands-sdk/openhands/sdk/workspace/workspace.py, symbols: [Workspace], responsibility: Define the environment boundary in which tools act. }
 
   - id: swe-bench
     canonical_repo: SWE-bench/SWE-bench
@@ -1139,9 +1188,13 @@ Append the next four subjects:
     license_sources: [{ path: LICENSE, sha256: e67c5aa0074dfcaefd3c3a1aedb94cb539234aecd15d5a972574e3200e6252fe }]
     watch_url: https://github.com/sierra-research/tau2-bench/releases/latest
     entrypoints:
-      - { path: src/tau2/run.py, symbols: [run_task], responsibility: Select the task, participants, and domain. }
+      - { path: src/tau2/cli.py, symbols: [main], responsibility: Register a local run_command callback and dispatch the tau2 run command to run_domain. }
+      - { path: src/tau2/runner/batch.py, symbols: [run_domain, run_tasks, run_single_task], responsibility: Load one domain and fan tasks into bounded simulation runs. }
+      - { path: src/tau2/runner/helpers.py, symbols: [get_tasks, load_tasks], responsibility: Resolve and load the selected task set. }
+      - { path: src/tau2/runner/build.py, symbols: [build_orchestrator, build_environment, build_agent, build_user], responsibility: Construct the orchestrator and its controlled participants and environment. }
       - { path: src/tau2/runner/simulation.py, symbols: [run_simulation], responsibility: Coordinate the multi-turn trajectory. }
-      - { path: src/tau2/environment/environment.py, symbols: [Environment], responsibility: Apply tools to authoritative domain state. }
+      - { path: src/tau2/orchestrator/orchestrator.py, symbols: [BaseOrchestrator.run, BaseOrchestrator._execute_tool_calls], responsibility: Drive participant turns and dispatch requested environment tools. }
+      - { path: src/tau2/environment/environment.py, symbols: [Environment.get_response, Environment.make_tool_call], responsibility: Apply tool calls to authoritative domain state and return environment responses. }
       - { path: src/tau2/evaluator/evaluator.py, symbols: [evaluate_simulation], responsibility: Judge the outcome and produce reward evidence. }
 ```
 
@@ -1362,18 +1415,28 @@ chains:
 
   - id: openhands-canvas-to-workspace-event
     page_item_id: project-openhands
-    label: Canvas request to workspace event
-    reading_hint: Cross the repository boundary explicitly instead of treating OpenHands as one process.
-    misconception: A UI backend selector is not the execution sandbox itself.
+    label: Existing Canvas conversation message to durable event return
+    reading_hint: Read the three tracks as causal slices across asynchronous boundaries, not one synchronous call stack.
+    misconception: Workspace is an environment and configuration source consumed by tool construction and execution, not the next call after ToolDefinition.
     steps:
-      - { id: canvas, label: Canvas conversation API, subject_id: openhands-canvas, source_path: src/api/conversation-service/agent-server-conversation-service.api.ts, symbol: AgentServerConversationService, responsibility: Translate UI actions into Agent Server requests. }
-      - { id: router, label: Conversation endpoint, subject_id: openhands-sdk, source_path: openhands-agent-server/openhands/agent_server/conversation_router.py, symbol: start_conversation, responsibility: Admit and route conversation operations. }
-      - { id: service, label: Conversation service, subject_id: openhands-sdk, source_path: openhands-agent-server/openhands/agent_server/conversation_service.py, symbol: ConversationService, responsibility: Create and coordinate SDK conversations. }
-      - { id: conversation, label: SDK conversation, subject_id: openhands-sdk, source_path: openhands-sdk/openhands/sdk/conversation/conversation.py, symbol: Conversation, responsibility: Own conversation state and event progression. }
-      - { id: agent, label: Agent decision, subject_id: openhands-sdk, source_path: openhands-sdk/openhands/sdk/agent/agent.py, symbol: Agent.step, responsibility: Produce the next actions from conversation state. }
-      - { id: tool, label: Tool execution, subject_id: openhands-sdk, source_path: openhands-sdk/openhands/sdk/tool/tool.py, symbol: ToolDefinition.__call__, responsibility: Convert an action into a bounded tool invocation. }
-      - { id: workspace, label: Workspace boundary, subject_id: openhands-sdk, source_path: openhands-sdk/openhands/sdk/workspace/workspace.py, symbol: Workspace, responsibility: Execute bounded environment operations and return events. }
-      - { id: event-return, label: Event return, subject_id: openhands-canvas, source_path: src/api/agent-server-adapter.ts, symbol: toAppConversation, responsibility: Normalize server events and state back into the Canvas. }
+      - { id: chat-submit, track: message 入站, label: Chat submit, subject_id: openhands-canvas, source_path: src/components/features/chat/chat-interface.tsx, symbol: handleSendMessage, responsibility: Admit a message for the already selected conversation. }
+      - { id: hook-send, track: message 入站, label: Message hook, subject_id: openhands-canvas, source_path: src/hooks/use-send-message.ts, symbol: useSendMessage().send, responsibility: Prepare the Canvas Message for its active WebSocket. }
+      - { id: canvas-send, track: message 入站, label: WebSocket send, subject_id: openhands-canvas, source_path: src/contexts/conversation-websocket-context.tsx, symbol: ConversationWebSocketProvider.sendMessage, responsibility: Send the Canvas Message without creating a conversation. }
+      - { id: socket-receive, track: message 入站, label: Events socket receive, subject_id: openhands-sdk, source_path: openhands-agent-server/openhands/agent_server/sockets.py, symbol: events_socket, responsibility: Subscribe through EventService.subscribe_to_events and receive messages for the existing conversation. }
+      - { id: service-message, track: message 入站, label: Event service message, subject_id: openhands-sdk, source_path: openhands-agent-server/openhands/agent_server/event_service.py, symbol: EventService.send_message, responsibility: Call LocalConversation directly with the incoming message. }
+      - { id: conversation-message, track: message 入站, label: User MessageEvent, subject_id: openhands-sdk, source_path: openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py, symbol: LocalConversation.send_message, responsibility: Convert the Canvas Message into a durable user MessageEvent. }
+      - { id: service-run, track: action / observation 执行, label: Event service run, subject_id: openhands-sdk, source_path: openhands-agent-server/openhands/agent_server/event_service.py, symbol: EventService.run, responsibility: Start the existing LocalConversation execution and return without owning event subscription. }
+      - { id: conversation-run, track: action / observation 执行, label: Local conversation loop, subject_id: openhands-sdk, source_path: openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py, symbol: LocalConversation.arun, responsibility: Advance the existing conversation from its durable event state. }
+      - { id: agent-step, track: action / observation 执行, label: Agent step, subject_id: openhands-sdk, source_path: openhands-sdk/openhands/sdk/agent/agent.py, symbol: Agent.astep, responsibility: Ask the agent to derive its next response and actions. }
+      - { id: dispatch-tool-calls, track: action / observation 执行, label: ActionEvent dispatch, subject_id: openhands-sdk, source_path: openhands-sdk/openhands/sdk/agent/response_dispatch.py, symbol: _ahandle_tool_calls, responsibility: Convert tool calls into ActionEvent values. }
+      - { id: execute-actions, track: action / observation 执行, label: Action execution, subject_id: openhands-sdk, source_path: openhands-sdk/openhands/sdk/agent/agent.py, symbol: Agent._aexecute_actions, responsibility: Execute the emitted actions and collect their results. }
+      - { id: tool-call, track: action / observation 执行, label: Tool observation, subject_id: openhands-sdk, source_path: openhands-sdk/openhands/sdk/tool/tool.py, symbol: ToolDefinition.__call__, responsibility: Invoke the tool and return an Observation using the Workspace-backed environment configuration. }
+      - { id: persist-event, track: durable event 回流, label: Persistence-first callback, subject_id: openhands-sdk, source_path: openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py, symbol: LocalConversation.__init__, responsibility: Compose the default callback so durable append happens before caller-supplied callbacks. }
+      - { id: async-callback, track: durable event 回流, label: Async callback bridge, subject_id: openhands-sdk, source_path: openhands-agent-server/openhands/agent_server/event_service.py, symbol: AsyncCallbackWrapper.__call__, responsibility: Schedule the EventService PubSub callback on its event loop after persistence. }
+      - { id: publish-event, track: durable event 回流, label: EventService PubSub, subject_id: openhands-sdk, source_path: openhands-agent-server/openhands/agent_server/event_service.py, symbol: EventService._pub_sub, responsibility: Publish through PubSub to the subscribers registered by EventService.subscribe_to_events. }
+      - { id: subscriber-event, track: durable event 回流, label: WebSocket subscriber, subject_id: openhands-sdk, source_path: openhands-agent-server/openhands/agent_server/sockets.py, symbol: _WebSocketSubscriber.__call__, responsibility: Receive the published event and delegate WebSocket serialization. }
+      - { id: socket-send, track: durable event 回流, label: WebSocket event send, subject_id: openhands-sdk, source_path: openhands-agent-server/openhands/agent_server/sockets.py, symbol: _send_event, responsibility: Serialize and send the subscribed event to Canvas. }
+      - { id: canvas-receive, track: durable event 回流, label: Canvas event store, subject_id: openhands-canvas, source_path: src/contexts/conversation-websocket-context.tsx, symbol: ConversationWebSocketProvider.handleMainMessage, responsibility: Fold the returned event into the Canvas event store. }
 
 ```
 
@@ -1393,10 +1456,18 @@ Append:
       - { id: swe-env, track: swe-bench, label: Container execution, subject_id: swe-bench, source_path: swebench/harness/docker_utils.py, symbol: exec_run_with_timeout, responsibility: Execute commands inside a bounded container. }
       - { id: swe-grade, track: swe-bench, label: Test grading, subject_id: swe-bench, source_path: swebench/harness/grading.py, symbol: get_eval_report, responsibility: Convert test evidence into resolution status. }
       - { id: swe-report, track: swe-bench, label: Report, subject_id: swe-bench, source_path: swebench/harness/reporting.py, symbol: make_run_report, responsibility: Aggregate results without changing the denominator. }
-      - { id: tau-input, track: tau2-bench, label: Task and participants, subject_id: tau2-bench, source_path: src/tau2/run.py, symbol: run_task, responsibility: Select task, agent, user, and domain. }
-      - { id: tau-sim, track: tau2-bench, label: Simulation, subject_id: tau2-bench, source_path: src/tau2/runner/simulation.py, symbol: run_simulation, responsibility: Coordinate the multi-turn trajectory. }
-      - { id: tau-env, track: tau2-bench, label: Environment tools, subject_id: tau2-bench, source_path: src/tau2/environment/environment.py, symbol: Environment, responsibility: Apply tool actions to authoritative state. }
-      - { id: tau-score, track: tau2-bench, label: Evaluator and reward, subject_id: tau2-bench, source_path: src/tau2/evaluator/evaluator.py, symbol: evaluate_simulation, responsibility: Judge task outcomes and produce reward evidence. }
+      - { id: tau-cli, track: tau2-bench, label: CLI run command, subject_id: tau2-bench, source_path: src/tau2/cli.py, symbol: main, responsibility: Register the nested run_command callback and dispatch tau2 run to run_domain. }
+      - { id: tau-domain, track: tau2-bench, label: Domain run, subject_id: tau2-bench, source_path: src/tau2/runner/batch.py, symbol: run_domain, responsibility: Resolve the selected domain and its controlled run configuration. }
+      - { id: tau-load, track: tau2-bench, label: Task loading, subject_id: tau2-bench, source_path: src/tau2/runner/helpers.py, symbol: get_tasks, responsibility: Load and filter the selected tasks. }
+      - { id: tau-batch, track: tau2-bench, label: Task batch, subject_id: tau2-bench, source_path: src/tau2/runner/batch.py, symbol: run_tasks, responsibility: Schedule the bounded set of task simulations. }
+      - { id: tau-task, track: tau2-bench, label: Single task, subject_id: tau2-bench, source_path: src/tau2/runner/batch.py, symbol: run_single_task, responsibility: Build and execute one task trial. }
+      - { id: tau-build, track: tau2-bench, label: Orchestrator build, subject_id: tau2-bench, source_path: src/tau2/runner/build.py, symbol: build_orchestrator, responsibility: Construct the orchestrator with its environment, agent, and user. }
+      - { id: tau-sim, track: tau2-bench, label: Simulation, subject_id: tau2-bench, source_path: src/tau2/runner/simulation.py, symbol: run_simulation, responsibility: Coordinate one controlled simulation. }
+      - { id: tau-orchestrator, track: tau2-bench, label: Orchestrator loop, subject_id: tau2-bench, source_path: src/tau2/orchestrator/orchestrator.py, symbol: BaseOrchestrator.run, responsibility: Drive agent and user turns while routing tool requests. }
+      - { id: tau-environment, track: tau2-bench, label: Environment calls, subject_id: tau2-bench, source_path: src/tau2/environment/environment.py, symbol: Environment.make_tool_call, responsibility: Apply requested tools to authoritative domain state. }
+      - { id: tau-trajectory, track: tau2-bench, label: Trajectory, subject_id: tau2-bench, source_path: src/tau2/runner/simulation.py, symbol: run_simulation, responsibility: Return the complete controlled interaction trajectory. }
+      - { id: tau-evaluate, track: tau2-bench, label: Evaluation branch, subject_id: tau2-bench, source_path: src/tau2/evaluator/evaluator.py, symbol: evaluate_simulation, responsibility: Separate single evaluation types and *_IGNORE_BASIS modes from the default EvaluationType.ALL basis-aware branch. }
+      - { id: tau-reward, track: tau2-bench, label: Reward info, subject_id: tau2-bench, source_path: src/tau2/evaluator/evaluator.py, symbol: evaluate_simulation, responsibility: For default ALL multiply only task.reward_basis components so ACTION gates only when selected; premature termination returns 0.0 and missing criteria returns 1.0. }
 
   - id: dify-request-to-graph-events
     page_item_id: project-dify
@@ -2569,12 +2640,41 @@ describe('OpenHands and benchmark dissections', () => {
     expect(text).toContain('Agent Canvas')
     expect(text).toContain('software-agent-sdk')
     expect(text).toContain('不是旧版单体 Python Agent 仓库')
+    expect(text).toContain('已有会话的 message/action/event 链')
+    expect(text).toContain('Canvas Message')
+    expect(text).toContain('SDK `MessageEvent`')
+    expect(text).toContain('Agent Server 直接调用 `LocalConversation`')
+    expect(text).toContain('Workspace 是工具构造与执行所消费的环境边界和配置来源')
+    expect(text).not.toContain('Workspace 只是工具的 owner')
+    expect(text).toContain('streaming delta 不属于持久事件回流链')
+    expect(text).toContain('不追踪 conversation 创建链')
+    expect(text).toContain('持久化 append 先发生')
+    expect(text).toContain('`LocalConversation.__init__`')
+    expect(text).toContain('`AsyncCallbackWrapper.__call__`')
+    expect(text).toContain('`EventService.subscribe_to_events`')
+    expect(text).toContain('`_WebSocketSubscriber.__call__`')
+    expect(text).toContain('三条 track 不是一条跨异步边界的同步调用栈')
+    expect(text).not.toMatch(/conversation router|conversation service|adapter/iu)
   })
 
   it('does not present local fixtures or cross-benchmark scores as official results', () => {
     const text = readFileSync('docs/projects/agent-benchmarks.md', 'utf8')
     expect(text).toContain('不能直接横比')
     expect(text).toContain('不是官方 benchmark 成绩')
+    expect(text).toContain('两条受控轨道并列')
+    expect(text).toContain('不是先运行 SWE-bench 再运行 τ²-bench')
+    expect(text).toContain('`tau2.run.run_task` 与 `tau2.run.run_tasks`')
+    expect(text).toContain('旧 flat 参数 API 已 deprecated')
+    expect(text).toContain('不是说整个 `tau2.run` module 都 deprecated')
+    expect(text).toContain('`main` 注册局部 `run_command`')
+    expect(text).toContain('把 `tau2 run` 分派到 `run_domain`')
+    expect(text).not.toContain('CLI 的 `run`')
+    expect(text).toContain('默认 `EvaluationType.ALL`')
+    expect(text).toContain('按 `task.reward_basis` 选择分量后相乘')
+    expect(text).toContain('ACTION 只有被选中时才是硬门禁')
+    expect(text).toContain('单项类型与 `*_IGNORE_BASIS` 各走自己的分支')
+    expect(text).toContain('early termination 返回 `0.0`')
+    expect(text).toContain('没有 criteria 时返回 `1.0`')
     expect(text).not.toMatch(/本书.*SWE-bench.*(?:得分|准确率|通过率)\s*\d/iu)
   })
 })
@@ -2610,17 +2710,17 @@ description: 按当前多仓库架构追踪 Canvas、Agent Server、SDK agent、
 
 <ProjectMeta project-id="project-openhands" />
 
-Canvas v1.24.0 依赖 `@openhands/typescript-client@1.49.6`，与本页固定的 software-agent-sdk v1.49.6 对齐。页面只解释一次 conversation 到 workspace event 的路径。
+Canvas v1.24.0 依赖 `@openhands/typescript-client@1.49.6`，与本页固定的 software-agent-sdk v1.49.6 对齐。页面只解释已有会话的 message/action/event 链，不追踪 conversation 创建链。
 
 ## 原创建筑图
 
 <ProjectCallChain project-id="project-openhands" />
 
-图中最重要的边界是：Canvas 选择并连接 backend，Agent Server 承接会话，SDK 决定动作，Workspace 限制动作发生在哪里。
+图中最重要的边界是：Canvas `Message` 是客户端传输消息，SDK `MessageEvent` 才进入持久事件模型。Agent Server 直接调用 `LocalConversation`，SDK 决定动作并调用工具。Workspace 是工具构造与执行所消费的环境边界和配置来源，不是 tools 的 owner，也不是这条链的下一跳。
 
 ## 唯一纵向调用链
 
-从 Canvas conversation service 开始，经过 adapter 和 Agent Server router/service，进入 SDK Conversation 与 Agent，最后由 Tool/Workspace 产生事件回流界面。不要把 UI 中的 backend selector 当作沙箱。
+从 `handleSendMessage` 与 `useSendMessage().send` 进入 WebSocket 后，`events_socket` 通过 `EventService.subscribe_to_events` 注册订阅，并把消息交给 `EventService.send_message`，后者直接调用 `LocalConversation.send_message` 写入用户 `MessageEvent`。`EventService.run` 只启动已有 conversation 的执行，不拥有订阅；执行侧再由 `LocalConversation.arun` 和 `Agent.astep` 推进，tool call 被转成 `ActionEvent`，工具结果形成 `Observation`。事件回流由 `LocalConversation.__init__` 组装的 callback 保证持久化 append 先发生，再依次经过 `AsyncCallbackWrapper.__call__`、EventService `_pub_sub`/PubSub、`_WebSocketSubscriber.__call__` 与 `_send_event` 回到 Canvas event store。图中的三条 track 不是一条跨异步边界的同步调用栈。
 
 ## 关键源码入口
 
@@ -2628,13 +2728,13 @@ Canvas v1.24.0 依赖 `@openhands/typescript-client@1.49.6`，与本页固定的
 
 ## 一次请求的数据流
 
-用户消息由 Canvas 发送到选定 Agent Server。服务创建或恢复 conversation，SDK agent 基于已有事件产生动作，工具在 workspace 边界执行，观察与状态事件再通过服务和客户端回到 Canvas。权限、秘密和文件范围必须在服务与 workspace 层实际限制。
+用户消息由 Canvas 发送到已有 conversation 的 Agent Server。Canvas Message 与 SDK event 不能混为一个对象：服务把消息交给 `LocalConversation`，agent 基于持久事件产生 `ActionEvent`，工具返回 `Observation`。持久化优先不是 `_on_event` 方法，而是 `LocalConversation.__init__` 组装的 default callback 先 append、caller callback 后执行。模型生成过程中的 streaming delta 不属于持久事件回流链，而是非持久旁路，也不能被当作已完成动作。权限、秘密和文件范围仍必须由工具构造与执行所消费的 Workspace 环境边界实际限制。
 
 ## 阅读练习
 
-1. 找出 Canvas 如何选择 Agent Server，而不是直接调用 Python agent。
-2. 从 conversation router 追到 SDK Conversation。
-3. 画出宿主机直跑、Docker 和远端 workspace 的信任边界差异。
+1. 从 `handleSendMessage` 追到 `LocalConversation.send_message`，标出 Canvas Message 与 SDK `MessageEvent` 的转换点。
+2. 从 `_ahandle_tool_calls` 追到 `ToolDefinition.__call__`，区分 `ActionEvent` 与 `Observation`。
+3. 从 `LocalConversation.__init__` 的 callback 组合追到 Canvas event store，解释为何持久追加与异步推送不能画成一个同步调用栈。
 
 ## 失败边界
 
@@ -2652,7 +2752,7 @@ Canvas v1.24.0 依赖 `@openhands/typescript-client@1.49.6`，与本页固定的
 
 ## 升级复核
 
-先检查 Canvas README 的 repository boundaries、客户端依赖版本、Agent Server conversation API、SDK Conversation/Agent 和 Workspace 契约。仓库再次拆分或合并时，先改边界图再改调用链。
+先检查 Canvas 的消息 hook 与 WebSocket context、客户端依赖版本、Agent Server event service、SDK `LocalConversation`/Agent 和 Tool 契约。仓库再次拆分或合并时，先改边界图再改调用链。
 
 ## 来源与归因
 
@@ -2689,11 +2789,11 @@ SWE-bench 的 v5.0.1 是 tag，不冒充 GitHub Release。页面只拆评测执�
 
 <ProjectCallChain project-id="project-agent-benchmarks" />
 
-两条轨道分别闭合到自己的评分，不在图末尾合成一个“总分”。
+两条受控轨道并列，分别闭合到自己的评分，不在图末尾合成一个“总分”；这不是先运行 SWE-bench 再运行 τ²-bench 的顺序流程。
 
 ## 唯一纵向调用链
 
-本页使用一个“任务到评分”的比较链：左轨是 patch、容器、测试与 report，右轨是 task、双参与者 simulation、环境工具与 reward。比较的是证据结构，不是数值高低。
+本页使用一个“任务到评分”的比较视图：左轨是 patch、容器、测试与 report；右轨从当前 `tau2` CLI 的 `main` 开始。`main` 注册局部 `run_command`，再把 `tau2 run` 分派到 `run_domain`、任务加载、单任务 simulation、orchestrator、环境工具、trajectory、evaluation 与 `reward_info`；`run_command` 不是可链接的顶层 symbol。两轨只比较证据结构，不暗示调用关系或数值高低。
 
 ## 关键源码入口
 
@@ -2701,13 +2801,15 @@ SWE-bench 的 v5.0.1 是 tag，不冒充 GitHub Release。页面只拆评测执�
 
 ## 一次请求的数据流
 
-SWE-bench 将实例和预测 patch 放入隔离环境，运行目标测试并由 grading 生成解决状态。τ²-bench 让 agent 与 user simulator 围绕同一任务交互，环境执行工具并维护权威状态，evaluator 根据结果和轨迹给出 reward。
+SWE-bench 将实例和预测 patch 放入隔离环境，运行目标测试并由 grading 生成解决状态。τ²-bench 由当前 CLI 调用 batch runner，构建 agent、user、environment 与 orchestrator；simulation 保留 trajectory。只有默认 `EvaluationType.ALL` 按 `task.reward_basis` 选择分量后相乘，ACTION 只有被选中时才是硬门禁；单项类型与 `*_IGNORE_BASIS` 各走自己的分支。early termination 返回 `0.0`，没有 criteria 时返回 `1.0`，这些短路结果不能冒充默认 ALL 分支的乘积。
 
 ## 阅读练习
 
 1. 找出 SWE-bench 的预测输入、容器执行和最终报告边界。
 2. 找出 τ²-bench 中 user simulator 与 environment 的职责差异。
 3. 列出三个会让两个分数不可比较的契约差异。
+
+兼容层里的 `tau2.run.run_task` 与 `tau2.run.run_tasks` 是旧 flat 参数 API 已 deprecated；这不是说整个 `tau2.run` module 都 deprecated，也不是当前 CLI 主链入口。
 
 ## 失败边界
 
@@ -5303,7 +5405,7 @@ Send the production site URL, `/projects/` URL, six core URLs, historical URL, c
 - [ ] The overview maps all 13 subjects; watch-only subjects appear nowhere else.
 - [ ] AutoGPT is `active + historical`; Hermes/OpenClaw are `active + watch-only`; Flowise is `eol + archived:true + historical`.
 - [ ] MCP contribution scopes coexist without path-conflict errors; Dify, AutoGPT, and Flowise path scopes resolve by specificity.
-- [ ] Fifty-two file-level source entrypoints exist at their pinned commits.
+- [ ] Fifty-seven file-level source entrypoints exist at their pinned commits.
 - [ ] Course denominator is 26; project stage has seven items; engineering path has 17 steps; localStorage keys and old routes are unchanged.
 - [ ] All diagrams are original; direct assets, if any, have exact provenance records.
 - [ ] Source automation reports changes but never edits or publishes content.
