@@ -389,7 +389,7 @@ page 级 `catalog_tier: core` 表示该页面属于主项目目录，不等于�
 ### 10.5 Dify
 
 - **核心问题：** 一个低代码平台如何把 API 请求转成可执行工作流图，并在节点、事件和持久化之间分层。
-- **唯一链路：** 编号主链固定 blocking：`WorkflowRunApi.post` → `AppGenerateService` guardrails 与 `AppMode.WORKFLOW` 分派 → `WorkflowAppGenerator` → `WorkflowAppRunner` → `WorkflowBasedAppRunner._init_graph` → `Graph.init` / `DifyNodeFactory.create_node` → 条件 `DifyAgentNode` → `WorkflowEntry` 接收已有 Graph → `GraphEngine.run` → graph event adapter / queue → task pipeline → 内部 typed response → 最终 public payload。streaming 是独立旁路：先订阅 topic，再投递 Celery `_AppRunner`，复用共同执行核心后写 topic 并由请求进程取回为 SSE。
+- **唯一链路：** 编号主链固定 blocking：`WorkflowRunApi.post` → `AppGenerateService` guardrails 与 `AppMode.WORKFLOW` 分派 → `WorkflowAppGenerator` → `WorkflowAppRunner` → `WorkflowBasedAppRunner._init_graph` → `Graph.init` / `DifyNodeFactory.create_node` → 条件 `DifyAgentNode` → `WorkflowEntry` 接收已有 Graph，并创建 `GraphEngine` 与内部 layers → Runner 在构造返回后追加外部 layers → `GraphEngine.run` → graph event adapter / queue → task pipeline → 内部 typed response → 最终 public payload。streaming 是独立旁路：先订阅 topic，再投递 Celery `_AppRunner`，复用共同执行核心后写 topic 并由请求进程取回为 SSE。
 - **关键入口：**
   - `api/controllers/service_api/app/workflow.py`
   - `api/services/app_generate_service.py`
@@ -404,7 +404,7 @@ page 级 `catalog_tier: core` 表示该页面属于主项目目录，不等于�
   - `api/core/workflow/workflow_entry.py`
   - `api/core/workflow/node_factory.py`
   - `api/core/workflow/nodes/agent_v2/agent_node.py`
-- **必须讲清：** `WorkflowEntry` 接收已由 `Graph.init` 与 `DifyNodeFactory` 构造的 Graph，GraphEngine 不负责创建节点；`WorkflowAppRunner` 创建 persistence 等 layer 并把现成 Graph 与 layers 交给 `WorkflowEntry`。通用 `WorkflowResponseConverter` 只生成内部 typed response，`WorkflowAppGenerateResponseConverter` 才输出 public payload。blocking 主链与 streaming 交付旁路不可串成一个同步栈；`workflow_execute_task.py` 只属于 streaming 旁路，且 `_publish_streaming_response` 是模块级函数而非 `_AppRunner` 方法。Graphon 是实际执行依赖；Dify 许可证不是无附加条件的 Apache-2.0。
+- **必须讲清：** `WorkflowEntry` 接收已由 `Graph.init` 与 `DifyNodeFactory` 构造的 Graph；`WorkflowEntry.__init__` 创建 GraphEngine，并自行挂 debug、execution-limit 和可选 observability layers。构造返回后，`WorkflowAppRunner` 才把 `WorkflowPersistenceLayer`、workspace-retirement 与外部 custom layers 挂到 `workflow_entry.graph_engine`。通用 `WorkflowResponseConverter` 只生成内部 typed response，`WorkflowAppGenerateResponseConverter` 才输出 public payload。blocking 主链与 streaming 交付旁路不可串成一个同步栈；`workflow_execute_task.py` 只属于 streaming 旁路，且 `_publish_streaming_response` 是模块级函数而非 `_AppRunner` 方法。Graphon 是实际执行依赖；Dify 许可证不是无附加条件的 Apache-2.0。
 - **面试题：** `iq-02-b`、`iq-06-a`、`iq-10-a`。
 
 ### 10.6 CrewAI
