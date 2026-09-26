@@ -1491,6 +1491,12 @@ describe('project publication boundary', () => {
       String.raw`<div style="background:url(https\3a //evil.example/escaped-value.png)"></div>`,
       `<div style="background-image:image-set('/local.png' 1x, 'https://evil.example/image-set.png' 2x)"></div>`,
       '<div style="background-image:-webkit-image-set(url(/local.png) 1x, url(//evil.example/webkit.png) 2x)"></div>',
+      '<div style="background-image:-webkit-image-set(-webkit-cross-fade(url(https://evil.example/nested.png),url(/local.png),50%) 1x)"></div>',
+      '<div style="background-image:image-set(image(cross-fade(url(https://evil.example/deep.png),url(/local.png),50%)) 1x)"></div>',
+      String.raw`<div style="background-image:image-set(-webkit-cross-fade(u\72l(https://evil.example/nested-escaped.png),url(/local.png),50%) 1x)"></div>`,
+      '<div style="background-image:image-set(var(--remote) 1x)"></div>',
+      '<div style="background-image:env(remote-image)"></div>',
+      '<div style="background-image:attr(data-image url)"></div>',
       '<style>.project-overview{background:url(https://evil.example/block.png)}</style>',
       '<style>@import "//evil.example/import.css";</style>',
       '<style>@import url(https://evil.example/import-url.css);</style>',
@@ -1519,7 +1525,7 @@ describe('project publication boundary', () => {
     const dist = createCompleteDistFixture()
     try {
       const file = join(dist, 'projects/aider.html')
-      const localMarkup = `<picture><source src="relative.png" srcset="/local.png 1x, data:image/png;base64,AAAA 2x, blob:https://example.com/id 3x"><img src="/fallback.png"></picture><svg><use href="/icons.svg#local"></use><feImage href="data:image/png;base64,AAAA"></feImage></svg><script src="/runtime.js"></script><iframe src="./frame.html"></iframe><link rel="stylesheet" href="/theme.css"><link rel="canonical" href="https://docs.example.com/canonical"><video src="/video.mp4" poster="data:image/png;base64,AAAA"></video><audio src="blob:https://example.com/audio"></audio><track src="/subtitles.vtt"><object data="/object.svg"></object><embed src="./embed.pdf"><input src="/input.png"><div style="background:url(data:image/png;base64,AAAA);mask:url(blob:https://example.com/id);content-image:image-set('/one.png' 1x, 'data:image/png;base64,BBBB' 2x)"></div><style>@import "/local.css";.local{background:url(./asset.png);content:image-set("blob:https://example.com/id" 1x)}</style>`
+      const localMarkup = `<picture><source src="relative.png" srcset="/local.png 1x, data:image/png;base64,AAAA 2x, blob:https://example.com/id 3x"><img src="/fallback.png"></picture><svg><use href="/icons.svg#local"></use><feImage href="data:image/png;base64,AAAA"></feImage></svg><script src="/runtime.js"></script><iframe src="./frame.html"></iframe><link rel="stylesheet" href="/theme.css"><link rel="canonical" href="https://docs.example.com/canonical"><video src="/video.mp4" poster="data:image/png;base64,AAAA"></video><audio src="blob:https://example.com/audio"></audio><track src="/subtitles.vtt"><object data="/object.svg"></object><embed src="./embed.pdf"><input src="/input.png"><div style="background:url(data:image/png;base64,AAAA);mask:url(blob:https://example.com/id);content-image:image-set('/one.png' 1x, 'data:image/png;base64,BBBB' 2x);color:var(--brand);width:env(safe-area-inset-top);font-size:attr(data-size px)"></div><style>@import "/local.css";.local{background:url(./asset.png);content:image-set("blob:https://example.com/id" 1x);background-image:image-set(cross-fade(url(/nested.png),url(data:image/png;base64,CCCC),50%) 1x)}.dynamic{color:var(--brand);width:env(safe-area-inset-top);font-size:attr(data-size px)}</style>`
       writeFileSync(
         file,
         readFileSync(file, 'utf8').replace(
@@ -1554,6 +1560,12 @@ describe('project publication boundary', () => {
         String.raw`.remote{background:url(https\3a //evil.example/escaped-value.png)}`,
         '.remote{background:image-set("/local.png" 1x,"https://evil.example/image-set.png" 2x)}',
         '.remote{background:-webkit-image-set(url(/local.png) 1x,url(//evil.example/webkit.png) 2x)}',
+        '.remote{background-image:-webkit-image-set(-webkit-cross-fade(url(https://evil.example/nested.png),url(/local.png),50%) 1x)}',
+        '.remote{background-image:image-set(image(cross-fade(url(https://evil.example/deep.png),url(/local.png),50%)) 1x)}',
+        String.raw`.remote{background-image:image-set(-webkit-cross-fade(u\72l(https://evil.example/nested-escaped.png),url(/local.png),50%) 1x)}`,
+        '.project-remote{background-image:image-set(var(--remote) 1x)}',
+        '.project-remote{background-image:env(remote-image)}',
+        '.project-remote{background-image:attr(data-image url)}',
         String.raw`@im\70ort "https://evil.example/escaped-import.css";`,
         String.raw`@import "https\3A //evil.example/escaped-scheme.css" layer(project);`,
         String.raw`@import "\68\74\74\70\73\3A \2F \2F evil.example/escaped-characters.css" supports(display:grid) screen;`,

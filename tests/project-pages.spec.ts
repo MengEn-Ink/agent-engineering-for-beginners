@@ -294,6 +294,7 @@ pip&nbsp;install package
     const escapedImageSet = String.raw`background:image\2d set('/local.png' 1x, 'https://evil.example/escaped-image-set.png' 2x)`
     const escapedImport = String.raw`@im\70ort "https://evil.example/escaped-import.css";`
     const escapedImportTarget = String.raw`@import "https\3A \2F \2F evil.example/escaped-target.css" layer(project) supports(display: grid) screen;`
+    const nestedEscapedUrl = String.raw`u\72l(https://evil.example/nested-escaped.png)`
     const parsed = extractProjectMarkdownContract(`
 [ordinary external documentation](https://docs.example.com/guide)
 <svg><use href="https://evil.example/icons.svg#one"></use></svg>
@@ -314,6 +315,10 @@ ${escapedImportTarget}
 .remote { background: url(//evil.example/block.png) }
 .image-set { background: image-set("/local.png" 1x, "https://evil.example/image-set.png" 2x) }
 .webkit { background: -webkit-image-set(url(/local.png) 1x, url(//evil.example/webkit.png) 2x) }
+.nested { background-image: -webkit-image-set(-webkit-cross-fade(url(https://evil.example/nested.png), url(/local-nested.png), 50%) 1x) }
+.deep { background-image: image-set(image(cross-fade(url(https://evil.example/deep.png), url(data:image/png;base64,DDDD), 50%)) 1x) }
+.nested-escaped { background-image: image-set(-webkit-cross-fade(${nestedEscapedUrl}, url(/local-escaped.png), 50%) 1x) }
+.unresolved { background-image: image-set(var(--remote) 1x); mask-image: env(remote-mask); cursor: attr(data-cursor url) }
 .local { background: url(data:image/png;base64,AAAA); mask: url(blob:https://example.com/id) }
 </style>
 <noscript><div style="background:url(https://evil.example/nojs.png)"></div></noscript>
@@ -347,6 +352,15 @@ ${escapedImportTarget}
       '//evil.example/block.png',
       'https://evil.example/image-set.png',
       '//evil.example/webkit.png',
+      'https://evil.example/nested.png',
+      '/local-nested.png',
+      'https://evil.example/deep.png',
+      'data:image/png;base64,DDDD',
+      'https://evil.example/nested-escaped.png',
+      '/local-escaped.png',
+      null,
+      null,
+      null,
       'data:image/png;base64,AAAA',
       'blob:https://example.com/id',
       'https://evil.example/nojs.png',
@@ -372,6 +386,10 @@ ${escapedImportTarget}
       '//evil.example/block.png',
       'https://evil.example/image-set.png',
       '//evil.example/webkit.png',
+      'https://evil.example/nested.png',
+      'https://evil.example/deep.png',
+      'https://evil.example/nested-escaped.png',
+      null,
       'https://evil.example/nojs.png',
     ]))
   })
@@ -404,6 +422,42 @@ ${escapedImportTarget}
     ]) {
       expect(extractCssResourceCandidates(css).some(isRemoteImageCandidate), css).toBe(false)
     }
+  })
+
+  it('recurses through image-set image functions and fails closed on dynamic resources', () => {
+    const nested = extractCssResourceCandidates(`
+.remote {
+  background-image: -webkit-image-set(
+    -webkit-cross-fade(url(https://evil.example/nested.png), url(/local.png), 50%) 1x,
+    image(cross-fade(url(data:image/png;base64,AAAA), url(https://evil.example/deep.png), 25%)) 2x
+  );
+}
+`)
+    expect(nested).toEqual(expect.arrayContaining([
+      'https://evil.example/nested.png',
+      '/local.png',
+      'data:image/png;base64,AAAA',
+      'https://evil.example/deep.png',
+    ]))
+    expect(nested.filter(isRemoteImageCandidate)).toEqual(expect.arrayContaining([
+      'https://evil.example/nested.png',
+      'https://evil.example/deep.png',
+    ]))
+
+    for (const value of ['var(--remote)', 'env(remote-image)', 'attr(data-image url)']) {
+      const resources = extractCssResourceCandidates(`.dynamic{background-image:${value}}`)
+      expect(resources, value).toContain(null)
+      expect(resources.some(isRemoteImageCandidate), value).toBe(true)
+    }
+
+    expect(extractCssResourceCandidates(`
+.safe {
+  color: var(--brand);
+  width: env(safe-area-inset-top);
+  font-size: attr(data-size px);
+  transform: translateX(var(--offset));
+}
+`)).toEqual([])
   })
 
   it('keeps project pages free of remote images for project asset provenance', () => {

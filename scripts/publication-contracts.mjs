@@ -46,6 +46,21 @@ const svgResourceHrefElements = new Set([
   'textpath',
   'use',
 ])
+const cssImageContainerFunctions = new Set(['cross-fade', '-webkit-cross-fade', 'image'])
+const cssUnresolvedFunctions = new Set(['attr', 'env', 'var'])
+const cssResourceProperties = new Set([
+  'background-image',
+  'border-image-source',
+  'clip-path',
+  'cursor',
+  'list-style-image',
+  'mask-image',
+  'offset-path',
+  'shape-outside',
+  'src',
+  '-webkit-mask',
+  '-webkit-mask-image',
+])
 
 function attribute(node, name) {
   return node.attrs?.find((candidate) => candidate.name === name)?.value
@@ -212,42 +227,53 @@ function imageSetResources(node) {
     const functionName = candidate.type === 'function'
       ? decodeCssEscapes(candidate.value)?.toLowerCase()
       : null
-    return functionName === 'url' ? [cssFunctionValue(candidate)] : []
+    if (functionName === 'url') return [cssFunctionValue(candidate)]
+    if (functionName === null || cssUnresolvedFunctions.has(functionName)) return [null]
+    return extractCssNodes(
+      candidate.nodes ?? [],
+      cssImageContainerFunctions.has(functionName),
+    )
   })
 }
 
-function extractCssValueResources(value) {
-  const extractNodes = (nodes) => {
-    const resources = []
-    for (let index = 0; index < nodes.length; index += 1) {
-      let node = nodes[index]
-      let rawFunctionName = node.type === 'function' ? node.value : null
-      if (
-        node.type === 'word'
-        && node.value.includes('\\')
-        && nodes[index + 1]?.type === 'space'
-        && nodes[index + 2]?.type === 'function'
-      ) {
-        rawFunctionName = `${node.value}${nodes[index + 1].value}${nodes[index + 2].value}`
-        node = nodes[index + 2]
-        index += 2
-      }
-      if (node.type !== 'function') continue
-      const functionName = decodeCssEscapes(rawFunctionName)?.toLowerCase()
-      if (functionName === null) {
-        resources.push(null)
-      } else if (functionName === 'url') {
-        resources.push(cssFunctionValue(node))
-      } else if (functionName === 'image-set' || functionName === '-webkit-image-set') {
-        resources.push(...imageSetResources(node))
-      } else {
-        resources.push(...extractNodes(node.nodes ?? []))
-      }
+function extractCssNodes(nodes, resourceContext = false) {
+  const resources = []
+  for (let index = 0; index < nodes.length; index += 1) {
+    let node = nodes[index]
+    let rawFunctionName = node.type === 'function' ? node.value : null
+    if (
+      node.type === 'word'
+      && node.value.includes('\\')
+      && nodes[index + 1]?.type === 'space'
+      && nodes[index + 2]?.type === 'function'
+    ) {
+      rawFunctionName = `${node.value}${nodes[index + 1].value}${nodes[index + 2].value}`
+      node = nodes[index + 2]
+      index += 2
     }
-    return resources
+    if (node.type !== 'function') continue
+    const functionName = decodeCssEscapes(rawFunctionName)?.toLowerCase()
+    if (functionName === null) {
+      resources.push(null)
+    } else if (functionName === 'url') {
+      resources.push(cssFunctionValue(node))
+    } else if (functionName === 'image-set' || functionName === '-webkit-image-set') {
+      resources.push(...imageSetResources(node))
+    } else if (resourceContext && cssUnresolvedFunctions.has(functionName)) {
+      resources.push(null)
+    } else {
+      resources.push(...extractCssNodes(
+        node.nodes ?? [],
+        resourceContext && cssImageContainerFunctions.has(functionName),
+      ))
+    }
   }
+  return resources
+}
+
+function extractCssValueResources(value, resourceContext = false) {
   try {
-    return extractNodes(valueParser(value).nodes)
+    return extractCssNodes(valueParser(value).nodes, resourceContext)
   } catch {
     return [null]
   }
@@ -280,12 +306,26 @@ function consumeCssIdentifier(value) {
   return { raw: value.slice(0, position), rest: value.slice(position).trim() }
 }
 
-export function extractCssResourceCandidates(css) {
+function belongsToProjectRule(declaration) {
+  let container = declaration.parent
+  while (container) {
+    if (container.type === 'rule' && /\.project-/u.test(container.selector)) return true
+    container = container.parent
+  }
+  return false
+}
+
+export function extractCssResourceCandidates(css, options = {}) {
   try {
     const root = postcss.parse(css)
     const resources = []
     root.walkDecls((declaration) => {
-      resources.push(...extractCssValueResources(declaration.value))
+      const dynamicResourceContext = cssResourceProperties.has(declaration.prop.toLowerCase())
+        && (options.dynamicResources !== 'project' || belongsToProjectRule(declaration))
+      resources.push(...extractCssValueResources(
+        declaration.value,
+        dynamicResourceContext,
+      ))
     })
     root.walkAtRules((atRule) => {
       const signature = consumeCssIdentifier(
@@ -354,7 +394,9 @@ function resourceCandidatesWithin(roots) {
     roots,
     (node) => attribute(node, 'style') !== undefined,
     hiddenResourceHtmlElements,
-  ).flatMap((node) => extractCssValueResources(attribute(node, 'style')))
+  ).flatMap((node) => extractCssResourceCandidates(
+    `publication-resource{${attribute(node, 'style')}}`,
+  ))
   const styleBlocks = elementsWithin(
     roots,
     (node) => node.tagName === 'style',

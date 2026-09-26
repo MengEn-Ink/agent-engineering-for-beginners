@@ -243,7 +243,9 @@ export function validateDist(distPath) {
 
   for (const [file, path] of indexed.files) {
     if (!file.toLowerCase().endsWith('.css')) continue
-    const resources = extractCssResourceCandidates(readFileSync(path, 'utf8'))
+    const resources = extractCssResourceCandidates(readFileSync(path, 'utf8'), {
+      dynamicResources: 'project',
+    })
     if (resources.some(isRemoteImageCandidate)) {
       errors.push(`构建产物 CSS 包含外链资源：${file}`)
     }
