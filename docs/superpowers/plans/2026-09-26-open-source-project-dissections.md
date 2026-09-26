@@ -14,7 +14,7 @@
 
 **Create:**
 
-- `sources/project-index.yml` — canonical project-page mapping, 13 pinned subjects, license scopes, 57 file-level source entrypoints, and seven primary chains.
+- `sources/project-index.yml` — canonical project-page mapping, 13 pinned subjects, license scopes, 64 file-level source entrypoints, and seven primary chains.
 - `scripts/project-catalog.mjs` — schema parser, discriminated license validation, cross-reference validation, and build-time loader.
 - `scripts/project-catalog.d.mts` — TypeScript declaration for the Node catalog loader.
 - `scripts/check-projects.mjs` — bounded GitHub freshness scan that writes project review reports without editing content.
@@ -119,7 +119,7 @@ Expected: branch `feat/open-source-project-dissections`, clean worktree, HEAD `8
 | Approved requirement | Implemented and proved by |
 | --- | --- |
 | Project schema, dual status axes, mixed-license model | Tasks 1–2 |
-| 8 page mappings, 13 exact subjects, 57 exact file-level source entries, 7 chains | Task 2 |
+| 8 page mappings, 13 exact subjects, 64 exact file-level source entries, 7 chains | Task 2 |
 | VitePress loader, pure Vitest lookup, Vue type gate | Task 3 |
 | Separate architecture graph, text call chain, source facts, print fallback | Task 3 |
 | Intermediate commits remain buildable while pages arrive | Task 4 and every task-level full gate |
@@ -665,8 +665,8 @@ const expectedEntrypoints = {
   'openhands-sdk': ['openhands-agent-server/openhands/agent_server/sockets.py', 'openhands-agent-server/openhands/agent_server/event_service.py', 'openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py', 'openhands-sdk/openhands/sdk/agent/agent.py', 'openhands-sdk/openhands/sdk/agent/response_dispatch.py', 'openhands-sdk/openhands/sdk/tool/tool.py'],
   'swe-bench': ['swebench/harness/run_evaluation.py', 'swebench/harness/docker_utils.py', 'swebench/harness/grading.py', 'swebench/harness/reporting.py'],
   'tau2-bench': ['src/tau2/cli.py', 'src/tau2/runner/batch.py', 'src/tau2/runner/helpers.py', 'src/tau2/runner/build.py', 'src/tau2/runner/simulation.py', 'src/tau2/orchestrator/orchestrator.py', 'src/tau2/environment/environment.py', 'src/tau2/evaluator/evaluator.py'],
-  dify: ['api/controllers/service_api/app/workflow.py', 'api/core/app/apps/workflow/app_generator.py', 'api/core/app/apps/workflow/app_runner.py', 'api/core/workflow/workflow_entry.py', 'api/core/workflow/node_factory.py', 'api/core/workflow/nodes/agent_v2/agent_node.py', 'api/core/app/apps/common/workflow_response_converter.py'],
-  crewai: ['lib/crewai/src/crewai/crew.py', 'lib/crewai/src/crewai/process.py', 'lib/crewai/src/crewai/execution.py', 'lib/crewai/src/crewai/task.py', 'lib/crewai/src/crewai/agent/core.py', 'lib/crewai/src/crewai/agents/crew_agent_executor.py', 'lib/crewai/src/crewai/agents/step_executor.py', 'lib/crewai/src/crewai/tools/tool_usage.py'],
+  dify: ['api/controllers/service_api/app/workflow.py', 'api/services/app_generate_service.py', 'api/core/app/apps/workflow/app_generator.py', 'api/core/app/apps/workflow/app_runner.py', 'api/core/app/apps/workflow_app_runner.py', 'api/core/workflow/node_factory.py', 'api/core/workflow/nodes/agent_v2/agent_node.py', 'api/core/workflow/workflow_entry.py', 'api/core/app/apps/workflow/app_queue_manager.py', 'api/core/app/apps/workflow/generate_task_pipeline.py', 'api/core/app/apps/common/workflow_response_converter.py', 'api/core/app/apps/workflow/generate_response_converter.py'],
+  crewai: ['lib/crewai/src/crewai/crew.py', 'lib/crewai/src/crewai/crews/utils.py', 'lib/crewai/src/crewai/process.py', 'lib/crewai/src/crewai/task.py', 'lib/crewai/src/crewai/agent/core.py', 'lib/crewai/src/crewai/experimental/agent_executor.py', 'lib/crewai/src/crewai/utilities/agent_utils.py', 'lib/crewai/src/crewai/tools/tool_usage.py', 'lib/crewai/src/crewai/tools/structured_tool.py', 'lib/crewai/src/crewai/agents/step_executor.py'],
   autogpt: ['classic/original_autogpt/autogpt/app/main.py', 'classic/original_autogpt/autogpt/agents/agent.py'],
   flowise: ['packages/server/src/controllers/predictions/index.ts', 'packages/server/src/services/predictions/index.ts'],
   'hermes-agent': [],
@@ -719,14 +719,40 @@ const expectedCoreEntrypointSymbols = {
     'src/tau2/environment/environment.py': ['Environment.get_response', 'Environment.make_tool_call'],
     'src/tau2/evaluator/evaluator.py': ['evaluate_simulation'],
   },
+  dify: {
+    'api/controllers/service_api/app/workflow.py': ['WorkflowRunApi.post'],
+    'api/services/app_generate_service.py': ['AppGenerateService.generate', 'AppGenerateService._run_with_guardrails', 'AppGenerateService._dispatch_generate', 'AppGenerateService._build_streaming_task_on_subscribe'],
+    'api/core/app/apps/workflow/app_generator.py': ['WorkflowAppGenerator.generate', 'WorkflowAppGenerator._generate', 'WorkflowAppGenerator._generate_worker'],
+    'api/core/app/apps/workflow/app_runner.py': ['WorkflowAppRunner.run'],
+    'api/core/app/apps/workflow_app_runner.py': ['WorkflowBasedAppRunner._init_graph', 'WorkflowBasedAppRunner._handle_event'],
+    'api/core/workflow/node_factory.py': ['DifyNodeFactory.create_node'],
+    'api/core/workflow/nodes/agent_v2/agent_node.py': ['DifyAgentNode.__init__', 'DifyAgentNode._run', 'DifyAgentNode._run_inner'],
+    'api/core/workflow/workflow_entry.py': ['WorkflowEntry.__init__', 'WorkflowEntry.run'],
+    'api/core/app/apps/workflow/app_queue_manager.py': ['WorkflowAppQueueManager._publish'],
+    'api/core/app/apps/workflow/generate_task_pipeline.py': ['WorkflowAppGenerateTaskPipeline.process', 'WorkflowAppGenerateTaskPipeline._to_blocking_response', 'WorkflowAppGenerateTaskPipeline._to_stream_response'],
+    'api/core/app/apps/common/workflow_response_converter.py': ['WorkflowResponseConverter.workflow_start_to_stream_response', 'WorkflowResponseConverter.workflow_finish_to_stream_response', 'WorkflowResponseConverter.handle_agent_log'],
+    'api/core/app/apps/workflow/generate_response_converter.py': ['WorkflowAppGenerateResponseConverter.convert_blocking_full_response', 'WorkflowAppGenerateResponseConverter.convert_stream_full_response'],
+  },
+  crewai: {
+    'lib/crewai/src/crewai/crew.py': ['Crew.kickoff', 'Crew._run_sequential_process', 'Crew._execute_tasks', 'Crew._create_crew_output'],
+    'lib/crewai/src/crewai/crews/utils.py': ['prepare_kickoff', 'setup_agents', 'prepare_task_execution'],
+    'lib/crewai/src/crewai/process.py': ['Process.sequential'],
+    'lib/crewai/src/crewai/task.py': ['Task.execute_sync', 'Task._execute_core', 'Task._export_output'],
+    'lib/crewai/src/crewai/agent/core.py': ['Agent.execute_task', 'Agent.create_agent_executor', 'Agent._finalize_task_execution'],
+    'lib/crewai/src/crewai/experimental/agent_executor.py': ['AgentExecutor.invoke', 'AgentExecutor.generate_plan', 'AgentExecutor._ensure_step_executor', 'AgentExecutor.call_llm_and_parse', 'AgentExecutor.execute_tool_action', 'AgentExecutor.call_llm_native_tools', 'AgentExecutor.execute_native_tool', 'AgentExecutor._execute_single_native_tool_call'],
+    'lib/crewai/src/crewai/utilities/agent_utils.py': ['process_llm_response'],
+    'lib/crewai/src/crewai/tools/tool_usage.py': ['ToolUsage.use', 'ToolUsage._use'],
+    'lib/crewai/src/crewai/tools/structured_tool.py': ['CrewStructuredTool.invoke'],
+    'lib/crewai/src/crewai/agents/step_executor.py': ['StepExecutor.execute'],
+  },
 }
 const expectedChains = {
   'mcp-tool-call': ['schema:mcp-spec:schema/2026-07-28/schema.json:CallToolRequest', 'host-run:mcp-python-sdk:src/mcp/server/mcpserver/server.py:MCPServer.run', 'transport:mcp-python-sdk:src/mcp/server/stdio.py:stdio_server', 'server-run:mcp-python-sdk:src/mcp/server/lowlevel/server.py:Server.run', 'runner-loop:mcp-python-sdk:src/mcp/server/runner.py:serve_dual_era_loop', 'dispatcher-loop:mcp-python-sdk:src/mcp/shared/jsonrpc_dispatcher.py:JSONRPCDispatcher.run', 'dispatcher-request:mcp-python-sdk:src/mcp/shared/jsonrpc_dispatcher.py:JSONRPCDispatcher._dispatch_request', 'request:mcp-python-sdk:src/mcp/server/runner.py:ServerRunner._on_request', 'dispatch:mcp-python-sdk:src/mcp/server/lowlevel/server.py:get_request_handler', 'mcp-handler:mcp-python-sdk:src/mcp/server/mcpserver/server.py:MCPServer._handle_call_tool', 'mcp-call:mcp-python-sdk:src/mcp/server/mcpserver/server.py:MCPServer.call_tool', 'tool-lookup:mcp-python-sdk:src/mcp/server/mcpserver/tools/tool_manager.py:ToolManager.call_tool', 'tool-run:mcp-python-sdk:src/mcp/server/mcpserver/tools/base.py:Tool.run', 'tool-function:mcp-python-sdk:examples/snippets/servers/basic_tool.py:sum', 'serialize:mcp-python-sdk:src/mcp/server/runner.py:ServerRunner._serialize', 'dispatcher-response:mcp-python-sdk:src/mcp/shared/jsonrpc_dispatcher.py:JSONRPCDispatcher._write_result', 'stdout:mcp-python-sdk:src/mcp/server/stdio.py:stdio_server'],
   'aider-repo-to-verified-edit': ['cli:aider:aider/main.py:main', 'run:aider:aider/coders/base_coder.py:Coder.run', 'turn:aider:aider/coders/base_coder.py:Coder.run_one', 'context:aider:aider/coders/base_coder.py:Coder.send_message', 'repo-map:aider:aider/repomap.py:RepoMap.get_repo_map', 'send:aider:aider/coders/base_coder.py:Coder.send', 'completion:aider:aider/models.py:Model.send_completion', 'parse:aider:aider/coders/editblock_coder.py:EditBlockCoder.get_edits', 'apply-updates:aider:aider/coders/base_coder.py:Coder.apply_updates', 'dry-run:aider:aider/coders/editblock_coder.py:EditBlockCoder.apply_edits_dry_run', 'prepare:aider:aider/coders/base_coder.py:Coder.prepare_to_edit', 'apply:aider:aider/coders/editblock_coder.py:EditBlockCoder.apply_edits', 'write:aider:aider/io.py:InputOutput.write_text', 'auto-commit:aider:aider/coders/base_coder.py:Coder.auto_commit', 'commit:aider:aider/repo.py:GitRepo.commit', 'auto-lint:aider:aider/coders/base_coder.py:Coder.lint_edited', 'lint-commit:aider:aider/coders/base_coder.py:Coder.auto_commit', 'shell-confirm:aider:aider/io.py:InputOutput.confirm_ask', 'shell-run:aider:aider/coders/base_coder.py:Coder.handle_shell_commands', 'auto-test:aider:aider/commands.py:Commands.cmd_test', 'reflection:aider:aider/coders/base_coder.py:Coder.run_one'],
   'openhands-canvas-to-workspace-event': ['chat-submit:openhands-canvas:src/components/features/chat/chat-interface.tsx:handleSendMessage', 'hook-send:openhands-canvas:src/hooks/use-send-message.ts:useSendMessage().send', 'canvas-send:openhands-canvas:src/contexts/conversation-websocket-context.tsx:ConversationWebSocketProvider.sendMessage', 'socket-receive:openhands-sdk:openhands-agent-server/openhands/agent_server/sockets.py:events_socket', 'service-message:openhands-sdk:openhands-agent-server/openhands/agent_server/event_service.py:EventService.send_message', 'conversation-message:openhands-sdk:openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py:LocalConversation.send_message', 'service-run:openhands-sdk:openhands-agent-server/openhands/agent_server/event_service.py:EventService.run', 'conversation-run:openhands-sdk:openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py:LocalConversation.arun', 'agent-step:openhands-sdk:openhands-sdk/openhands/sdk/agent/agent.py:Agent.astep', 'dispatch-tool-calls:openhands-sdk:openhands-sdk/openhands/sdk/agent/response_dispatch.py:_ahandle_tool_calls', 'execute-actions:openhands-sdk:openhands-sdk/openhands/sdk/agent/agent.py:Agent._aexecute_actions', 'tool-call:openhands-sdk:openhands-sdk/openhands/sdk/tool/tool.py:ToolDefinition.__call__', 'persist-event:openhands-sdk:openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py:LocalConversation.__init__', 'publish-event:openhands-sdk:openhands-agent-server/openhands/agent_server/event_service.py:EventService.start', 'socket-send:openhands-sdk:openhands-agent-server/openhands/agent_server/sockets.py:_WebSocketSubscriber.__call__', 'canvas-receive:openhands-canvas:src/contexts/conversation-websocket-context.tsx:ConversationWebSocketProvider.handleMainMessage'],
   'benchmark-task-to-score': ['swe-input:swe-bench:swebench/harness/run_evaluation.py:main', 'swe-env:swe-bench:swebench/harness/docker_utils.py:exec_run_with_timeout', 'swe-grade:swe-bench:swebench/harness/grading.py:get_eval_report', 'swe-report:swe-bench:swebench/harness/reporting.py:make_run_report', 'tau-cli:tau2-bench:src/tau2/cli.py:main', 'tau-domain:tau2-bench:src/tau2/runner/batch.py:run_domain', 'tau-load:tau2-bench:src/tau2/runner/helpers.py:get_tasks', 'tau-batch:tau2-bench:src/tau2/runner/batch.py:run_tasks', 'tau-task:tau2-bench:src/tau2/runner/batch.py:run_single_task', 'tau-build:tau2-bench:src/tau2/runner/build.py:build_orchestrator', 'tau-sim:tau2-bench:src/tau2/runner/simulation.py:run_simulation', 'tau-orchestrator:tau2-bench:src/tau2/orchestrator/orchestrator.py:BaseOrchestrator.run', 'tau-environment:tau2-bench:src/tau2/environment/environment.py:Environment.make_tool_call', 'tau-trajectory:tau2-bench:src/tau2/runner/simulation.py:run_simulation', 'tau-evaluate:tau2-bench:src/tau2/evaluator/evaluator.py:evaluate_simulation', 'tau-reward:tau2-bench:src/tau2/evaluator/evaluator.py:evaluate_simulation'],
-  'dify-request-to-graph-events': ['controller:dify:api/controllers/service_api/app/workflow.py:WorkflowRunApi.post', 'generator:dify:api/core/app/apps/workflow/app_generator.py:WorkflowAppGenerator', 'runner:dify:api/core/app/apps/workflow/app_runner.py:WorkflowAppRunner', 'entry:dify:api/core/workflow/workflow_entry.py:WorkflowEntry', 'factory:dify:api/core/workflow/node_factory.py:DifyNodeFactory', 'agent-node:dify:api/core/workflow/nodes/agent_v2/agent_node.py:DifyAgentNode', 'response:dify:api/core/app/apps/common/workflow_response_converter.py:WorkflowResponseConverter'],
-  'crewai-kickoff-to-task-output': ['kickoff:crewai:lib/crewai/src/crewai/crew.py:Crew.kickoff', 'process:crewai:lib/crewai/src/crewai/process.py:Process', 'execution:crewai:lib/crewai/src/crewai/execution.py:begin_execution', 'task:crewai:lib/crewai/src/crewai/task.py:Task.execute_sync', 'agent:crewai:lib/crewai/src/crewai/agent/core.py:Agent.execute_task', 'executor:crewai:lib/crewai/src/crewai/agents/crew_agent_executor.py:CrewAgentExecutor.invoke', 'step:crewai:lib/crewai/src/crewai/agents/step_executor.py:StepExecutor.execute', 'tool:crewai:lib/crewai/src/crewai/tools/tool_usage.py:ToolUsage.use', 'output:crewai:lib/crewai/src/crewai/task.py:Task._export_output'],
+  'dify-request-to-graph-events': ['dify-01-controller:dify:api/controllers/service_api/app/workflow.py:WorkflowRunApi.post', 'dify-02-service:dify:api/services/app_generate_service.py:AppGenerateService.generate', 'dify-03-guardrails:dify:api/services/app_generate_service.py:AppGenerateService._run_with_guardrails', 'dify-04-workflow-mode:dify:api/services/app_generate_service.py:AppGenerateService._dispatch_generate', 'dify-05-generate:dify:api/core/app/apps/workflow/app_generator.py:WorkflowAppGenerator.generate', 'dify-06-generate-core:dify:api/core/app/apps/workflow/app_generator.py:WorkflowAppGenerator._generate', 'dify-07-worker:dify:api/core/app/apps/workflow/app_generator.py:WorkflowAppGenerator._generate_worker', 'dify-08-runner:dify:api/core/app/apps/workflow/app_runner.py:WorkflowAppRunner.run', 'dify-09-graph-init:dify:api/core/app/apps/workflow_app_runner.py:WorkflowBasedAppRunner._init_graph', 'dify-10-node-factory:dify:api/core/workflow/node_factory.py:DifyNodeFactory.create_node', 'dify-11-agent-node:dify:api/core/workflow/nodes/agent_v2/agent_node.py:DifyAgentNode.__init__', 'dify-12-entry:dify:api/core/workflow/workflow_entry.py:WorkflowEntry.__init__', 'dify-13-engine:dify:api/core/workflow/workflow_entry.py:WorkflowEntry.run', 'dify-14-agent-run:dify:api/core/workflow/nodes/agent_v2/agent_node.py:DifyAgentNode._run', 'dify-15-agent-backend:dify:api/core/workflow/nodes/agent_v2/agent_node.py:DifyAgentNode._run_inner', 'dify-16-event-handler:dify:api/core/app/apps/workflow_app_runner.py:WorkflowBasedAppRunner._handle_event', 'dify-17-queue:dify:api/core/app/apps/workflow/app_queue_manager.py:WorkflowAppQueueManager._publish', 'dify-18-pipeline:dify:api/core/app/apps/workflow/generate_task_pipeline.py:WorkflowAppGenerateTaskPipeline.process', 'dify-19-typed:dify:api/core/app/apps/common/workflow_response_converter.py:WorkflowResponseConverter.workflow_finish_to_stream_response', 'dify-20-aggregate:dify:api/core/app/apps/workflow/generate_task_pipeline.py:WorkflowAppGenerateTaskPipeline._to_blocking_response', 'dify-21-public:dify:api/core/app/apps/workflow/generate_response_converter.py:WorkflowAppGenerateResponseConverter.convert_blocking_full_response', 'dify-stream-01-subscribe:dify:api/services/app_generate_service.py:AppGenerateService._build_streaming_task_on_subscribe', 'dify-stream-02-dispatch:dify:api/services/app_generate_service.py:AppGenerateService._dispatch_generate', 'dify-stream-03-worker:dify:api/core/app/apps/workflow/app_generator.py:WorkflowAppGenerator._generate_worker', 'dify-stream-04-typed:dify:api/core/app/apps/workflow/generate_task_pipeline.py:WorkflowAppGenerateTaskPipeline._to_stream_response', 'dify-stream-05-public:dify:api/core/app/apps/workflow/generate_response_converter.py:WorkflowAppGenerateResponseConverter.convert_stream_full_response', 'dify-stream-06-topic-sse:dify:api/services/app_generate_service.py:AppGenerateService._dispatch_generate'],
+  'crewai-kickoff-to-task-output': ['crew-01-kickoff:crewai:lib/crewai/src/crewai/crew.py:Crew.kickoff', 'crew-02-prepare:crewai:lib/crewai/src/crewai/crews/utils.py:prepare_kickoff', 'crew-03-setup-agents:crewai:lib/crewai/src/crewai/crews/utils.py:setup_agents', 'crew-04-create-executor:crewai:lib/crewai/src/crewai/agent/core.py:Agent.create_agent_executor', 'crew-05-process:crewai:lib/crewai/src/crewai/process.py:Process.sequential', 'crew-06-sequential:crewai:lib/crewai/src/crewai/crew.py:Crew._run_sequential_process', 'crew-07-execute-tasks:crewai:lib/crewai/src/crewai/crew.py:Crew._execute_tasks', 'crew-08-prepare-task:crewai:lib/crewai/src/crewai/crews/utils.py:prepare_task_execution', 'crew-09-task-sync:crewai:lib/crewai/src/crewai/task.py:Task.execute_sync', 'crew-10-task-core:crewai:lib/crewai/src/crewai/task.py:Task._execute_core', 'crew-11-agent:crewai:lib/crewai/src/crewai/agent/core.py:Agent.execute_task', 'crew-12-invoke:crewai:lib/crewai/src/crewai/experimental/agent_executor.py:AgentExecutor.invoke', 'crew-13-finish:crewai:lib/crewai/src/crewai/experimental/agent_executor.py:AgentExecutor.invoke', 'crew-14-finalize:crewai:lib/crewai/src/crewai/agent/core.py:Agent._finalize_task_execution', 'crew-15-task-output:crewai:lib/crewai/src/crewai/task.py:Task._execute_core', 'crew-16-crew-output:crewai:lib/crewai/src/crewai/crew.py:Crew._create_crew_output', 'crew-text-01-llm:crewai:lib/crewai/src/crewai/experimental/agent_executor.py:AgentExecutor.call_llm_and_parse', 'crew-text-02-action:crewai:lib/crewai/src/crewai/experimental/agent_executor.py:AgentExecutor.execute_tool_action', 'crew-text-03-use:crewai:lib/crewai/src/crewai/tools/tool_usage.py:ToolUsage.use', 'crew-text-04-use-inner:crewai:lib/crewai/src/crewai/tools/tool_usage.py:ToolUsage._use', 'crew-text-05-invoke:crewai:lib/crewai/src/crewai/tools/structured_tool.py:CrewStructuredTool.invoke', 'crew-native-01-llm:crewai:lib/crewai/src/crewai/experimental/agent_executor.py:AgentExecutor.call_llm_native_tools', 'crew-native-02-action:crewai:lib/crewai/src/crewai/experimental/agent_executor.py:AgentExecutor.execute_native_tool', 'crew-native-03-single:crewai:lib/crewai/src/crewai/experimental/agent_executor.py:AgentExecutor._execute_single_native_tool_call', 'crew-plan-01-plan:crewai:lib/crewai/src/crewai/experimental/agent_executor.py:AgentExecutor.generate_plan', 'crew-plan-02-lazy:crewai:lib/crewai/src/crewai/experimental/agent_executor.py:AgentExecutor._ensure_step_executor', 'crew-plan-03-execute:crewai:lib/crewai/src/crewai/agents/step_executor.py:StepExecutor.execute'],
   'autogpt-flowise-evolution': ['autogpt-entry:autogpt:classic/original_autogpt/autogpt/app/main.py:run_auto_gpt', 'autogpt-agent:autogpt:classic/original_autogpt/autogpt/agents/agent.py:Agent.execute', 'flowise-entry:flowise:packages/server/src/controllers/predictions/index.ts:createPrediction', 'flowise-service:flowise:packages/server/src/services/predictions/index.ts:buildChatflow'],
 }
 const expectedAiderTracksAndLabels = [
@@ -775,8 +801,8 @@ const expectedSubjectDigests = {
   'openhands-sdk': 'a4ea3a15cab7a116af2beaf8715d8586d6fd5b472b1054adad949dc8aa222133',
   'swe-bench': 'e356c00937817246deae70028e1d8068a2e9426e33f5d77e5b44e485adb3efaa',
   'tau2-bench': '9ce153cca427f514e1d8b1b727931efa4ab2f8767fac1019117219ef17bb99d9',
-  dify: '6881c250b6f94d1ff50aa54d77a493cacb672796350e9c8281b2cc639563d683',
-  crewai: 'c08cfcd2380dbb33b118271457a61aa9b716325f29e25613cc1ddb94a6bd7b56',
+  dify: '6b333b37b98ac1baae3b25b9f1874dbe60c0c99a95eee6e7a703bd752a5c428f',
+  crewai: 'dbe36bab9609685066dbb40e6fd4dc549e9e174264a3454680064a34c8b900f2',
   autogpt: '33d5cf4286bca6be740451dc94daf9c77d633318e95f38760b980c5699d66bf4',
   flowise: '4c2438da4a88f32b9f6089b64b35bbb383bf60d6b8a9258a5af1e2f5a3b360f5',
   'hermes-agent': 'b1e7efda63633c8af2b155954e2a0145428c19795399837ac745f3681e0a66c4',
@@ -787,8 +813,8 @@ const expectedChainDigests = {
   'aider-repo-to-verified-edit': '222bc344a8184b8ff7cac95a1e36f620a50a58cacb0f61b459132238164486ce',
   'openhands-canvas-to-workspace-event': '168bff273714e7a5f797f51d6bff179ede412397be22f5c5742bbef8669a5a06',
   'benchmark-task-to-score': '4bc18b2acf77c5290f31cf416e89b1f34a3001b1f85a69c365425fcbf8ae5da2',
-  'dify-request-to-graph-events': '060d82f9c004cfb20a95ccf3a951383bb7715b47ba25abb1232dcfc9034b6a50',
-  'crewai-kickoff-to-task-output': '4a3711ad6debf20e72f0732a6719b0bf9a7e2ae9153cc141a8bb800eb9d9c058',
+  'dify-request-to-graph-events': 'c03e79df927fb6393a8917d0d53b6368692c84c9d4fccb671d91da4dfb8015cc',
+  'crewai-kickoff-to-task-output': '5bf5f4b7fe325496d4ecdde12e457505948075025e44429401b5737b76dec3c9',
   'autogpt-flowise-evolution': '2d20650faa158737e729becfdc9559ed3d1f419bbcffccf2977f4eb946d722df',
 }
 const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
@@ -807,7 +833,7 @@ describe('real project catalog', () => {
     expect(Object.keys(catalog)).toEqual(['schema_version', 'defaults', 'pages', 'subjects', 'chains'])
     expect(catalog.schema_version).toBe(1)
     expect(catalog.defaults).toEqual({ verified_at: '2026-09-26', review_by: '2026-10-26' })
-    expect(digest(catalog)).toBe('6be8be4c75bca1b0098b3527dc5173e2a89c4dc4d93360454c08d8e1fd1199ad')
+    expect(digest(catalog)).toBe('16d964c1e4602e1ffb4431b1c79fac70134b7c9cf118c00c5dada41b4c8d943a')
     expect(catalog.pages.map((page: { page_item_id: string }) => page.page_item_id)).toEqual(pageIds)
     expect(catalog.subjects.map((subject: { id: string }) => subject.id)).toEqual(subjectIds)
     expect(Object.fromEntries(catalog.subjects.map((subject: any) => [subject.id, [
@@ -827,7 +853,7 @@ describe('real project catalog', () => {
       ]))
     expect(coreSubjects).toEqual(expectedCoreEntrypointSymbols)
     const sourceEntries = catalog.subjects.flatMap((subject: { entrypoints: Array<{ path: string; symbols: string[]; responsibility: string }> }) => subject.entrypoints)
-    expect(sourceEntries).toHaveLength(57)
+    expect(sourceEntries).toHaveLength(64)
     expect(sourceEntries.every((entry: { path: string; symbols: string[]; responsibility: string }) =>
       [entry.path, entry.responsibility].every((value) => value.trim().length > 0)
         && entry.symbols.length > 0
@@ -842,6 +868,8 @@ describe('real project catalog', () => {
     expect(subjectsById['openhands-sdk'].entrypoints).toHaveLength(6)
     expect(subjectsById['tau2-bench'].entrypoints).toHaveLength(8)
     expect([...subjectsById['swe-bench'].entrypoints, ...subjectsById['tau2-bench'].entrypoints]).toHaveLength(12)
+    expect(subjectsById.dify.entrypoints).toHaveLength(12)
+    expect(subjectsById.crewai.entrypoints).toHaveLength(10)
     const entrypointPaths = (id: string) => subjectsById[id].entrypoints.map((entry: { path: string }) => entry.path)
     expect(entrypointPaths('openhands-canvas')).not.toEqual(expect.arrayContaining([
       'src/api/conversation-service/agent-server-conversation-service.api.ts',
@@ -857,6 +885,12 @@ describe('real project catalog', () => {
     expect(entrypointPaths('tau2-bench')).not.toContain('src/tau2/run.py')
     expect(subjectsById['tau2-bench'].entrypoints.find((entry: { path: string }) => entry.path === 'src/tau2/cli.py').symbols)
       .not.toContain('run')
+    for (const oldPath of [
+      'lib/crewai/src/crewai/execution.py',
+      'lib/crewai/src/crewai/agents/crew_agent_executor.py',
+    ]) {
+      expect(entrypointPaths('crewai')).not.toContain(oldPath)
+    }
     const openHandsChain = catalog.chains.find((chain: { id: string }) => chain.id === 'openhands-canvas-to-workspace-event')
     expect(openHandsChain.steps).toHaveLength(16)
     expect(openHandsChain.misconception).toContain('environment and configuration source')
@@ -880,6 +914,44 @@ describe('real project catalog', () => {
     expect(aiderChain.steps.map((step: { id: string; track?: string; label: string }) =>
       [step.id, step.track, step.label],
     )).toEqual(expectedAiderTracksAndLabels)
+    const difyChain = catalog.chains.find((chain: { id: string }) => chain.id === 'dify-request-to-graph-events')
+    expect(difyChain.steps.map((step: { track: string }) => step.track)).toEqual([
+      ...Array(12).fill('blocking 01 · request to graph'),
+      ...Array(9).fill('blocking 02 · graph to response'),
+      ...Array(6).fill('streaming side path'),
+    ])
+    expect(difyChain.misconception).toContain('WorkflowEntry receives an existing Graph')
+    expect(difyChain.steps.find((step: { id: string }) => step.id === 'dify-15-agent-backend').responsibility)
+      .toContain('create_run and consume stream_events')
+    expect(difyChain.steps.find((step: { id: string }) => step.id === 'dify-19-typed').responsibility)
+      .toContain('typed internal workflow response')
+    expect(difyChain.steps.at(-1).responsibility).toContain('SSE retrieval')
+
+    const crewChain = catalog.chains.find((chain: { id: string }) => chain.id === 'crewai-kickoff-to-task-output')
+    expect(crewChain.steps.map((step: { track: string }) => step.track)).toEqual([
+      ...Array(8).fill('default sequential 01 · setup'),
+      ...Array(8).fill('default sequential 02 · execution and output'),
+      ...Array(5).fill('text ReAct · conditional'),
+      ...Array(3).fill('native tool · conditional'),
+      ...Array(3).fill('planning · conditional'),
+    ])
+    const defaultCrewSteps = crewChain.steps.filter((step: { track: string }) => step.track.startsWith('default sequential'))
+    for (const oldDefaultSymbol of [
+      'CrewAgentExecutor.invoke',
+      'StepExecutor.execute',
+      'Task._export_output',
+    ]) {
+      expect(defaultCrewSteps.map((step: { symbol: string }) => step.symbol)).not.toContain(oldDefaultSymbol)
+    }
+    expect(crewChain.steps.find((step: { id: string }) => step.id === 'crew-native-03-single').responsibility)
+      .toContain('_available_functions[func_name]')
+    expect(crewChain.steps.find((step: { id: string }) => step.id === 'crew-plan-02-lazy').responsibility)
+      .toContain('after todos exist')
+    for (const chain of [difyChain, crewChain]) {
+      const sizes = Object.values(Object.groupBy(chain.steps, (step: { track: string }) => step.track))
+        .map((steps) => steps?.length ?? 0)
+      expect(Math.max(...sizes)).toBeLessThanOrEqual(12)
+    }
     expect(Object.fromEntries(catalog.chains.map((chain: { id: string }) => [chain.id, digest(chain)])))
       .toEqual(expectedChainDigests)
     expect(Object.fromEntries(catalog.pages.map((page: { page_item_id: string }) => {
@@ -1228,13 +1300,18 @@ Append:
     license_sources: [{ path: LICENSE, sha256: 232cf91474932d5110ed304e53b6b742a58463857c571fae803fdf2ac36d7bb3 }]
     watch_url: https://github.com/langgenius/dify/releases/latest
     entrypoints:
-      - { path: api/controllers/service_api/app/workflow.py, symbols: [WorkflowRunApi.post], responsibility: Validate and admit a workflow request. }
-      - { path: api/core/app/apps/workflow/app_generator.py, symbols: [WorkflowAppGenerator], responsibility: Build the application execution context. }
-      - { path: api/core/app/apps/workflow/app_runner.py, symbols: [WorkflowAppRunner], responsibility: Start and supervise workflow execution. }
-      - { path: api/core/workflow/workflow_entry.py, symbols: [WorkflowEntry], responsibility: Configure Graphon and execution layers. }
-      - { path: api/core/workflow/node_factory.py, symbols: [DifyNodeFactory], responsibility: Resolve versioned node implementations. }
-      - { path: api/core/workflow/nodes/agent_v2/agent_node.py, symbols: [DifyAgentNode], responsibility: Execute the agent-specific node contract. }
-      - { path: api/core/app/apps/common/workflow_response_converter.py, symbols: [WorkflowResponseConverter], responsibility: Convert graph events to the public response stream. }
+      - { path: api/controllers/service_api/app/workflow.py, symbols: [WorkflowRunApi.post], responsibility: Admit the Service API request and select blocking or streaming response mode. }
+      - { path: api/services/app_generate_service.py, symbols: [AppGenerateService.generate, AppGenerateService._run_with_guardrails, AppGenerateService._dispatch_generate, AppGenerateService._build_streaming_task_on_subscribe], responsibility: "Apply request guardrails, select AppMode.WORKFLOW, and keep streaming task startup behind subscription." }
+      - { path: api/core/app/apps/workflow/app_generator.py, symbols: [WorkflowAppGenerator.generate, WorkflowAppGenerator._generate, WorkflowAppGenerator._generate_worker], responsibility: Build workflow execution state and run the worker used by blocking and streaming delivery. }
+      - { path: api/core/app/apps/workflow/app_runner.py, symbols: [WorkflowAppRunner.run], responsibility: Run the prepared workflow and feed Graphon events into the app event handler. }
+      - { path: api/core/app/apps/workflow_app_runner.py, symbols: [WorkflowBasedAppRunner._init_graph, WorkflowBasedAppRunner._handle_event], responsibility: Initialize Graph with DifyNodeFactory and translate graph events into queue events. }
+      - { path: api/core/workflow/node_factory.py, symbols: [DifyNodeFactory.create_node], responsibility: Resolve versioned node implementations and construct DifyAgentNode only for the matching kind. }
+      - { path: api/core/workflow/nodes/agent_v2/agent_node.py, symbols: [DifyAgentNode.__init__, DifyAgentNode._run, DifyAgentNode._run_inner], responsibility: Execute the Dify agent-node contract through backend create_run and stream_events calls. }
+      - { path: api/core/workflow/workflow_entry.py, symbols: [WorkflowEntry.__init__, WorkflowEntry.run], responsibility: "Accept the existing Graph, configure GraphEngine layers, and yield engine events." }
+      - { path: api/core/app/apps/workflow/app_queue_manager.py, symbols: [WorkflowAppQueueManager._publish], responsibility: Publish typed app queue events to the selected queue transport. }
+      - { path: api/core/app/apps/workflow/generate_task_pipeline.py, symbols: [WorkflowAppGenerateTaskPipeline.process, WorkflowAppGenerateTaskPipeline._to_blocking_response, WorkflowAppGenerateTaskPipeline._to_stream_response], responsibility: "Consume queue events, apply typed conversion, and aggregate the selected response mode." }
+      - { path: api/core/app/apps/common/workflow_response_converter.py, symbols: [WorkflowResponseConverter.workflow_start_to_stream_response, WorkflowResponseConverter.workflow_finish_to_stream_response, WorkflowResponseConverter.handle_agent_log], responsibility: Convert queue events into typed internal workflow response objects. }
+      - { path: api/core/app/apps/workflow/generate_response_converter.py, symbols: [WorkflowAppGenerateResponseConverter.convert_blocking_full_response, WorkflowAppGenerateResponseConverter.convert_stream_full_response], responsibility: Map typed workflow responses to the final public blocking or streaming payload. }
 
   - id: crewai
     canonical_repo: crewAIInc/crewAI
@@ -1250,14 +1327,16 @@ Append:
     license_sources: [{ path: LICENSE, sha256: 28868731966f4aa37f02879839aabc797137e27ddde4e274ef9cf965f9a71774 }]
     watch_url: https://github.com/crewAIInc/crewAI/releases/latest
     entrypoints:
-      - { path: lib/crewai/src/crewai/crew.py, symbols: [Crew.kickoff], responsibility: Initialize crew execution and choose a process. }
-      - { path: lib/crewai/src/crewai/process.py, symbols: [Process], responsibility: Define the orchestration mode. }
-      - { path: lib/crewai/src/crewai/execution.py, symbols: [begin_execution], responsibility: Establish shared execution and tracing state. }
-      - { path: lib/crewai/src/crewai/task.py, symbols: [Task.execute_sync, Task._export_output], responsibility: Bind expected output and delegate work to an agent. }
-      - { path: lib/crewai/src/crewai/agent/core.py, symbols: [Agent.execute_task], responsibility: Prepare and launch task-specific agent execution. }
-      - { path: lib/crewai/src/crewai/agents/crew_agent_executor.py, symbols: [CrewAgentExecutor.invoke], responsibility: Run the reasoning and tool loop. }
-      - { path: lib/crewai/src/crewai/agents/step_executor.py, symbols: [StepExecutor.execute], responsibility: Execute one parsed agent step. }
-      - { path: lib/crewai/src/crewai/tools/tool_usage.py, symbols: [ToolUsage.use], responsibility: Invoke a selected tool and record its outcome. }
+      - { path: lib/crewai/src/crewai/crew.py, symbols: [Crew.kickoff, Crew._run_sequential_process, Crew._execute_tasks, Crew._create_crew_output], responsibility: "Prepare kickoff, run synchronous sequential tasks, and construct the final CrewOutput." }
+      - { path: lib/crewai/src/crewai/crews/utils.py, symbols: [prepare_kickoff, setup_agents, prepare_task_execution], responsibility: Set up agents and prepare each task before synchronous execution. }
+      - { path: lib/crewai/src/crewai/process.py, symbols: [Process.sequential], responsibility: Name the selected orchestration policy for the default chain. }
+      - { path: lib/crewai/src/crewai/task.py, symbols: [Task.execute_sync, Task._execute_core, Task._export_output], responsibility: Delegate synchronous work and construct TaskOutput; _export_output only handles structured conversion. }
+      - { path: lib/crewai/src/crewai/agent/core.py, symbols: [Agent.execute_task, Agent.create_agent_executor, Agent._finalize_task_execution], responsibility: "Create the default experimental executor, run it, and finalize the raw result." }
+      - { path: lib/crewai/src/crewai/experimental/agent_executor.py, symbols: [AgentExecutor.invoke, AgentExecutor.generate_plan, AgentExecutor._ensure_step_executor, AgentExecutor.call_llm_and_parse, AgentExecutor.execute_tool_action, AgentExecutor.call_llm_native_tools, AgentExecutor.execute_native_tool, AgentExecutor._execute_single_native_tool_call], responsibility: "Run the default executor and expose mutually exclusive text, native-tool, and planning routes." }
+      - { path: lib/crewai/src/crewai/utilities/agent_utils.py, symbols: [process_llm_response], responsibility: Parse text ReAct responses into AgentAction or AgentFinish. }
+      - { path: lib/crewai/src/crewai/tools/tool_usage.py, symbols: [ToolUsage.use, ToolUsage._use], responsibility: Resolve and execute a text ReAct tool call while recording its outcome. }
+      - { path: lib/crewai/src/crewai/tools/structured_tool.py, symbols: [CrewStructuredTool.invoke], responsibility: Invoke the selected structured tool implementation. }
+      - { path: lib/crewai/src/crewai/agents/step_executor.py, symbols: [StepExecutor.execute], responsibility: Execute a planned todo only after planning creates todos and lazily constructs StepExecutor. }
 ```
 
 - [ ] **Step 9: Add historical and watch-only subject records**
@@ -1474,33 +1553,71 @@ Append:
 
   - id: dify-request-to-graph-events
     page_item_id: project-dify
-    label: Service API request to graph events
-    reading_hint: Follow one workflow execution path and ignore unrelated platform subsystems.
-    misconception: A visual node graph does not remove runtime, authorization, or persistence complexity.
+    label: Blocking Service API request to public workflow response
+    reading_hint: Follow the numbered blocking path; read streaming as an independent delivery side path.
+    misconception: WorkflowEntry receives an existing Graph; GraphEngine does not create nodes, and the internal converter does not emit the final public payload.
     steps:
-      - { id: controller, label: Service API, subject_id: dify, source_path: api/controllers/service_api/app/workflow.py, symbol: WorkflowRunApi.post, responsibility: Validate and admit the workflow request. }
-      - { id: generator, label: App generator, subject_id: dify, source_path: api/core/app/apps/workflow/app_generator.py, symbol: WorkflowAppGenerator, responsibility: Build the application execution context. }
-      - { id: runner, label: App runner, subject_id: dify, source_path: api/core/app/apps/workflow/app_runner.py, symbol: WorkflowAppRunner, responsibility: Start and supervise the workflow execution. }
-      - { id: entry, label: Workflow entry, subject_id: dify, source_path: api/core/workflow/workflow_entry.py, symbol: WorkflowEntry, responsibility: Configure Graphon and execution layers. }
-      - { id: factory, label: Node factory, subject_id: dify, source_path: api/core/workflow/node_factory.py, symbol: DifyNodeFactory, responsibility: Resolve versioned node implementations. }
-      - { id: agent-node, label: Agent node, subject_id: dify, source_path: api/core/workflow/nodes/agent_v2/agent_node.py, symbol: DifyAgentNode, responsibility: Execute the agent-specific node contract. }
-      - { id: response, label: Event response, subject_id: dify, source_path: api/core/app/apps/common/workflow_response_converter.py, symbol: WorkflowResponseConverter, responsibility: Convert runtime events into the public response stream. }
+      - { id: dify-01-controller, track: blocking 01 · request to graph, label: Service API, subject_id: dify, source_path: api/controllers/service_api/app/workflow.py, symbol: WorkflowRunApi.post, responsibility: Admit one numbered Service API workflow request. }
+      - { id: dify-02-service, track: blocking 01 · request to graph, label: Generate service, subject_id: dify, source_path: api/services/app_generate_service.py, symbol: AppGenerateService.generate, responsibility: Enter the shared app generation service. }
+      - { id: dify-03-guardrails, track: blocking 01 · request to graph, label: Request guardrails, subject_id: dify, source_path: api/services/app_generate_service.py, symbol: AppGenerateService._run_with_guardrails, responsibility: Apply quota and app-level concurrency guardrails. }
+      - { id: dify-04-workflow-mode, track: blocking 01 · request to graph, label: Blocking workflow branch, subject_id: dify, source_path: api/services/app_generate_service.py, symbol: AppGenerateService._dispatch_generate, responsibility: Select AppMode.WORKFLOW with streaming=false. }
+      - { id: dify-05-generate, track: blocking 01 · request to graph, label: Workflow generator, subject_id: dify, source_path: api/core/app/apps/workflow/app_generator.py, symbol: WorkflowAppGenerator.generate, responsibility: Validate inputs and build workflow execution configuration. }
+      - { id: dify-06-generate-core, track: blocking 01 · request to graph, label: Generation core, subject_id: dify, source_path: api/core/app/apps/workflow/app_generator.py, symbol: WorkflowAppGenerator._generate, responsibility: Create the queue manager and start the common worker. }
+      - { id: dify-07-worker, track: blocking 01 · request to graph, label: Generation worker, subject_id: dify, source_path: api/core/app/apps/workflow/app_generator.py, symbol: WorkflowAppGenerator._generate_worker, responsibility: Construct and invoke WorkflowAppRunner. }
+      - { id: dify-08-runner, track: blocking 01 · request to graph, label: Workflow runner, subject_id: dify, source_path: api/core/app/apps/workflow/app_runner.py, symbol: WorkflowAppRunner.run, responsibility: Prepare runtime state and initialize the graph. }
+      - { id: dify-09-graph-init, track: blocking 01 · request to graph, label: Graph initialization, subject_id: dify, source_path: api/core/app/apps/workflow_app_runner.py, symbol: WorkflowBasedAppRunner._init_graph, responsibility: Call Graph.init with DifyNodeFactory. }
+      - { id: dify-10-node-factory, track: blocking 01 · request to graph, label: Node factory, subject_id: dify, source_path: api/core/workflow/node_factory.py, symbol: DifyNodeFactory.create_node, responsibility: Resolve and construct each versioned node. }
+      - { id: dify-11-agent-node, track: blocking 01 · request to graph, label: Conditional agent node, subject_id: dify, source_path: api/core/workflow/nodes/agent_v2/agent_node.py, symbol: DifyAgentNode.__init__, responsibility: Construct DifyAgentNode only when agent_node_kind is dify_agent. }
+      - { id: dify-12-entry, track: blocking 01 · request to graph, label: Workflow entry, subject_id: dify, source_path: api/core/workflow/workflow_entry.py, symbol: WorkflowEntry.__init__, responsibility: Receive the already initialized Graph and configure GraphEngine layers. }
+      - { id: dify-13-engine, track: blocking 02 · graph to response, label: Graph engine, subject_id: dify, source_path: api/core/workflow/workflow_entry.py, symbol: WorkflowEntry.run, responsibility: "Drive GraphEngine.run, its worker, and Node.run through Graphon." }
+      - { id: dify-14-agent-run, track: blocking 02 · graph to response, label: Agent-node execution, subject_id: dify, source_path: api/core/workflow/nodes/agent_v2/agent_node.py, symbol: DifyAgentNode._run, responsibility: Enter the selected agent node execution. }
+      - { id: dify-15-agent-backend, track: blocking 02 · graph to response, label: Agent backend events, subject_id: dify, source_path: api/core/workflow/nodes/agent_v2/agent_node.py, symbol: DifyAgentNode._run_inner, responsibility: Call create_run and consume stream_events as graph node events. }
+      - { id: dify-16-event-handler, track: blocking 02 · graph to response, label: Graph event adapter, subject_id: dify, source_path: api/core/app/apps/workflow_app_runner.py, symbol: WorkflowBasedAppRunner._handle_event, responsibility: Translate Graphon events into typed app queue events. }
+      - { id: dify-17-queue, track: blocking 02 · graph to response, label: Queue publish, subject_id: dify, source_path: api/core/app/apps/workflow/app_queue_manager.py, symbol: WorkflowAppQueueManager._publish, responsibility: Publish events to the local blocking queue transport. }
+      - { id: dify-18-pipeline, track: blocking 02 · graph to response, label: Response pipeline, subject_id: dify, source_path: api/core/app/apps/workflow/generate_task_pipeline.py, symbol: WorkflowAppGenerateTaskPipeline.process, responsibility: Consume queue events in blocking mode. }
+      - { id: dify-19-typed, track: blocking 02 · graph to response, label: Typed internal conversion, subject_id: dify, source_path: api/core/app/apps/common/workflow_response_converter.py, symbol: WorkflowResponseConverter.workflow_finish_to_stream_response, responsibility: Create typed internal workflow response objects. }
+      - { id: dify-20-aggregate, track: blocking 02 · graph to response, label: Blocking aggregation, subject_id: dify, source_path: api/core/app/apps/workflow/generate_task_pipeline.py, symbol: WorkflowAppGenerateTaskPipeline._to_blocking_response, responsibility: Aggregate the terminal typed event into WorkflowAppBlockingResponse. }
+      - { id: dify-21-public, track: blocking 02 · graph to response, label: Public response, subject_id: dify, source_path: api/core/app/apps/workflow/generate_response_converter.py, symbol: WorkflowAppGenerateResponseConverter.convert_blocking_full_response, responsibility: Map the typed blocking response to the final public payload. }
+      - { id: dify-stream-01-subscribe, track: streaming side path, label: Subscribe before enqueue, subject_id: dify, source_path: api/services/app_generate_service.py, symbol: AppGenerateService._build_streaming_task_on_subscribe, responsibility: Start the Celery task only after topic subscription is prepared. }
+      - { id: dify-stream-02-dispatch, track: streaming side path, label: Celery dispatch, subject_id: dify, source_path: api/services/app_generate_service.py, symbol: AppGenerateService._dispatch_generate, responsibility: Dispatch workflow_based_app_execution_task to the Celery _AppRunner. }
+      - { id: dify-stream-03-worker, track: streaming side path, label: Shared execution worker, subject_id: dify, source_path: api/core/app/apps/workflow/app_generator.py, symbol: WorkflowAppGenerator._generate_worker, responsibility: Enter the same WorkflowAppGenerator and WorkflowAppRunner execution path. }
+      - { id: dify-stream-04-typed, track: streaming side path, label: Streaming typed response, subject_id: dify, source_path: api/core/app/apps/workflow/generate_task_pipeline.py, symbol: WorkflowAppGenerateTaskPipeline._to_stream_response, responsibility: Wrap typed stream responses before public mapping. }
+      - { id: dify-stream-05-public, track: streaming side path, label: Streaming public response, subject_id: dify, source_path: api/core/app/apps/workflow/generate_response_converter.py, symbol: WorkflowAppGenerateResponseConverter.convert_stream_full_response, responsibility: Map typed responses to public chunks before the Celery worker writes the topic. }
+      - { id: dify-stream-06-topic-sse, track: streaming side path, label: Topic to SSE, subject_id: dify, source_path: api/services/app_generate_service.py, symbol: AppGenerateService._dispatch_generate, responsibility: "Let Celery _AppRunner write public mappings to the topic, then retrieve them in the request process for SSE retrieval and delivery." }
 
   - id: crewai-kickoff-to-task-output
     page_item_id: project-crewai
-    label: Crew kickoff to task output
-    reading_hint: Use the sequential process as one concrete chain, not as a claim about every mode.
-    misconception: Named roles do not create permission isolation or measurable quality by themselves.
+    label: Default sequential kickoff to CrewOutput
+    reading_hint: Follow Process.sequential with Task.async_execution=false and Agent.planning=false; conditional tool and planning tracks are not unconditional stages.
+    misconception: Role names and role count do not create isolation or prove multi-agent value; StepExecutor is not on the default planning-disabled path.
     steps:
-      - { id: kickoff, label: Crew kickoff, subject_id: crewai, source_path: lib/crewai/src/crewai/crew.py, symbol: Crew.kickoff, responsibility: Initialize crew execution and inputs. }
-      - { id: process, label: Process choice, subject_id: crewai, source_path: lib/crewai/src/crewai/process.py, symbol: Process, responsibility: Select the orchestration policy. }
-      - { id: execution, label: Execution state, subject_id: crewai, source_path: lib/crewai/src/crewai/execution.py, symbol: begin_execution, responsibility: Carry shared execution and tracing state. }
-      - { id: task, label: Task, subject_id: crewai, source_path: lib/crewai/src/crewai/task.py, symbol: Task.execute_sync, responsibility: Bind expected output and delegate work to an agent. }
-      - { id: agent, label: Agent, subject_id: crewai, source_path: lib/crewai/src/crewai/agent/core.py, symbol: Agent.execute_task, responsibility: Prepare and launch task-specific execution. }
-      - { id: executor, label: Agent executor, subject_id: crewai, source_path: lib/crewai/src/crewai/agents/crew_agent_executor.py, symbol: CrewAgentExecutor.invoke, responsibility: Run the reasoning and tool loop. }
-      - { id: step, label: Step executor, subject_id: crewai, source_path: lib/crewai/src/crewai/agents/step_executor.py, symbol: StepExecutor.execute, responsibility: Execute one parsed agent step. }
-      - { id: tool, label: Tool usage, subject_id: crewai, source_path: lib/crewai/src/crewai/tools/tool_usage.py, symbol: ToolUsage.use, responsibility: Invoke a tool and record its outcome. }
-      - { id: output, label: Task output, subject_id: crewai, source_path: lib/crewai/src/crewai/task.py, symbol: Task._export_output, responsibility: Return the normalized task result to crew orchestration. }
+      - { id: crew-01-kickoff, track: default sequential 01 · setup, label: Crew kickoff, subject_id: crewai, source_path: lib/crewai/src/crewai/crew.py, symbol: Crew.kickoff, responsibility: Start the fixed default synchronous execution. }
+      - { id: crew-02-prepare, track: default sequential 01 · setup, label: Kickoff preparation, subject_id: crewai, source_path: lib/crewai/src/crewai/crews/utils.py, symbol: prepare_kickoff, responsibility: "Prepare inputs, callbacks, agents, and optional planning." }
+      - { id: crew-03-setup-agents, track: default sequential 01 · setup, label: Agent setup, subject_id: crewai, source_path: lib/crewai/src/crewai/crews/utils.py, symbol: setup_agents, responsibility: Bind each agent to the crew and request executor creation. }
+      - { id: crew-04-create-executor, track: default sequential 01 · setup, label: Executor creation, subject_id: crewai, source_path: lib/crewai/src/crewai/agent/core.py, symbol: Agent.create_agent_executor, responsibility: Create the default experimental AgentExecutor. }
+      - { id: crew-05-process, track: default sequential 01 · setup, label: Process selection, subject_id: crewai, source_path: lib/crewai/src/crewai/process.py, symbol: Process.sequential, responsibility: Select Process.sequential after kickoff preparation. }
+      - { id: crew-06-sequential, track: default sequential 01 · setup, label: Sequential process, subject_id: crewai, source_path: lib/crewai/src/crewai/crew.py, symbol: Crew._run_sequential_process, responsibility: Delegate the task list to sequential execution. }
+      - { id: crew-07-execute-tasks, track: default sequential 01 · setup, label: Task loop, subject_id: crewai, source_path: lib/crewai/src/crewai/crew.py, symbol: Crew._execute_tasks, responsibility: Iterate tasks with Task.async_execution=false. }
+      - { id: crew-08-prepare-task, track: default sequential 01 · setup, label: Task preparation, subject_id: crewai, source_path: lib/crewai/src/crewai/crews/utils.py, symbol: prepare_task_execution, responsibility: "Resolve the current agent, tools, and prior-task context." }
+      - { id: crew-09-task-sync, track: default sequential 02 · execution and output, label: Synchronous task, subject_id: crewai, source_path: lib/crewai/src/crewai/task.py, symbol: Task.execute_sync, responsibility: Enter synchronous task execution. }
+      - { id: crew-10-task-core, track: default sequential 02 · execution and output, label: Task core, subject_id: crewai, source_path: lib/crewai/src/crewai/task.py, symbol: Task._execute_core, responsibility: Delegate work to the assigned agent. }
+      - { id: crew-11-agent, track: default sequential 02 · execution and output, label: Agent execution, subject_id: crewai, source_path: lib/crewai/src/crewai/agent/core.py, symbol: Agent.execute_task, responsibility: Prepare the task prompt and invoke the configured executor. }
+      - { id: crew-12-invoke, track: default sequential 02 · execution and output, label: Experimental executor, subject_id: crewai, source_path: lib/crewai/src/crewai/experimental/agent_executor.py, symbol: AgentExecutor.invoke, responsibility: "With planning disabled, enter exactly one native-tool or text ReAct route." }
+      - { id: crew-13-finish, track: default sequential 02 · execution and output, label: Final answer, subject_id: crewai, source_path: lib/crewai/src/crewai/experimental/agent_executor.py, symbol: AgentExecutor.invoke, responsibility: Read AgentFinish.output after either the text or native branch finishes. }
+      - { id: crew-14-finalize, track: default sequential 02 · execution and output, label: Agent finalization, subject_id: crewai, source_path: lib/crewai/src/crewai/agent/core.py, symbol: Agent._finalize_task_execution, responsibility: Finalize the raw agent result. }
+      - { id: crew-15-task-output, track: default sequential 02 · execution and output, label: Task output, subject_id: crewai, source_path: lib/crewai/src/crewai/task.py, symbol: Task._execute_core, responsibility: Construct and own TaskOutput; _export_output only converts structured fields. }
+      - { id: crew-16-crew-output, track: default sequential 02 · execution and output, label: Crew output, subject_id: crewai, source_path: lib/crewai/src/crewai/crew.py, symbol: Crew._create_crew_output, responsibility: Construct CrewOutput from completed TaskOutput values. }
+      - { id: crew-text-01-llm, track: text ReAct · conditional, label: Text LLM and parse, subject_id: crewai, source_path: lib/crewai/src/crewai/experimental/agent_executor.py, symbol: AgentExecutor.call_llm_and_parse, responsibility: Parse text output into AgentAction or AgentFinish. }
+      - { id: crew-text-02-action, track: text ReAct · conditional, label: Text tool action, subject_id: crewai, source_path: lib/crewai/src/crewai/experimental/agent_executor.py, symbol: AgentExecutor.execute_tool_action, responsibility: Dispatch a parsed AgentAction through ToolUsage. }
+      - { id: crew-text-03-use, track: text ReAct · conditional, label: Tool usage, subject_id: crewai, source_path: lib/crewai/src/crewai/tools/tool_usage.py, symbol: ToolUsage.use, responsibility: Validate and enter the text tool call. }
+      - { id: crew-text-04-use-inner, track: text ReAct · conditional, label: Tool execution, subject_id: crewai, source_path: lib/crewai/src/crewai/tools/tool_usage.py, symbol: ToolUsage._use, responsibility: Resolve the selected CrewStructuredTool and invoke it. }
+      - { id: crew-text-05-invoke, track: text ReAct · conditional, label: Structured tool, subject_id: crewai, source_path: lib/crewai/src/crewai/tools/structured_tool.py, symbol: CrewStructuredTool.invoke, responsibility: Call the selected structured tool implementation. }
+      - { id: crew-native-01-llm, track: native tool · conditional, label: Native LLM call, subject_id: crewai, source_path: lib/crewai/src/crewai/experimental/agent_executor.py, symbol: AgentExecutor.call_llm_native_tools, responsibility: Request native tool calls from the model. }
+      - { id: crew-native-02-action, track: native tool · conditional, label: Native tool batch, subject_id: crewai, source_path: lib/crewai/src/crewai/experimental/agent_executor.py, symbol: AgentExecutor.execute_native_tool, responsibility: Process the native tool-call batch. }
+      - { id: crew-native-03-single, track: native tool · conditional, label: Single native call, subject_id: crewai, source_path: lib/crewai/src/crewai/experimental/agent_executor.py, symbol: AgentExecutor._execute_single_native_tool_call, responsibility: "Resolve and invoke _available_functions[func_name] for one native call." }
+      - { id: crew-plan-01-plan, track: planning · conditional, label: Planning gate, subject_id: crewai, source_path: lib/crewai/src/crewai/experimental/agent_executor.py, symbol: AgentExecutor.generate_plan, responsibility: Run only when Agent.planning_enabled is true and create todos from plan steps. }
+      - { id: crew-plan-02-lazy, track: planning · conditional, label: Lazy step executor, subject_id: crewai, source_path: lib/crewai/src/crewai/experimental/agent_executor.py, symbol: AgentExecutor._ensure_step_executor, responsibility: Lazily construct StepExecutor only after todos exist. }
+      - { id: crew-plan-03-execute, track: planning · conditional, label: Planned step, subject_id: crewai, source_path: lib/crewai/src/crewai/agents/step_executor.py, symbol: StepExecutor.execute, responsibility: Execute one planned todo; absent from the default planning-disabled path. }
 
   - id: autogpt-flowise-evolution
     page_item_id: project-history-autogpt-flowise
@@ -2879,12 +2996,60 @@ describe('Dify and CrewAI dissections', () => {
 
   it('states Dify and CrewAI boundaries without marketing claims', () => {
     const dify = readFileSync('docs/projects/dify.md', 'utf8')
-    expect(dify).toContain('修改版 Apache-2.0')
+    expect(dify).toContain('编号主链只选择 blocking')
+    expect(dify).toContain('streaming 是独立旁路')
+    expect(dify).toContain('WorkflowRunApi.post')
+    expect(dify).toContain('AppGenerateService.generate')
+    expect(dify).toContain('AppGenerateService._run_with_guardrails')
+    expect(dify).toContain('AppMode.WORKFLOW')
+    expect(dify).toContain('WorkflowAppGenerator._generate_worker')
+    expect(dify).toContain('WorkflowBasedAppRunner._init_graph')
     expect(dify).toContain('Graphon')
+    expect(dify).toContain('Graph.init')
+    expect(dify).toContain('DifyNodeFactory.create_node')
+    expect(dify).toContain('agent_node_kind == dify_agent')
+    expect(dify).toContain('WorkflowEntry 接收已经创建的 Graph')
+    expect(dify).toContain('GraphEngine.run → worker → Node.run')
+    expect(dify).toContain('create_run → stream_events')
+    expect(dify).toContain('WorkflowAppRunner._handle_event')
+    expect(dify).toContain('WorkflowAppQueueManager')
+    expect(dify).toContain('WorkflowAppGenerateTaskPipeline')
+    expect(dify).toContain('内部 typed response')
+    expect(dify).toContain('最终 public payload')
+    expect(dify).toContain('先订阅 topic，再投递 Celery `_AppRunner`')
+    expect(dify).toContain('两类 Runner 不是同一个对象')
+    expect(dify).toContain('修改版 Apache-2.0')
+    expect(dify).toContain('持久化也不归 WorkflowEntry 单独负责')
+    expect(dify).not.toContain('WorkflowEntry 创建 GraphEngine')
+    expect(dify).not.toContain('AgentNode 直接输出 SSE')
+    for (const id of ['IQ-02-B', 'IQ-06-A', 'IQ-10-A']) {
+      expect(dify).toContain(id)
+    }
+
     const crew = readFileSync('docs/projects/crewai.md', 'utf8')
-    expect(crew).toContain('sequential process')
+    expect(crew).toContain('Process.sequential')
+    expect(crew).toContain('Task.async_execution=false')
+    expect(crew).toContain('Agent.planning=false')
+    expect(crew).toContain('prepare_kickoff → setup_agents → Agent.create_agent_executor')
+    expect(crew).toContain('experimental.AgentExecutor.invoke')
+    expect(crew).toContain('text ReAct 与 native tool 是二选一的条件分支')
+    expect(crew).toContain('call_llm_and_parse → execute_tool_action → ToolUsage.use → ToolUsage._use → CrewStructuredTool.invoke')
+    expect(crew).toContain('call_llm_native_tools → execute_native_tool → _execute_single_native_tool_call → _available_functions[...]')
+    expect(crew).toContain('StepExecutor 只在 planning_enabled')
+    expect(crew).toContain('todos 已生成后懒创建')
+    expect(crew).toContain('CrewAgentExecutor 已 deprecated')
+    expect(crew).toContain('Task._execute_core 构造并持有 TaskOutput')
+    expect(crew).toContain('`_export_output` 只负责结构化输出转换')
+    expect(crew).toContain('Crew._create_crew_output 构造 CrewOutput')
     expect(crew).toContain('角色名称不会自动形成权限隔离')
+    expect(crew).toContain('消融实验显示增益')
+    expect(crew).not.toContain('CrewAgentExecutor/StepExecutor 驱动工具循环')
+    for (const id of ['IQ-07-A', 'IQ-07-B', 'IQ-07-C']) {
+      expect(crew).toContain(id)
+    }
+
     expect(`${dify}\n${crew}`).not.toMatch(/最佳框架|生产级首选|Star 数/u)
+    expect(`${dify}\n${crew}`).not.toMatch(/^## Lab$/gmu)
   })
 })
 ```
@@ -2901,35 +3066,37 @@ Create `docs/projects/dify.md`:
 
 ```md
 ---
-title: Dify：一次请求怎样进入工作流图
-description: 只追踪 service API、AppRunner、WorkflowEntry、Graphon、节点和响应事件这一条链。
+title: Dify：blocking 请求怎样穿过工作流图
+description: 固定 service API 的 blocking 主链，并把 streaming 作为独立交付旁路。
 ---
 
-# Dify：一次请求怎样进入工作流图
+# Dify：blocking 请求怎样穿过工作流图
 
 ## 30 秒结论
 
-Dify 把应用配置、模型、工具、知识与工作流组织成平台。真正执行不是“画布自己跑起来”，而是请求进入 AppRunner，由 WorkflowEntry 配置 Graphon，引擎调度节点并把事件转换成响应。
+Dify 的画布不是执行者。编号主链只选择 blocking：Service API 经过生成服务与 workflow generator/runner，先由 `Graph.init` 和 `DifyNodeFactory.create_node` 得到图及节点，再把已经创建的 Graph 交给 WorkflowEntry；Graphon 推进节点后，事件依次经过 queue、pipeline、内部 typed response 和最终 public payload。streaming 是独立旁路，不能混进这条同步返回链。
 
 ## 为什么选
 
-它适合观察低代码平台如何把编辑态配置变成运行态控制流，以及多租户、插件、持久化和可观测层为什么不能被一张画布替代。
+它适合观察低代码平台怎样把编辑态配置变成运行态控制流，也能暴露平台边界：多租户、权限、插件、队列、交付方式与许可证限制都不会被一张画布消除。
 
 ## 版本与边界
 
 <ProjectMeta project-id="project-dify" />
 
-本页固定在 1.17.1，只追踪 service API 的 workflow 执行。数据集、插件市场、计费、前端编辑器和云服务不展开。
+本页固定在 1.17.1（commit `8387590ace4a094de812b7847fc6a4c3a27cd52b`），只解释 `WorkflowRunApi.post` 接收的 service API workflow 请求。数据集、插件市场、计费、前端编辑器和云服务不展开；主链固定 `response_mode=blocking`。
 
 ## 原创建筑图
 
 <ProjectCallChain project-id="project-dify" />
 
-Graphon 是固定版本中实际的图执行依赖；页面必须把 Dify 的适配层与 Graphon 引擎分开标注。
+图中两个 blocking track 是同一条编号链为控制复杂度而分段，第三个 track 才是 streaming side path。Graphon 是固定版本中的图执行依赖；Dify 的装配、事件与响应适配层必须和 Graphon 引擎分开读。
 
 ## 唯一纵向调用链
 
-从 workflow controller 进入 AppGenerator/AppRunner，再到 WorkflowEntry、GraphEngine、NodeFactory、AgentNode 和 response converter。只追这一条链，不从头解释整个仓库。
+blocking 主链按源码顺序为：`WorkflowRunApi.post → AppGenerateService.generate → AppGenerateService._run_with_guardrails → AppGenerateService._dispatch_generate(AppMode.WORKFLOW, streaming=false) → WorkflowAppGenerator.generate → WorkflowAppGenerator._generate → WorkflowAppGenerator._generate_worker → WorkflowAppRunner.run → WorkflowBasedAppRunner._init_graph → Graph.init + DifyNodeFactory.create_node → DifyAgentNode.__init__（仅 agent_node_kind == dify_agent）→ WorkflowEntry(existing Graph) → GraphEngine.run → worker → Node.run → DifyAgentNode._run/_run_inner → create_run → stream_events → WorkflowAppRunner._handle_event → WorkflowAppQueueManager → WorkflowAppGenerateTaskPipeline → WorkflowResponseConverter 内部 typed response → WorkflowAppGenerateResponseConverter 最终 public payload`。
+
+WorkflowEntry 接收已经创建的 Graph，再配置并运行 GraphEngine；GraphEngine 并不负责创建节点。DifyAgentNode 也不直接输出 SSE，它把 agent backend 事件适配为图节点事件。
 
 ## 关键源码入口
 
@@ -2937,21 +3104,23 @@ Graphon 是固定版本中实际的图执行依赖；页面必须把 Dify 的适
 
 ## 一次请求的数据流
 
-请求先经过应用与访问校验，生成运行配置和变量池。WorkflowEntry 创建 GraphEngine 并叠加执行限制、可观测与持久化层；NodeFactory 按版本解析节点，节点产生事件，响应转换器再把内部事件变成调用方可消费的输出。
+blocking 请求先完成应用校验、配额与并发 guardrail，再选择 `AppMode.WORKFLOW`。generator 创建 queue manager 和工作线程；runner 建变量池并初始化 Graph，`DifyNodeFactory.create_node` 依据节点类型与版本构造节点。只有配置为 agent v2 且 `agent_node_kind == dify_agent` 时才进入 DifyAgentNode，它通过 backend `create_run → stream_events` 产生节点事件。`WorkflowAppRunner._handle_event` 把 Graphon 事件转换成 app queue event，`WorkflowAppGenerateTaskPipeline` 消费并聚合；通用 `WorkflowResponseConverter` 只生成内部 typed response，最后由 `WorkflowAppGenerateResponseConverter` 映射 public payload。
+
+streaming 旁路先订阅 topic，再投递 Celery `_AppRunner`；worker 进入同一套 WorkflowAppGenerator/WorkflowAppRunner 执行，完成 public mapping 后写入 topic，请求进程再 `retrieve_events` 并转成 SSE。这里的 Celery `_AppRunner` 与执行工作流的 `WorkflowAppRunner` 是两类 Runner 不是同一个对象。
 
 ## 阅读练习
 
-1. 从 controller 找到 AppRunner 的创建位置。
-2. 在 WorkflowEntry 中列出 GraphEngine 之外叠加的三个工程层。
-3. 找出节点类型和版本如何进入 NodeFactory。
+1. 从 `WorkflowRunApi.post` 追到 `_dispatch_generate`，说明 blocking 分支在哪里确定。
+2. 从 `_init_graph` 追踪 `Graph.init` 与 `DifyNodeFactory.create_node`，解释为什么 WorkflowEntry 拿到的是 existing Graph。
+3. 对照 blocking 与 streaming track，标出 public mapping、topic 写入、retrieve 和 SSE 的先后关系。
 
 ## 失败边界
 
-节点执行失败、人工输入暂停、执行上限和响应流中断是不同状态。不能把“前端仍显示流程图”当作运行继续，也不能在恢复时忽略已经发生的外部副作用。
+请求被 guardrail 拒绝、节点失败、agent backend 流中断、人工输入暂停、Graphon 执行上限和响应交付中断是不同状态。恢复前必须区分图执行是否已产生外部副作用；页面仍显示流程图或 SSE 连接仍存在，都不能证明节点成功。
 
 ## 生产边界
 
-平台封装不自动保证工作流适合 Agent、工具最小权限、数据隔离或结果正确。Dify 使用修改版 Apache-2.0，多租户服务与前端标识复用必须先读根许可证。
+执行限制、可观测与部分状态层会装配到 GraphEngine，但持久化也不归 WorkflowEntry 单独负责；队列、task pipeline、数据库仓储与 streaming topic 各有职责。平台封装也不自动保证工具最小权限、租户数据隔离或输出正确。Dify 使用修改版 Apache-2.0，根许可证对多租户服务、前端标识及外观专利另有附加条件，商业或平台复用必须逐条核对。
 
 ## 高频面试点
 
@@ -2961,11 +3130,11 @@ Graphon 是固定版本中实际的图执行依赖；页面必须把 Dify 的适
 
 ## 升级复核
 
-比较 controller、AppRunner、WorkflowEntry、Graphon 版本、NodeFactory、AgentNode 和事件转换。许可证文本或 Graphon 主版本变化必须触发人工复核。
+逐项复核 controller、AppGenerateService、WorkflowAppGenerator、两类 Runner、Graphon 版本、NodeFactory、agent node、WorkflowEntry、queue、task pipeline 与两级 response converter。Graphon 主版本、streaming transport 或根许可证变化都必须触发人工复核。
 
 ## 来源与归因
 
-执行图为本书原创重绘，依据固定 commit 的 Dify 源码。页面不复用 Dify Logo、产品截图或受外观专利保护的视觉表达。
+调用链图为本书原创重绘，依据固定 commit 的 12 个 Dify 源文件。页面不复用 Dify Logo、产品截图或受外观专利保护的视觉表达。
 ```
 
 - [ ] **Step 4: Create the CrewAI page**
@@ -2974,35 +3143,37 @@ Create `docs/projects/crewai.md`:
 
 ```md
 ---
-title: CrewAI：角色协作怎样落到任务执行
-description: 沿 sequential process 追踪 Crew、Task、Agent、Executor、Tool 与输出，不把角色扮演当工程隔离。
+title: CrewAI：默认 sequential 怎样产生 CrewOutput
+description: 固定同步、无 planning 的 sequential 主链，再分开阅读 text、native tool 与 planning 条件分支。
 ---
 
-# CrewAI：角色协作怎样落到任务执行
+# CrewAI：默认 sequential 怎样产生 CrewOutput
 
 ## 30 秒结论
 
-CrewAI 用 Crew、Process、Task 与 Agent 组织协作，再由 executor 和 tool usage 完成具体循环。角色名称不会自动形成权限隔离，也不会自动带来质量增益。
+本页的唯一默认主链固定为 `Process.sequential + Task.async_execution=false + Agent.planning=false`。CrewAI 用 Crew、Task 与 Agent 表达编排，但真正执行由默认 `experimental.AgentExecutor` 完成；角色名称不会自动形成权限隔离，角色数量也不是多 Agent 价值的证据。
 
 ## 为什么选
 
-它能把第 7 章的 handoff、共享状态、协调成本和角色消融落到源码。页面选择 sequential process，保证调用链可追踪，而不是罗列所有模式。
+它能把第 7 章的 handoff、共享状态、协调成本和角色消融落到源码。只有权限、上下文或可并行工作确实分离，并且消融实验显示增益，多个 Agent 才有工程价值。
 
 ## 版本与边界
 
 <ProjectMeta project-id="project-crewai" />
 
-固定版本已采用 `lib/crewai/...` monorepo 路径。Flow、A2A、企业平台和全部工具集合不进入本页主链。
+本页固定在 1.15.22（commit `7a01af27912c2b142d8bac70d1894343f8b91bd1`）的 `lib/crewai/...` monorepo 包。默认条件是同步 task 且关闭 agent planning；Flow、A2A、hierarchical process、企业平台和完整工具集合不进入主链。
 
 ## 原创建筑图
 
 <ProjectCallChain project-id="project-crewai" />
 
-图中 Task 是可验证工作单元，Agent 是执行主体，Process 决定编排；三者不能只靠自然语言角色名连接。
+两个 default sequential track 是一条连续主链的分段。text ReAct、native tool 与 planning 是条件 track，不应串成每次执行都会经过的调用栈；每个 track 都控制在 12 个节点以内。
 
 ## 唯一纵向调用链
 
-从 `Crew.kickoff` 进入 process 选择和共享执行状态，再由 Task 分配 Agent，CrewAgentExecutor/StepExecutor 驱动工具循环，最后返回 TaskOutput。
+默认链为：`Crew.kickoff → prepare_kickoff → setup_agents → Agent.create_agent_executor → Process.sequential → Crew._run_sequential_process → Crew._execute_tasks → prepare_task_execution → Task.execute_sync → Task._execute_core → Agent.execute_task → experimental.AgentExecutor.invoke → AgentFinish.output → Agent._finalize_task_execution → Task._execute_core 构造并持有 TaskOutput → Crew._create_crew_output 构造 CrewOutput`。
+
+`prepare_kickoff → setup_agents → Agent.create_agent_executor` 发生在 process 分支选择之前。默认 executor 是 `experimental.AgentExecutor.invoke`；CrewAgentExecutor 已 deprecated，只是兼容实现，不能再画成默认主链。
 
 ## 关键源码入口
 
@@ -3010,21 +3181,23 @@ CrewAI 用 Crew、Process、Task 与 Agent 组织协作，再由 executor 和 to
 
 ## 一次请求的数据流
 
-输入进入 Crew 后被绑定到任务。sequential process 选择当前 Task，Agent 构造任务上下文，executor 推进模型与工具步骤，ToolUsage 记录调用结果，TaskOutput 回到 Crew 供下一项任务使用。
+输入进入 Crew 后先完成 kickoff 准备和 agent executor 装配，再选择 `Process.sequential`。`Crew._execute_tasks` 在 `Task.async_execution=false` 下准备当前 task，`Task._execute_core` 委托 `Agent.execute_task`，随后进入 executor。`Agent.planning=false` 会绕过 planning/todos；executor 在 text ReAct 与 native tool 是二选一的条件分支，二者收敛到 `AgentFinish.output`，再由 Agent 完成 finalize。Task 对输出的所有权边界是：`Task._execute_core 构造并持有 TaskOutput`，`_export_output` 只负责结构化输出转换；最终 `Crew._create_crew_output 构造 CrewOutput`。
+
+text 分支是 `call_llm_and_parse → execute_tool_action → ToolUsage.use → ToolUsage._use → CrewStructuredTool.invoke`。native 分支是 `call_llm_native_tools → execute_native_tool → _execute_single_native_tool_call → _available_functions[...]`；它不经过 ToolUsage。两条分支都可能直接得到完成答案，不能强制画成先 text 后 native。
 
 ## 阅读练习
 
-1. 找出 `kickoff` 如何选择 process。
-2. 记录 Task、Agent 和 executor 各自拥有的状态。
-3. 设计一个移除第二个角色的消融实验，并写明比较指标。
+1. 从 `Crew.kickoff` 找出 `prepare_kickoff` 与 `Process.sequential` 的真实先后顺序。
+2. 对照 text 与 native track，说明各自在哪里解析或分派工具。
+3. 移除第二个角色做消融实验，比较任务质量、调用量、延迟、handoff 丢失与权限面，而不是比较角色数量。
 
 ## 失败边界
 
-工具失败、Agent 无进展、Task 输出不满足预期和跨角色信息丢失必须分别处理。把完整聊天转交给下一个角色既会复制噪声，也不能证明 handoff 正确。
+工具失败、Agent 无进展、Task 输出不满足契约、handoff 信息丢失和最终 CrewOutput 为空必须分别归因。完整聊天转交会复制噪声，却不能证明交接正确；角色名不同也不代表状态、权限或失败域已经隔离。
 
 ## 生产边界
 
-多 Agent 会增加调用、等待、共享状态和评测组合。只有当权限、上下文或可并行工作确实分离，并且消融实验显示增益时，才值得保留多个角色。
+多 Agent 会增加调用、等待、共享状态与评测组合。StepExecutor 只在 planning_enabled 为 true 且 todos 已生成后懒创建；默认 `Agent.planning=false` 主链不经过它。启用 planning 意味着额外模型调用、todo 状态、观察与重规划边界，必须单独评测，不能拿角色数量当收益。
 
 ## 高频面试点
 
@@ -3034,11 +3207,11 @@ CrewAI 用 Crew、Process、Task 与 Agent 组织协作，再由 executor 和 to
 
 ## 升级复核
 
-检查 monorepo 路径、`Crew.kickoff`、Process、Task、Agent core、executor、step executor 和 ToolUsage。新增模式先进入 Radar，不自动替换本页 sequential 主链。
+检查 monorepo 路径、kickoff utilities、Process、Task、Agent core、默认 experimental executor、text/native 工具路径、StepExecutor 条件和两个 output owner。新模式先进入 Radar，不自动替换本页固定默认链。
 
 ## 来源与归因
 
-调用链图为本书原创重绘，依据固定 commit 的 MIT 源码。页面不复用 CrewAI Logo、官网截图或营销对比图。
+调用链图为本书原创重绘，依据固定 commit 的 10 个 CrewAI 源文件和 MIT 许可证。页面不复用 CrewAI Logo、官网截图或营销对比图。
 ```
 
 - [ ] **Step 5: Run focused and full gates**
@@ -5413,7 +5586,7 @@ Send the production site URL, `/projects/` URL, six core URLs, historical URL, c
 - [ ] The overview maps all 13 subjects; watch-only subjects appear nowhere else.
 - [ ] AutoGPT is `active + historical`; Hermes/OpenClaw are `active + watch-only`; Flowise is `eol + archived:true + historical`.
 - [ ] MCP contribution scopes coexist without path-conflict errors; Dify, AutoGPT, and Flowise path scopes resolve by specificity.
-- [ ] Fifty-seven file-level source entrypoints exist at their pinned commits.
+- [ ] Sixty-four file-level source entrypoints exist at their pinned commits.
 - [ ] Course denominator is 26; project stage has seven items; engineering path has 17 steps; localStorage keys and old routes are unchanged.
 - [ ] All diagrams are original; direct assets, if any, have exact provenance records.
 - [ ] Source automation reports changes but never edits or publishes content.

@@ -238,7 +238,7 @@ page 级 `catalog_tier: core` 表示该页面属于主项目目录，不等于�
 - `pinned_ref` 用于人类识别；`pin_kind` 明确是 `release`、`tag` 或 `commit`。
 - 一个 ref 若存在，远端解析结果必须等于 `pinned_commit`。
 - 每个 `entrypoint` 的 schema 固定为 `path + symbols:string[] + responsibility`：`path` 在 subject 内唯一，`symbols` 至少包含一个非空字符串且不得重复，`responsibility` 非空；不再接受单数 `symbol` 字段。
-- `entrypoints` 必须在固定 commit 中存在；每个核心页面至少 3 个。普通核心页最多 8 个，MCP、OpenHands、评测等复杂跨层或双轨页面最多 12 个；初始目录共固定 57 个文件级 entrypoint。
+- `entrypoints` 必须在固定 commit 中存在；每个核心页面至少 3 个。普通核心页最多 8 个，MCP、OpenHands、评测、Dify、CrewAI 等复杂跨层、多轨或双轨页面最多 12 个；初始目录共固定 64 个文件级 entrypoint。
 - 调用链 step 的 `source_path` 必须匹配对应 subject 的一个 entrypoint，且 step 的单数 `symbol` 必须属于该 entrypoint 的 `symbols`；同一文件可通过数组声明多个实际使用符号。
 - `repository_status` 只能是 `active`、`archived` 或 `eol`；`archived` 是独立布尔事实，允许表达“已归档且 EOL”。
 - `repository_status: active` 必须搭配 `archived: false`；`repository_status: archived` 必须搭配 `archived: true`；`repository_status: eol` 可按 GitHub 实际归档状态搭配布尔值。
@@ -389,32 +389,39 @@ page 级 `catalog_tier: core` 表示该页面属于主项目目录，不等于�
 ### 10.5 Dify
 
 - **核心问题：** 一个低代码平台如何把 API 请求转成可执行工作流图，并在节点、事件和持久化之间分层。
-- **唯一链路：** service API workflow controller → Workflow AppGenerator/AppRunner → WorkflowEntry → Graphon GraphEngine → NodeFactory/Agent node → event/response converter。
+- **唯一链路：** 编号主链固定 blocking：`WorkflowRunApi.post` → `AppGenerateService` guardrails 与 `AppMode.WORKFLOW` 分派 → `WorkflowAppGenerator` → `WorkflowAppRunner` → `WorkflowBasedAppRunner._init_graph` → `Graph.init` / `DifyNodeFactory.create_node` → 条件 `DifyAgentNode` → `WorkflowEntry` 接收已有 Graph → `GraphEngine.run` → graph event adapter / queue → task pipeline → 内部 typed response → 最终 public payload。streaming 是独立旁路：先订阅 topic，再投递 Celery `_AppRunner`，复用共同执行核心后写 topic 并由请求进程取回为 SSE。
 - **关键入口：**
   - `api/controllers/service_api/app/workflow.py`
+  - `api/services/app_generate_service.py`
   - `api/core/app/apps/workflow/app_generator.py`
   - `api/core/app/apps/workflow/app_runner.py`
+  - `api/core/app/apps/workflow_app_runner.py`
+  - `api/core/app/apps/workflow/app_queue_manager.py`
+  - `api/core/app/apps/workflow/generate_task_pipeline.py`
+  - `api/core/app/apps/workflow/generate_response_converter.py`
+  - `api/core/app/apps/common/workflow_response_converter.py`
   - `api/core/workflow/workflow_entry.py`
   - `api/core/workflow/node_factory.py`
   - `api/core/workflow/nodes/agent_v2/agent_node.py`
-  - `api/core/app/apps/common/workflow_response_converter.py`
-- **必须讲清：** 只选一条纵向链，不从头解释整个平台；Graphon 是实际执行依赖；Dify 许可证不是无附加条件的 Apache-2.0。
+- **必须讲清：** `WorkflowEntry` 接收已由 `Graph.init` 与 `DifyNodeFactory` 构造的 Graph，GraphEngine 不负责创建节点；通用 `WorkflowResponseConverter` 只生成内部 typed response，`WorkflowAppGenerateResponseConverter` 才输出 public payload。持久化不归 `WorkflowEntry` 单独负责；blocking 主链与 streaming 交付旁路不可串成一个同步栈。Graphon 是实际执行依赖；Dify 许可证不是无附加条件的 Apache-2.0。
 - **面试题：** `iq-02-b`、`iq-06-a`、`iq-10-a`。
 
 ### 10.6 CrewAI
 
 - **核心问题：** 角色式多 Agent 如何把 Crew、Process、Task、Agent、Executor 和 Tool 串起来，以及协调成本在哪里出现。
-- **唯一链路：** `Crew.kickoff` → process 选择 → Task 执行 → Agent core → CrewAgentExecutor/StepExecutor → ToolUsage → Task output。
+- **唯一默认链：** 固定 `Process.sequential + Task.async_execution=false + Agent.planning=false`：`Crew.kickoff` → `prepare_kickoff` / `setup_agents` / `Agent.create_agent_executor` → `Process.sequential` → `Crew._run_sequential_process` / `_execute_tasks` → `prepare_task_execution` → `Task.execute_sync` / `_execute_core` → `Agent.execute_task` → 默认 `experimental.AgentExecutor.invoke` → `AgentFinish.output` → `Agent._finalize_task_execution` → `TaskOutput` → `Crew._create_crew_output`。
 - **关键入口：**
   - `lib/crewai/src/crewai/crew.py`
+  - `lib/crewai/src/crewai/crews/utils.py`
   - `lib/crewai/src/crewai/process.py`
-  - `lib/crewai/src/crewai/execution.py`
   - `lib/crewai/src/crewai/task.py`
   - `lib/crewai/src/crewai/agent/core.py`
-  - `lib/crewai/src/crewai/agents/crew_agent_executor.py`
-  - `lib/crewai/src/crewai/agents/step_executor.py`
+  - `lib/crewai/src/crewai/experimental/agent_executor.py`
+  - `lib/crewai/src/crewai/utilities/agent_utils.py`
   - `lib/crewai/src/crewai/tools/tool_usage.py`
-- **必须讲清：** 页面以 sequential process 作为一条可追踪链，不把它泛化为所有 CrewAI 模式；角色名称不自动形成权限隔离或质量增益。
+  - `lib/crewai/src/crewai/tools/structured_tool.py`
+  - `lib/crewai/src/crewai/agents/step_executor.py`
+- **必须讲清：** 页面以默认 synchronous sequential、planning-disabled 路径作为主链，不把它泛化为所有 CrewAI 模式。text ReAct 与 native tool 是互斥条件分支：前者经过 `ToolUsage.use/_use`，后者直接使用 `_execute_single_native_tool_call`；`StepExecutor` 只在 planning enabled 且 todos 已生成后懒创建。`CrewAgentExecutor` 已 deprecated，不属于默认主链；`Task._execute_core` 构造并持有 `TaskOutput`，`_export_output` 只做结构化字段转换。角色名称不自动形成权限隔离或质量增益。
 - **面试题：** `iq-07-a`、`iq-07-b`、`iq-07-c`。
 
 ## 11. 历史反例与前沿观察
@@ -547,7 +554,7 @@ Markdown（解释、反例、练习、生产边界）
 - `contentRegistry` 新增且仅新增 8 条项目路由；ID、规范化 route 唯一。
 - `project-index.yml` 包含 13 个 subject：9 个核心页 subject、2 个历史 subject、2 个 watch-only subject。
 - 六个核心页、一个总览和一个历史页均存在；每页 `project-id` 与 registry、项目索引一致。
-- 六个核心页各包含模板 13 个部分、一个主调用链、3–12 个固定源码入口和至少一个失败边界；全目录精确包含 57 个文件级 entrypoint。OpenHands 页面固定 9 个入口，评测页固定 12 个入口（SWE-bench 4 个、τ²-bench 8 个）。
+- 六个核心页各包含模板 13 个部分、一个主调用链、3–12 个固定源码入口和至少一个失败边界；全目录精确包含 64 个文件级 entrypoint。OpenHands 页面固定 9 个入口，评测页固定 12 个入口（SWE-bench 4 个、τ²-bench 8 个），Dify 固定 12 个，CrewAI 固定 10 个；Dify 与 CrewAI 多轨图中的每条可视化 track 均不得超过 12 个节点。
 - 页面所有源码链接使用 40 位固定 commit；不存在 `blob/main/` 或 `blob/master/`。
 - 许可证、仓库状态、教学层级和设计日 pin 与第 8 节逐项一致。
 - 页面引用的面试题 ID 全部存在于现有 42 题；题目数组、答案和分布不变。
