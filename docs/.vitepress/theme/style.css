@@ -2140,6 +2140,7 @@ summary {
 
 .project-call-chain li {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.4rem;
   min-width: 0;
   padding: 0.85rem;
