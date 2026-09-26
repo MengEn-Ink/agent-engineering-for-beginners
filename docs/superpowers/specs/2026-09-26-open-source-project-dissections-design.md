@@ -35,6 +35,7 @@ Hermes Agent 与 OpenClaw 只进入项目总览的“前沿高权限观察区”
 - Dify 使用附加限制的修改版 Apache-2.0；AutoGPT 与 Flowise 都是按目录或文件区分的混合许可，不能用一个宽泛的“开源许可”标签代替逐文件判断。
 - 官方仓库可公开访问不等于其中的截图、Logo、商标或第三方素材可自由复制。项目图默认原创重绘。
 - 本阶段不执行项目、不下载模型、不调用付费 API、不公布非本书自建的 benchmark 成绩。
+- 来源巡检基线补充人工核验结果：`pydantic-ai-repository` 固定记录 Pydantic AI v2.51.0，`google-adk-repository` 固定记录 Google ADK v2.10.0；两者均使用 `version: rolling`、`last_verified: 2026-09-26`、`review_by: 2026-10-26` 和各自 releases/latest watch URL，不因版本变化自动改写正文。
 
 ## 3. 目标读者与学习结果
 
@@ -479,7 +480,7 @@ AutoGPT 只追踪 `classic/original_autogpt/autogpt/app/main.py`、`agents/agent
 - `ProjectOverview.vue`：从项目索引生成核心、历史与 watch-only 三组入口；
 - `ProjectMeta.vue`：分别渲染固定版本、仓库状态、教学层级、许可证和核验日期；
 - `ProjectCallChain.vue`：把结构化步骤渲染成有序列表与原创关系图；
-- `ProjectSourceLinks.vue`：生成固定 SHA 的源码链接和路径说明。
+- `ProjectSourceLinks.vue`：生成固定 SHA 的源码链接和路径说明，并为打印输出显式渲染 `aria-hidden` 的完整 URL 文本；禁止依赖 CSS `attr(href)` 伪元素补 URL。
 
 组件只负责结构、状态与可访问性，不保存长篇解释。每个 Markdown 页面通过 `project-id` 绑定项目索引，并保留模板中的 13 个段落。
 
@@ -496,16 +497,20 @@ AutoGPT 只追踪 `classic/original_autogpt/autogpt/app/main.py`、`agents/agent
 5. 新版本或新提交只产生 `project_update_available`；归档、迁移、许可证变化产生 `project_review_required`；
 6. repository metadata、default-branch HEAD、pinned ref、entrypoint、license content、release/tag 等端点必须逐类校验响应 shape；语法合法但字段缺失或类型错误同样 fail closed；
 7. 页面超过 `review_by` 后静态 HTML 只显示中性“固定于 X，待按日期复核”，客户端可显示当前复核状态；页面与脚本共用 `Asia/Shanghai` 日期函数；
-8. HTTP 429、限流型 403、5xx、DNS、超时与 JSON 解析失败归为瞬时或网络错误，不能计为 healthy，也不能当永久死链；重试读取 `Retry-After` 与 `X-RateLimit-Reset`，等待时间有上限，测试通过注入 `now` 与 `sleepImpl` 保持确定性；
-9. schema 错误必须进入 Markdown 报告，但最多展示 20 条、每条最多 240 字符，并使用确定性的截断与省略标记，避免 Issue 无界膨胀；
-10. 自动化只上传报告并创建权威 Issue 或草稿 PR，绝不抓取上游正文自动写入书稿。
+8. HTTP 429、限流型 403、5xx、DNS、超时与 JSON 解析失败归为瞬时或网络错误，不能计为 healthy，也不能当永久死链；重试读取 `Retry-After` 与 `X-RateLimit-Reset`，单请求最多尝试 3 次，并通过注入 `clock` 与 `sleepImpl` 保持确定性；
+9. 一次完整项目扫描共享 120 秒 wall-clock 与 30 秒累计 sleep 预算；当前 subject 耗尽预算时同时报告 `project_retry_budget_exhausted` 与 `project_transient_error`，后续 subject 只报告 `project_scan_skipped_after_budget`，不得伪报 `project_network_error`；这些 finding 在 `--strict` 下全部阻断；
+10. schema 错误必须进入 Markdown 报告，但最多展示 20 条、每条最多 240 字符，并使用确定性的截断与省略标记，避免 Issue 无界膨胀；
+11. 自动化只上传报告并创建权威 Issue 或草稿 PR，绝不抓取上游正文自动写入书稿。
 
 权限保持两段式：扫描 job 只有 `contents: read`，checkout 使用 `persist-credentials: false`；写 Issue 的 job 不 checkout、不安装依赖，只读取扫描 artifact 并调用 GitHub API。feature branch 手动运行不得更新默认分支权威 Issue；workflow 使用并发组避免互相关闭或覆盖告警。
+
+来源索引刷新前，Pydantic AI 与 Google ADK 和既有四个仓库一起产生 6 条 `repository_updated`；提交 `5507d60` 写入上述人工基线后，报告固定为 `total: 33 / healthy: 29 / needs_review: 4`，只剩 LangGraph、CrewAI、Langfuse、Phoenix 的普通更新提醒。该前后对照属于验收证据，不把更新提醒解释为正文已经失效。
 
 ## 14. 图片、代码引用与 provenance
 
 - 六张主架构图和调用链图使用本项目原创 Vue/SVG/CSS；图下注明依据的 subject、ref、commit 与源码路径。
 - 默认不放项目 Logo、README 图片、产品 UI 截图或第三方 benchmark 图表。
+- Markdown 与构建 HTML 都必须结构化解析图片候选；覆盖 Markdown image、`img/src`、`img/srcset`、`picture/source`、`noscript`、SVG `href`/`xlink:href`、协议相对地址、反斜杠/控制字符和畸形 URL。只允许明确的本地、`data:` 与 `blob:` 候选，任何无法解析的候选 fail closed。
 - 代码只做短引或伪代码重述；直接引用必须精确到文件、固定 commit 和适用许可证，不复制大段实现。
 - 若确需直接素材，文件只能进入 `docs/public/project-assets/`，并登记到 `assets/provenance.yml`。
 
@@ -542,7 +547,15 @@ project-index.yml（固定版本、许可证、源码入口、调用链）
         └─ ProjectSourceLinks
 
 Markdown（解释、反例、练习、生产边界）
-        └─ 引用同一 project-id，不复制版本和链接
+        ├─ 引用同一 project-id，不复制版本和链接
+        └─ VitePress renderer ── publication-contracts.mjs
+                                  ├─ visible text / H2 / anchors
+                                  └─ image candidates
+
+dist HTML ── parse5 ── publication-contracts.mjs ── check-dist.mjs
+                         ├─ canonical POSIX/case-sensitive paths and symlink findings
+                         ├─ exact 26 course anchors and catalog-derived project anchors
+                         └─ complete eight-page publication boundary
 ```
 
 所有项目元数据在构建时静态渲染。页面运行时不请求 GitHub API，不暴露 token，也不会因上游临时不可用而失去正文。
@@ -553,9 +566,10 @@ Markdown（解释、反例、练习、生产边界）
 - 调用链使用原生 `<ol>` / `<li>`，CSS 只增强轨道；移除 marker 时显式保留 `role="list"` / `role="listitem"` 以兼容 Safari/VoiceOver。
 - 颜色不能单独表达 core、historical、watch-only 或失败状态，必须同时显示文本。
 - 源码路径允许容器内换行或局部滚动，不能造成页面级横向溢出。
+- metadata 行、源码行和调用链行都以 `minmax(0, 1fr)` 收缩；关键移动端和打印声明由 PostCSS 8.5.28 与 `postcss-selector-parser` 7.1.6 做作用域、specificity 和后续覆盖检查。
 - 触控目标至少 44px，`:focus-visible` 使用明确轮廓，不用高饱和整块背景。
 - 无 JavaScript 时，版本卡、调用链、源码入口、失败边界和来源仍完整可读。
-- 打印时展开所有折叠说明，显示完整固定 SHA 与 URL；隐藏纯交互 summary，不遗漏折叠后的源码入口。
+- 打印时隐藏交互 disclosure、显示独立打印副本，显式输出完整固定 SHA、许可证 URL 和每条源码 URL；不使用 `a[href]::after`。七个拆解 PDF 必须无空白页，并在处理 `ﬀ/ﬁ/ﬂ/ﬃ/ﬄ/ﬅ/ﬆ` 七种连字后仍能逐项匹配目录事实。
 - 原创图同时提供“怎么看”“不要误解”和纯文本有序版；纯视觉 SVG 使用明确 `aria-label`，结构性列表不套 `role="img"`。
 
 ## 17. 失败与降级
@@ -583,6 +597,7 @@ Markdown（解释、反例、练习、生产边界）
 - 页面引用的面试题 ID 全部存在于现有 42 题；题目数组、答案和分布不变。
 - AutoGPT/Flowise 只在历史页，Hermes/OpenClaw 只在 watch-only 区；它们不进入 CourseItem 或 readingPaths。
 - 不使用 Star、下载量或榜单名次证明工程质量；不声称本书取得官方 benchmark 成绩。
+- Markdown 契约使用 VitePress renderer 后的结构化节点与浏览器可见文本；注释、代码围栏、行内代码、`template/pre/svg/noscript/script/style` 不得伪造章节、链接、图片或禁用命令。
 
 ### 18.2 课程与路由
 
@@ -590,7 +605,8 @@ Markdown（解释、反例、练习、生产边界）
 - 六个核心项目在课程地图各出现一次；总览和历史页不计完成度。
 - engineering 路径恰好 17 站，原 10 站顺序不变，后接六个核心项目和交付型案例。
 - `/course/` SSR 恰好包含 26 个唯一课程链接；每个目标 HTML 存在。
-- dist 只允许本设计 8 个 `/projects` 页面，拒绝额外 `/projects/**` 与全部 `/labs/**`、`/capstone/**`。
+- dist 路径先规范化为 POSIX 形式并保持大小写敏感；拒绝绝对路径、盘符、NUL、逃逸路径、规范化碰撞、符号链接和悬空符号链接。只允许本设计 8 个 `/projects` 页面，拒绝额外 `/projects/**` 与全部 `/labs/**`、`/capstone/**`、`/superpowers/**`。
+- 课程页必须有且仅有 26 个规范的根相对 anchor；每个项目页的全部 anchor 必须与 catalog 推导出的页面、仓库、watch、许可证、源码和面试题集合完全相等，不接受缺失、重复、额外、query、fragment、userinfo、非标准端口或移动分支变体。
 - 新路由的 clean URL 与尾斜杠形式均为 200；全部旧 URL 保持 200。
 - process docs 与项目研究草稿不进入 dist。
 
@@ -604,17 +620,17 @@ Markdown（解释、反例、练习、生产边界）
 
 ### 18.4 浏览器与可访问性
 
-- 1440px 与 390px、浅色与深色分别检查总览和至少两个复杂页面。
+- 1440×1000 浅色与 390×844 深色分别检查全部八个项目页面，共 16 个页面/viewport 组合。
 - 页面无横向溢出；调用链、源码路径和版本卡在 390px 可读。
 - 键盘可依次访问项目导航、固定源码和相关面试题，焦点清晰。
 - 读屏能分别读出项目教学层级、仓库状态、固定版本、调用链顺序和风险说明。
 - 无 JavaScript 时八个页面的核心内容和链接完整可用。
-- 打印 PDF 包含全部调用链与源码入口，不遗漏折叠内容。
-- 控制台、资源请求和内部链接无错误。
+- 七个非索引项目 PDF 包含全部调用链、源码入口、固定 SHA、许可证与源码完整 URL；空白页数为 0，并用七种 Unicode 连字映射验证抽取文本。
+- HAR 必须在验收前清空并重新采集，报告本次真实 `requests` 与 `allowedAbortCount`；普通会话没有缺失/零状态或 `>=400`，无 JavaScript 会话只允许主动阻断的 `.js/.mjs` 为非正状态，且至少捕获一条此类阻断。控制台、页面错误和内部链接均为空。
 
 ### 18.5 完整门禁
 
-- `pnpm test`、`pnpm validate`、`pnpm build` 和 dist 校验全部通过；
+- `pnpm test`、`pnpm validate`、`pnpm build` 和结构化 dist 校验全部通过；`parse5@8.0.1`、`parse-srcset@1.0.2`、`postcss@8.5.28`、`postcss-selector-parser@7.1.6` 必须是直接开发依赖；
 - 项目来源真实巡检完成且没有永久失败或解析失败；
 - `git diff main...HEAD --check` 无输出；
 - Pages Actions 成功后，线上八个项目路由、课程地图、engineering 路径和旧入口复验通过。

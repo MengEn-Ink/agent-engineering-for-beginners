@@ -6,7 +6,7 @@
 
 **Architecture:** `contentRegistry` remains the only owner of public page identity. A new `sources/project-index.yml` owns repository pins, repository status, catalog tier, license scopes, source entrypoints, page-to-subject mappings, and call-chain data; a Node loader validates it for tests, builds, and weekly freshness checks, while a VitePress data loader exposes the same serializable data to four SSR-safe Vue components. Markdown owns teaching prose, course/navigation files reference stable item IDs, and automation may report upstream changes but never rewrite or publish content.
 
-**Tech Stack:** VitePress 1.6, Vue 3, TypeScript, JavaScript ESM, YAML 2.8, Vitest 3.2, GitHub Actions, GitHub REST API, GitHub Pages
+**Tech Stack:** VitePress 1.6, Vue 3, TypeScript, JavaScript ESM, YAML 2.8, Vitest 3.2, parse5 8.0.1, parse-srcset 1.0.2, PostCSS 8.5.28, postcss-selector-parser 7.1.6, GitHub Actions, GitHub REST API, GitHub Pages
 
 ---
 
@@ -18,6 +18,7 @@
 - `scripts/project-catalog.mjs` — schema parser, discriminated license validation, cross-reference validation, and build-time loader.
 - `scripts/project-catalog.d.mts` — TypeScript declaration for the Node catalog loader.
 - `scripts/check-projects.mjs` — bounded GitHub freshness scan that writes project review reports without editing content.
+- `scripts/publication-contracts.mjs` — shared parse5/VitePress-Markdown contract extractor for paths, visible text, anchors, headings, and every image candidate form.
 - `scripts/validate-provenance.mjs` — allowlist gate for any future file in `docs/public/project-assets/`.
 - `assets/provenance.yml` — empty versioned registry; no external asset is added in this phase.
 - `docs/.vitepress/theme/data/projectCatalog.data.ts` — VitePress build-time loader for the validated YAML catalog.
@@ -27,7 +28,7 @@
 - `docs/.vitepress/theme/components/ProjectOverview.vue` — SSR index for core, historical, and watch-only entries.
 - `docs/.vitepress/theme/components/ProjectMeta.vue` — fixed pin, repository status, catalog tier, and license summary.
 - `docs/.vitepress/theme/components/ProjectCallChain.vue` — one primary call chain with native list semantics and a text fallback.
-- `docs/.vitepress/theme/components/ProjectSourceLinks.vue` — fixed-commit GitHub source links.
+- `docs/.vitepress/theme/components/ProjectSourceLinks.vue` — fixed-commit GitHub source links plus explicit print-only URL text.
 - `docs/projects/index.md` — `/projects/` overview.
 - `docs/projects/mcp-python-sdk.md` — MCP specification and Python SDK dissection.
 - `docs/projects/aider.md` — Aider dissection.
@@ -47,16 +48,18 @@
 - `docs/.vitepress/theme/data/courseMap.ts` — add six core project items; project stage becomes seven items and total becomes 26.
 - `docs/.vitepress/theme/data/readingPaths.ts` — append six core pages and the delivery case to the engineering path; 17 stations total.
 - `docs/.vitepress/theme/index.ts` — register four project components.
-- `docs/.vitepress/theme/style.css` — restrained metadata, call-chain, mobile, focus, dark, and print rules.
+- `docs/.vitepress/theme/style.css` — restrained metadata, call-chain, mobile, focus, dark, print, and cascade-protected URL rules.
+- `docs/.vitepress/theme/components/ProjectMeta.vue` — retain the on-screen disclosure and add explicit wrapping print-only license URLs.
 - `docs/.vitepress/config.mts` — add project overview to the top nav and the exact eight-item project sidebar group.
 - `scripts/validate-content.mjs` — include project catalog and provenance validation.
-- `scripts/check-dist.mjs` — allow exactly eight project outputs, require 26 course targets, and keep all labs/capstone outputs forbidden.
+- `scripts/check-dist.mjs` — canonicalize output paths, reject symlinks/collisions, parse built HTML structurally, allow exactly eight project outputs, require 26 exact course targets, and keep all labs/capstone outputs forbidden.
 - `tests/course-map.spec.ts` — exact 39-item registry, 26-item course graph, and 17-step engineering path.
-- `tests/content.spec.ts` — project page template, public boundary, route, and component registration assertions.
+- `tests/content.spec.ts` — canonical path/symlink, structured HTML, strict course/project-anchor, remote-image, source-baseline, and public-boundary assertions.
 - `tests/source-freshness.spec.ts` — project freshness failure classification and token-scope regressions.
 - `.github/workflows/source-freshness.yml` — run the project scan in the read-only job and report from the token-isolated job.
-- `package.json` — add scoped Vue type checking, make build invoke it, and add `projects:check`.
-- `pnpm-lock.yaml` — lock `vue-tsc@3.3.11` added by the package manager.
+- `package.json` — add scoped Vue type checking and `projects:check`, plus direct parse5, parse-srcset, PostCSS, and selector-parser development dependencies.
+- `pnpm-lock.yaml` — lock `vue-tsc@3.3.11`, `parse5@8.0.1`, `parse-srcset@1.0.2`, `postcss@8.5.28`, and `postcss-selector-parser@7.1.6`.
+- `sources/source-index.yml` — record the manually verified Pydantic AI v2.51.0 and Google ADK v2.10.0 rolling baselines.
 - `README.md` — add project-reading entry and preserve the no-backend/no-Lab boundary.
 
 **Verify without editing:**
@@ -127,8 +130,8 @@ Expected: branch `feat/open-source-project-dissections`, clean worktree, HEAD `8
 | 26-item course, 29 tracked routes, 17-step engineering path, full nav | Task 9 |
 | Strict host/repo/ref/path/license provenance | Task 10 |
 | Default-branch HEAD, release, pin, path, license digest, permissions | Task 11 |
-| Exact eight-page dist allowlist and complete SSR contract | Task 12 |
-| Local mobile, keyboard, screen reader, no-JS, print and route evidence | Task 13 |
+| Canonical path/symlink boundary, structured HTML/Markdown, exact anchors, remote-image coverage, and eight-page SSR contract | Task 12 |
+| README and source baselines; all-page mobile/desktop, cascade, no-JS, print, fresh HAR, and route evidence | Task 13 |
 | Approved merge, Pages run, production HTTP and browser evidence | Task 14 |
 
 ### Task 1: Add the project catalog parser and schema validator
@@ -1854,6 +1857,7 @@ describe('project presentation primitives', () => {
     expect(getProjectSubject('hermes-agent').risk_tags).toEqual(['长期自主', '长期记忆', '外部系统'])
     expect(getProjectSubject('openclaw').risk_tags).toEqual(['长期自主', 'IM', '桌面控制', '外部系统'])
     expect(getProjectChain('aider-repo-to-verified-edit').steps).toHaveLength(21)
+
     for (const id of ['missing', 'toString', 'constructor', '__proto__']) {
       expect(() => getProjectPage(id)).toThrow(`Unknown project page: ${id}`)
       expect(() => getProjectSubject(id)).toThrow(`Unknown project subject: ${id}`)
@@ -1873,16 +1877,42 @@ describe('project presentation primitives', () => {
     )
   })
 
-  it('registers four components with native list and disclosure semantics', () => {
+  it('URL-encodes each declared source path segment without encoding separators', () => {
+    const specialCatalog = structuredClone(projectCatalog)
+    const aider = specialCatalog.subjects.find((subject) => subject.id === 'aider')!
+    aider.entrypoints.push({
+      path: 'docs/path with space/#guide?100%.md',
+      symbols: ['render special path'],
+      responsibility: 'Exercise reserved URL characters in a declared source path.',
+    })
+    const specialLookup = createProjectCatalogLookup(specialCatalog)
+
+    expect(specialLookup.projectSourceUrl('aider', 'docs/path with space/#guide?100%.md')).toBe(
+      'https://github.com/Aider-AI/aider/blob/a4be6ccd87ebaa59b361f3f028d116ce1761b626/docs/path%20with%20space/%23guide%3F100%25.md',
+    )
+  })
+
+  it('loads the catalog relative to the loader module instead of the process working directory', () => {
+    const loader = readFileSync('docs/.vitepress/theme/data/projectCatalog.data.ts', 'utf8')
+    expect(loader).not.toContain('process.cwd()')
+    expect(loader).not.toContain('watchedFiles[0]')
+    expect(loader).toContain('import.meta.url')
+    expect(loader).toContain("new URL('../../../../sources/project-index.yml', import.meta.url)")
+  })
+
+  it('registers four SSR-safe components with native list and disclosure semantics', () => {
     const loader = readFileSync('docs/.vitepress/theme/data/projectCatalog.data.ts', 'utf8')
     expect(loader).toContain("import { defineLoader } from 'vitepress'")
     expect(loader).not.toContain('type { Loader }')
+
     const core = readFileSync('docs/.vitepress/theme/data/projectCatalogCore.ts', 'utf8')
     expect(core).not.toContain('projectCatalog.data')
+
     const theme = readFileSync('docs/.vitepress/theme/index.ts', 'utf8')
     for (const name of ['ProjectOverview', 'ProjectMeta', 'ProjectCallChain', 'ProjectSourceLinks']) {
       expect(theme).toContain(`'${name}'`)
     }
+
     const chain = readFileSync('docs/.vitepress/theme/components/ProjectCallChain.vue', 'utf8')
     expect(chain).toContain('<figure')
     expect(chain).toContain('class="project-architecture"')
@@ -1893,6 +1923,7 @@ describe('project presentation primitives', () => {
     expect(chain).toContain('源码事实：')
     expect(chain).toContain('本书归纳：')
     expect(chain).toContain('不要误解')
+
     const meta = readFileSync('docs/.vitepress/theme/components/ProjectMeta.vue', 'utf8')
     expect(meta).toContain('仓库状态')
     expect(meta).toContain('教学层级')
@@ -1902,9 +1933,13 @@ describe('project presentation primitives', () => {
     expect(meta).toContain('scope.basis')
     expect(meta).toContain('scope.path_or_glob ?? scope.selector')
     expect(meta).toContain('projectSourceUrl(subject.id, source.path)')
+
     const sources = readFileSync('docs/.vitepress/theme/components/ProjectSourceLinks.vue', 'utf8')
-    for (const field of ['row.path', 'row.symbols', 'row.responsibility']) expect(sources).toContain(field)
-    expect(sources).toContain("row.symbols.join(' · ')")
+    for (const field of ['row.path', 'row.symbols', 'row.responsibility']) {
+      expect(sources).toContain(field)
+    }
+    expect(sources).not.toContain('row.symbol }}')
+
     const overview = readFileSync('docs/.vitepress/theme/components/ProjectOverview.vue', 'utf8')
     expect(overview).toContain('subject.risk_tags')
     for (const id of ['frontier-agent-security-evaluation', 'chapter-09-safety-recovery', 'radar']) {
@@ -1912,15 +1947,426 @@ describe('project presentation primitives', () => {
     }
   })
 
-  it('uses only local theme tokens and includes mobile, focus, dark, and print rules', () => {
+  it('parses responsive project rules by media scope and effective cascade', async () => {
+    const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
+    expect(pkg.devDependencies.postcss).toBe('8.5.28')
+    expect(pkg.devDependencies['postcss-selector-parser']).toBe('7.1.6')
+
+    const sourceComponent = readFileSync(
+      'docs/.vitepress/theme/components/ProjectSourceLinks.vue',
+      'utf8',
+    )
+    expect(sourceComponent).toContain('class="project-source-print-url"')
+    expect(sourceComponent).toContain('aria-hidden="true"')
+    expect(sourceComponent).toContain('{{ row.href }}')
+    expect(readFileSync('docs/.vitepress/theme/components/ProjectMeta.vue', 'utf8'))
+      .toContain('class="project-license-print-url"')
+
+    const { default: postcss } = await import('postcss')
+    const { default: selectorParser } = await import('postcss-selector-parser')
+    expect(selectorParser).toBeTypeOf('function')
+    const root = postcss.parse(readFileSync('docs/.vitepress/theme/style.css', 'utf8'))
+    const rules: any[] = []
+    root.walkRules((rule) => rules.push(rule))
+
+    const selectors = (rule: any) => postcss.list.comma(rule.selector).map((value) => value.trim())
+    const scope = (rule: any) => {
+      let parent = rule.parent
+      while (parent && parent !== root) {
+        if (parent.type === 'atrule' && parent.name === 'media') {
+          return parent.params.replace(/\s+/gu, '').toLowerCase()
+        }
+        parent = parent.parent
+      }
+      return 'root'
+    }
+    const findExactRule = (expectedSelectors: string[], expectedScope: string) => {
+      const expected = [...expectedSelectors].sort()
+      const matches = rules.filter((rule) =>
+        scope(rule) === expectedScope
+        && JSON.stringify([...selectors(rule)].sort()) === JSON.stringify(expected))
+      expect(matches, `${expectedScope}: ${expectedSelectors.join(', ')}`).toHaveLength(1)
+      return matches[0]
+    }
+    const declarations = (rule: any) => Object.fromEntries(
+      rule.nodes
+        .filter((node: any) => node.type === 'decl')
+        .map((node: any) => [node.prop, { value: node.value, important: Boolean(node.important) }]),
+    )
+    const expectEffectiveRule = (
+      expectedSelectors: string[],
+      expectedScope: string,
+      expectedDeclarations: Record<string, { value: string, important?: boolean }>,
+    ) => {
+      const rule = findExactRule(expectedSelectors, expectedScope)
+      const actual = declarations(rule)
+      for (const [property, expected] of Object.entries(expectedDeclarations)) {
+        expect(actual[property], `${rule.selector} ${property}`).toEqual({
+          value: expected.value,
+          important: expected.important ?? false,
+        })
+      }
+      const laterRules = rules.slice(rules.indexOf(rule) + 1)
+      for (const selector of expectedSelectors) {
+        for (const property of Object.keys(expectedDeclarations)) {
+          const overrides = laterRules.filter((candidate) =>
+            scope(candidate) === expectedScope
+            && selectors(candidate).includes(selector)
+            && Boolean(declarations(candidate)[property]))
+          expect(overrides, `later ${expectedScope} override: ${selector} ${property}`).toEqual([])
+        }
+      }
+    }
+
+    expectEffectiveRule(['.project-meta > ul > li'], 'root', {
+      'grid-template-columns': { value: 'minmax(0, 1fr)', important: true },
+      'min-width': { value: '0', important: true },
+    })
+    expectEffectiveRule(['.project-meta > ul > li > *'], 'root', {
+      'min-width': { value: '0', important: true },
+    })
+    expectEffectiveRule(['.project-source-links > li'], 'root', {
+      'grid-template-columns': { value: 'minmax(0, 1fr)' },
+    })
+    expectEffectiveRule(['.project-call-chain li'], 'root', {
+      'grid-template-columns': { value: 'minmax(0, 1fr)' },
+      'min-width': { value: '0' },
+    })
+    expectEffectiveRule(['.project-license-print-url'], 'root', {
+      'overflow-wrap': { value: 'anywhere' },
+    })
+    expectEffectiveRule(['.project-source-print-url'], 'root', {
+      display: { value: 'none' },
+    })
+
+    expectEffectiveRule(
+      ['.project-architecture-nodes', '.project-call-chain'],
+      '(max-width:700px)',
+      { 'grid-template-columns': { value: '1fr' } },
+    )
+    expectEffectiveRule(
+      ['.project-meta', '.project-chain-section', '.project-overview section'],
+      '(max-width:700px)',
+      { padding: { value: '0.9rem' } },
+    )
+
+    expectEffectiveRule(
+      ['.project-meta > ul', '.project-source-links', '.project-call-chain'],
+      'print',
+      { display: { value: 'block' } },
+    )
+    expectEffectiveRule(
+      ['.project-meta > ul > li', '.project-source-links > li', '.project-call-chain li'],
+      'print',
+      { display: { value: 'block' }, 'break-inside': { value: 'avoid' } },
+    )
+    expectEffectiveRule(
+      ['.project-meta > ul > li > *', '.project-source-links > li > *', '.project-call-chain li > *'],
+      'print',
+      { display: { value: 'block' } },
+    )
+    expectEffectiveRule(['.project-source-print-url'], 'print', {
+      display: { value: 'block', important: true },
+      'max-width': { value: '100%', important: true },
+      'overflow-wrap': { value: 'anywhere', important: true },
+      'white-space': { value: 'normal', important: true },
+    })
+
+    const mediaAncestors = (rule: any) => {
+      const ancestors: string[] = []
+      let parent = rule.parent
+      while (parent && parent !== root) {
+        if (parent.type === 'atrule' && parent.name === 'media') ancestors.unshift(parent.params)
+        parent = parent.parent
+      }
+      return ancestors
+    }
+    const mediaBranches = (params: string) => postcss.list.comma(params)
+      .map((branch) => branch.trim().toLowerCase())
+    const branchAllowsPrint = (branch: string) => {
+      if (/\bnot\s+print\b/u.test(branch)) return false
+      if (/\b(?:only\s+)?screen\b/u.test(branch) && !/\bnot\s+screen\b/u.test(branch)) return false
+      return true
+    }
+    const branchAllowsMobile = (branch: string, width = 390) => {
+      if (/\bnot\s+screen\b/u.test(branch)) return false
+      if (/\bprint\b/u.test(branch) && !/\bnot\s+print\b/u.test(branch)) return false
+      const min = [...branch.matchAll(/min-width\s*:\s*(\d+)px/gu)].map((match) => Number(match[1]))
+      const max = [...branch.matchAll(/max-width\s*:\s*(\d+)px/gu)].map((match) => Number(match[1]))
+      return min.every((value) => width >= value) && max.every((value) => width <= value)
+    }
+    const appliesToPrint = (rule: any) => mediaAncestors(rule)
+      .every((params) => mediaBranches(params).some(branchAllowsPrint))
+    const appliesToMobile = (rule: any) => mediaAncestors(rule)
+      .every((params) => mediaBranches(params).some((branch) => branchAllowsMobile(branch)))
+    const selectorAnalysis = (selector: string) => {
+      const selectorRoot = selectorParser().astSync(selector)
+      const selectorNode: any = selectorRoot.nodes[0]
+      const specificity = [0, 0, 0]
+      const classes = new Set<string>()
+      const tags = new Set<string>()
+      const pseudos = new Set<string>()
+      selectorNode.walk((node: any) => {
+        if (node.type === 'id') specificity[0] += 1
+        else if (node.type === 'class' || node.type === 'attribute') specificity[1] += 1
+        else if (node.type === 'pseudo') {
+          if (node.value.startsWith('::')) specificity[2] += 1
+          else specificity[1] += 1
+        } else if (node.type === 'tag') specificity[2] += 1
+        if (node.type === 'class') classes.add(node.value)
+        if (node.type === 'tag') tags.add(node.value)
+        if (node.type === 'pseudo') pseudos.add(node.value)
+      })
+      const nodes = selectorNode.nodes as any[]
+      const lastCombinator = nodes.reduce(
+        (index, node, candidate) => node.type === 'combinator' ? candidate : index,
+        -1,
+      )
+      const lastCompound = nodes.slice(lastCombinator + 1)
+      return {
+        classes,
+        lastHasLi: lastCompound.some((node) => node.type === 'tag' && node.value === 'li'),
+        pseudos,
+        specificity,
+        tags,
+      }
+    }
+    const compareSpecificity = (left: number[], right: number[]) => {
+      for (let index = 0; index < 3; index += 1) {
+        if (left[index] !== right[index]) return left[index] - right[index]
+      }
+      return 0
+    }
+    const criticalCascadeViolations = (css: string) => {
+      const fixtureRoot = postcss.parse(css)
+      const fixtureRules: any[] = []
+      fixtureRoot.walkRules((rule) => fixtureRules.push(rule))
+      const fixtureSelectors = (rule: any) => postcss.list.comma(rule.selector)
+        .map((value) => value.trim())
+      const fixtureDeclarations = (rule: any) => rule.nodes
+        .filter((node: any) => node.type === 'decl')
+      const fixtureMediaAncestors = (rule: any) => {
+        const ancestors: string[] = []
+        let parent = rule.parent
+        while (parent && parent !== fixtureRoot) {
+          if (parent.type === 'atrule' && parent.name === 'media') ancestors.unshift(parent.params)
+          parent = parent.parent
+        }
+        return ancestors
+      }
+      const fixtureAppliesToPrint = (rule: any) => fixtureMediaAncestors(rule)
+        .every((params) => mediaBranches(params).some(branchAllowsPrint))
+      const fixtureAppliesToMobile = (rule: any) => fixtureMediaAncestors(rule)
+        .every((params) => mediaBranches(params).some((branch) => branchAllowsMobile(branch)))
+      const exactRules = (selector: string, media: 'root' | 'print') => fixtureRules.filter((rule) => {
+        const exactSelector = fixtureSelectors(rule).length === 1 && fixtureSelectors(rule)[0] === selector
+        if (!exactSelector) return false
+        const ancestors = fixtureMediaAncestors(rule).map((value) => value.replace(/\s+/gu, '').toLowerCase())
+        return media === 'root' ? ancestors.length === 0 : ancestors.length === 1 && ancestors[0] === 'print'
+      })
+      const errors: string[] = []
+      const metaRules = exactRules('.project-meta > ul > li', 'root')
+      const printBaseRules = exactRules('.project-source-print-url', 'root')
+      const printRules = exactRules('.project-source-print-url', 'print')
+      if (metaRules.length !== 1) errors.push('missing approved mobile meta rule')
+      if (printBaseRules.length !== 1) errors.push('missing approved screen-hidden print URL rule')
+      if (printRules.length !== 1) errors.push('missing approved print URL rule')
+
+      const metaRule = metaRules[0]
+      const printRule = printRules[0]
+      const metaIndex = fixtureRules.indexOf(metaRule)
+      const printIndex = fixtureRules.indexOf(printRule)
+      const metaSpecificity = selectorAnalysis('.project-meta > ul > li').specificity
+      const printSpecificity = selectorAnalysis('.project-source-print-url').specificity
+      const metaExpected: Record<string, string> = {
+        'grid-template-columns': 'minmax(0, 1fr)',
+        'min-width': '0',
+      }
+      const printExpected: Record<string, string> = {
+        display: 'block',
+        'max-width': '100%',
+        'overflow-wrap': 'anywhere',
+        'white-space': 'normal',
+      }
+      if (metaRule) {
+        const actual = Object.fromEntries(fixtureDeclarations(metaRule).map((node: any) => [node.prop, node]))
+        for (const [property, value] of Object.entries(metaExpected)) {
+          if (actual[property]?.value !== value || !actual[property]?.important) {
+            errors.push(`approved mobile meta ${property} must be ${value} !important`)
+          }
+        }
+      }
+      if (printRule) {
+        const actual = Object.fromEntries(fixtureDeclarations(printRule).map((node: any) => [node.prop, node]))
+        for (const [property, value] of Object.entries(printExpected)) {
+          if (actual[property]?.value !== value || !actual[property]?.important) {
+            errors.push(`approved print URL ${property} must be ${value} !important`)
+          }
+        }
+      }
+
+      fixtureRules.forEach((rule, ruleIndex) => {
+        fixtureSelectors(rule).forEach((selector) => {
+          const analysis = selectorAnalysis(selector)
+          const declarationByProperty = Object.fromEntries(
+            fixtureDeclarations(rule).map((node: any) => [node.prop, node]),
+          )
+          const targetsMetaRow = analysis.classes.has('project-meta') && analysis.lastHasLi
+          if (targetsMetaRow && fixtureAppliesToMobile(rule)) {
+            for (const property of Object.keys(metaExpected)) {
+              const declaration = declarationByProperty[property]
+              if (!declaration || rule === metaRule) continue
+              if (declaration.important) {
+                errors.push(`competing mobile !important: ${selector} ${property}`)
+              } else if (metaRule && ruleIndex > metaIndex
+                && compareSpecificity(analysis.specificity, metaSpecificity) >= 0) {
+                errors.push(`later mobile override: ${selector} ${property}`)
+              }
+            }
+          }
+
+          if (analysis.classes.has('project-source-print-url') && fixtureAppliesToPrint(rule)) {
+            for (const property of Object.keys(printExpected)) {
+              const declaration = declarationByProperty[property]
+              if (!declaration || rule === printRule) continue
+              const approvedScreenDefault = rule === printBaseRules[0]
+                && property === 'display'
+                && declaration.value === 'none'
+                && !declaration.important
+              if (approvedScreenDefault) continue
+              if (declaration.important) {
+                errors.push(`competing print !important: ${selector} ${property}`)
+              } else if (printRule && ruleIndex > printIndex
+                && compareSpecificity(analysis.specificity, printSpecificity) >= 0) {
+                errors.push(`later print override: ${selector} ${property}`)
+              }
+            }
+          }
+
+          const hasLinkPseudo = analysis.tags.has('a')
+            && [...analysis.pseudos].some((pseudo) => pseudo.startsWith('::'))
+          if (hasLinkPseudo && fixtureDeclarations(rule).some((node: any) =>
+            node.prop === 'content' && /attr\(href\)/u.test(node.value))) {
+            errors.push(`link pseudo attr(href): ${selector}`)
+          }
+        })
+      })
+      return errors
+    }
+
     const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
-    expect(style).toContain('.project-meta')
-    expect(style).toContain('.project-call-chain')
-    expect(style).toContain('.project-overview')
-    expect(style).toContain('@media (max-width: 700px)')
-    expect(style).toContain('@media print')
-    expect(style).toContain(':focus-visible')
-    expect(style).not.toMatch(/project-[^{]+\{[^}]*#[0-9a-f]{6}/isu)
+    expect(criticalCascadeViolations(style)).toEqual([])
+    const legacyApprovedRulesRemain = (css: string) => {
+      const fixtureRoot = postcss.parse(css)
+      let meta = 0
+      let printUrl = 0
+      fixtureRoot.walkRules((rule) => {
+        const actual = postcss.list.comma(rule.selector).map((value) => value.trim())
+        if (actual.length === 1 && actual[0] === '.project-meta > ul > li' && rule.parent === fixtureRoot) meta += 1
+        if (actual.length === 1 && actual[0] === '.project-source-print-url'
+          && rule.parent?.type === 'atrule' && rule.parent.params.replace(/\s+/gu, '') === 'print') printUrl += 1
+      })
+      return meta === 1 && printUrl === 1
+    }
+    const ruleWithDeclarations = (
+      selector: string,
+      values: Array<[string, string, boolean?]>,
+    ) => {
+      const rule = postcss.rule({ selector })
+      for (const [prop, value, important = false] of values) {
+        rule.append(postcss.decl({ prop, value, important }))
+      }
+      return rule
+    }
+
+    const earlierPrint = root.clone()
+    const earlierPrintMedia = postcss.atRule({ name: 'media', params: 'print' })
+    earlierPrintMedia.append(ruleWithDeclarations(
+      '.project-source-links .project-source-print-url',
+      [['display', 'none', true]],
+    ))
+    earlierPrint.prepend(earlierPrintMedia)
+    expect(legacyApprovedRulesRemain(earlierPrint.toString())).toBe(true)
+    expect(criticalCascadeViolations(earlierPrint.toString()))
+      .toContain('competing print !important: .project-source-links .project-source-print-url display')
+
+    const laterSame = root.clone()
+    const laterPrintMedia = postcss.atRule({ name: 'media', params: 'print' })
+    laterPrintMedia.append(ruleWithDeclarations(
+      '.project-source-print-url',
+      [['display', 'none', true]],
+    ))
+    laterSame.append(laterPrintMedia)
+    expect(criticalCascadeViolations(laterSame.toString()))
+      .toContain('missing approved print URL rule')
+
+    const nestedNotScreen = root.clone()
+    const notScreenMedia = postcss.atRule({ name: 'media', params: 'not screen' })
+    const nestedColorMedia = postcss.atRule({ name: 'media', params: '(color)' })
+    nestedColorMedia.append(ruleWithDeclarations(
+      '.project-source-links .project-source-print-url',
+      [['white-space', 'nowrap', true]],
+    ))
+    notScreenMedia.append(nestedColorMedia)
+    nestedNotScreen.prepend(notScreenMedia)
+    expect(legacyApprovedRulesRemain(nestedNotScreen.toString())).toBe(true)
+    expect(criticalCascadeViolations(nestedNotScreen.toString()))
+      .toContain('competing print !important: .project-source-links .project-source-print-url white-space')
+
+    const mobileOverlap = root.clone()
+    const narrowMedia = postcss.atRule({ name: 'media', params: '(max-width: 390px)' })
+    narrowMedia.append(ruleWithDeclarations(
+      '.project-meta > ul > li.is-tight',
+      [['grid-template-columns', 'max-content'], ['min-width', 'max-content']],
+    ))
+    mobileOverlap.append(narrowMedia)
+    expect(legacyApprovedRulesRemain(mobileOverlap.toString())).toBe(true)
+    expect(criticalCascadeViolations(mobileOverlap.toString())).toEqual(expect.arrayContaining([
+      'later mobile override: .project-meta > ul > li.is-tight grid-template-columns',
+      'later mobile override: .project-meta > ul > li.is-tight min-width',
+    ]))
+
+    const commentAndWrongMedia = root.clone()
+    const commentRules: any[] = []
+    commentAndWrongMedia.walkRules((rule) => {
+      const actual = postcss.list.comma(rule.selector).map((value) => value.trim())
+      if (actual.length === 1 && actual[0] === '.project-meta > ul > li'
+        && rule.parent === commentAndWrongMedia) commentRules.push(rule)
+    })
+    const removedMeta = commentRules[0]
+    const wrongMedia = postcss.atRule({ name: 'media', params: '(min-width: 701px)' })
+    wrongMedia.append(removedMeta.clone())
+    removedMeta.replaceWith(postcss.comment({ text: removedMeta.toString() }))
+    commentAndWrongMedia.append(wrongMedia)
+    expect(criticalCascadeViolations(commentAndWrongMedia.toString()))
+      .toContain('missing approved mobile meta rule')
+
+    const allowedProjectWrapping = new Set([
+      '.project-meta code',
+      '.project-call-chain code',
+      '.project-source-links code',
+      '.project-license-print-url',
+      '.project-source-print-url',
+    ])
+    for (const rule of rules) {
+      const actual = declarations(rule)
+      if (actual['overflow-wrap']?.value === 'anywhere') {
+        for (const selector of selectors(rule).filter((value) => value.startsWith('.project'))) {
+          expect(allowedProjectWrapping.has(selector), `broad project wrap: ${selector}`).toBe(true)
+        }
+      }
+      if (selectors(rule).includes('.project-license-print p')) {
+        expect(actual['word-break']?.value).not.toBe('break-all')
+      }
+      if (selectors(rule).some((selector) => selector.includes('.project-source-links') && selector.includes('::after'))) {
+        expect(actual.content?.value ?? '').not.toMatch(/attr\(href\)/u)
+      }
+      if (selectors(rule).some((selector) => selector.startsWith('.project'))) {
+        for (const declaration of Object.values(actual) as Array<{ value: string }>) {
+          expect(declaration.value).not.toMatch(/#[0-9a-f]{6}\b/iu)
+        }
+      }
+    }
   })
 
   it('enforces the scoped Vue and TypeScript check during production builds', () => {
@@ -1934,6 +2380,7 @@ describe('project presentation primitives', () => {
     expect(tsconfig.compilerOptions.types).toEqual(['vitepress/client', 'node'])
   })
 })
+
 ```
 
 - [ ] **Step 2: Run the component tests and verify RED**
@@ -2157,24 +2604,39 @@ const statusLabel = (status: string) => statusLabels[status] ?? status
           <summary>许可证边界</summary>
           <p>{{ subject.license_summary }}</p>
           <ul role="list">
-            <li v-for="scope in subject.license_scopes" :key="`${scope.expression}-${scope.path_or_glob ?? scope.selector}`" role="listitem">
+            <li
+              v-for="scope in subject.license_scopes"
+              :key="`${scope.expression}-${scope.path_or_glob ?? scope.selector}`"
+              role="listitem"
+            >
               <code>{{ scope.basis }}</code> · <code>{{ scope.expression }}</code> ·
               <code>{{ scope.path_or_glob ?? scope.selector }}</code> · {{ scope.scope }} — {{ scope.note }}
             </li>
           </ul>
           <p>
             许可证原文：
-            <a v-for="source in subject.license_sources" :key="source.path" :href="projectSourceUrl(subject.id, source.path)"><code>{{ source.path }}</code></a>
+            <a
+              v-for="source in subject.license_sources"
+              :key="source.path"
+              :href="projectSourceUrl(subject.id, source.path)"
+            ><code>{{ source.path }}</code></a>
           </p>
         </details>
         <div class="project-license-print" aria-hidden="true">
           <p><strong>许可证摘要：</strong>{{ subject.license_summary }}</p>
           <ul>
-            <li v-for="scope in subject.license_scopes" :key="`print-${scope.expression}-${scope.path_or_glob ?? scope.selector}`">
+            <li
+              v-for="scope in subject.license_scopes"
+              :key="`print-${scope.expression}-${scope.path_or_glob ?? scope.selector}`"
+            >
               {{ scope.basis }} · {{ scope.expression }} · {{ scope.path_or_glob ?? scope.selector }} · {{ scope.scope }} — {{ scope.note }}
             </li>
           </ul>
-          <p v-for="source in subject.license_sources" :key="`print-license-${source.path}`">
+          <p
+            v-for="source in subject.license_sources"
+            :key="`print-license-${source.path}`"
+            class="project-license-print-url"
+          >
             许可证原文：{{ projectSourceUrl(subject.id, source.path) }}
           </p>
         </div>
@@ -2270,6 +2732,7 @@ const rows = computed(() => getProjectPage(props.projectId).subjects.flatMap((su
       <strong>{{ row.symbols.join(' · ') }}</strong>
       <span>{{ row.responsibility }}</span>
       <small>{{ row.repo }} · 固定 commit</small>
+      <span class="project-source-print-url" aria-hidden="true">{{ row.href }}</span>
     </li>
   </ol>
 </template>
@@ -2376,6 +2839,19 @@ Import and register the four components in `docs/.vitepress/theme/index.ts`. App
   border-top: 1px solid var(--reading-rule);
 }
 
+.project-meta > ul > li {
+  grid-template-columns: minmax(0, 1fr) !important;
+  min-width: 0 !important;
+}
+
+.project-meta > ul > li > * {
+  min-width: 0 !important;
+}
+
+.project-source-links > li {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .project-architecture {
   margin: 1rem 0;
 }
@@ -2409,14 +2885,15 @@ Import and register the four components in `docs/.vitepress/theme/index.ts`. App
 }
 
 .project-architecture-nodes span:not(:last-child)::after {
-  content: '→';
   position: absolute;
   inset-inline-end: -0.65rem;
+  content: '→';
   color: var(--reading-link);
 }
 
 .project-call-chain li {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.4rem;
   min-width: 0;
   padding: 0.85rem;
@@ -2439,8 +2916,8 @@ Import and register the four components in `docs/.vitepress/theme/index.ts`. App
 }
 
 .project-chain-warning {
-  border-left: 3px solid var(--reading-risk);
   padding-left: 0.8rem;
+  border-left: 3px solid var(--reading-risk);
 }
 
 .project-risk-tag {
@@ -2459,6 +2936,14 @@ Import and register the four components in `docs/.vitepress/theme/index.ts`. App
 }
 
 .project-license-print {
+  display: none;
+}
+
+.project-license-print-url {
+  overflow-wrap: anywhere;
+}
+
+.project-source-print-url {
   display: none;
 }
 
@@ -2484,24 +2969,94 @@ Import and register the four components in `docs/.vitepress/theme/index.ts`. App
 
 @media (max-width: 700px) {
   .project-architecture-nodes,
-  .project-call-chain { grid-template-columns: 1fr; }
+  .project-call-chain {
+    grid-template-columns: 1fr;
+  }
+
   .project-architecture-nodes span:not(:last-child)::after {
-    content: '↓';
     inset-inline-end: auto;
     inset-block-end: -0.8rem;
     inset-inline-start: 50%;
+    content: '↓';
   }
+
   .project-meta,
   .project-chain-section,
-  .project-overview section { padding: 0.9rem; }
+  .project-overview section {
+    padding: 0.9rem;
+  }
 }
 
 @media print {
-  .project-meta details { display: none !important; }
-  .project-license-print { display: block !important; }
-  .project-architecture { display: none !important; }
-  .project-call-chain { grid-template-columns: 1fr; }
-  .project-source-links a[href]::after { content: " (" attr(href) ")"; overflow-wrap: anywhere; }
+  .course-stage-more,
+  .course-stage-more > summary,
+  .course-progress progress,
+  .course-stage progress {
+    display: none;
+  }
+
+  .vp-doc ol.course-print-items {
+    display: grid;
+    grid-column: 2;
+    gap: 0.75rem;
+    list-style: none;
+  }
+
+  .course-print-items li {
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--reading-rule);
+  }
+
+  .course-print-items span {
+    font-weight: 800;
+  }
+
+  .course-stage,
+  .course-item {
+    break-inside: avoid;
+  }
+
+  .project-meta details {
+    display: none !important;
+  }
+
+  .project-meta > ul,
+  .project-source-links,
+  .project-call-chain {
+    display: block;
+  }
+
+  .project-meta > ul > li,
+  .project-source-links > li,
+  .project-call-chain li {
+    display: block;
+    break-inside: avoid;
+  }
+
+  .project-meta > ul > li > *,
+  .project-source-links > li > *,
+  .project-call-chain li > * {
+    display: block;
+  }
+
+  .project-license-print {
+    display: block !important;
+  }
+
+  .project-architecture {
+    display: none !important;
+  }
+
+  .project-call-chain {
+    grid-template-columns: 1fr;
+  }
+
+  .project-source-print-url {
+    display: block !important;
+    max-width: 100% !important;
+    overflow-wrap: anywhere !important;
+    white-space: normal !important;
+  }
 }
 ```
 
@@ -4668,6 +5223,33 @@ describe('project freshness checker', () => {
     expect(recovered).toMatchObject({ failure: null, data: { full_name: 'example/repo' } })
   })
 
+  it('does not treat ordinary rate headers on a 200 parse failure as a retry delay', async () => {
+    let attempts = 0
+    const sleeps: number[] = []
+    const recovered = await requestProjectJson('https://api.github.com/repos/example/repo', {
+      retryAttempts: 2,
+      retryDelayMs: 10,
+      maxRetryDelayMs: 5_000,
+      now: new Date('2026-09-26T00:00:00Z'),
+      sleepImpl: async (delayMs: number) => { sleeps.push(delayMs) },
+      fetchImpl: async (url: string) => ({
+        status: 200,
+        url,
+        headers: new Headers({
+          'x-ratelimit-remaining': '4999',
+          'x-ratelimit-reset': String(Date.parse('2026-09-26T01:00:00Z') / 1000),
+        }),
+        json: async () => {
+          attempts += 1
+          if (attempts === 1) throw new Error('truncated json')
+          return { full_name: 'example/repo' }
+        },
+      }),
+    })
+    expect(sleeps).toEqual([10])
+    expect(recovered.failure).toBeNull()
+  })
+
   it('retries a rate-limited 403 and caps the reset-header delay', async () => {
     let attempts = 0
     const sleeps: number[] = []
@@ -4804,6 +5386,132 @@ describe('project freshness checker', () => {
     expect(attempts).toBe(1)
     expect(sleeps).toEqual([])
     expect(result).toMatchObject({ status: 403, failure: 'http' })
+  })
+
+  it('fuses a full scan when Retry-After exceeds the default 30 second sleep budget', async () => {
+    const outputRoot = mkdtempSync(join(tmpdir(), 'project-freshness-budget-'))
+    const sleeps: number[] = []
+    let requests = 0
+    try {
+      const report = await runProjectCheck({
+        outputJson: join(outputRoot, 'project-freshness.json'),
+        outputMarkdown: join(outputRoot, 'project-freshness.md'),
+        retryAttempts: 3,
+        maxRetryDelayMs: 60_000,
+        clock: () => new Date('2026-09-26T00:00:00Z'),
+        sleepImpl: async (delayMs: number) => { sleeps.push(delayMs) },
+        fetchImpl: async (url: string) => {
+          requests += 1
+          return {
+            status: 429,
+            url,
+            headers: new Headers({ 'retry-after': '3600' }),
+            json: async () => ({}),
+          }
+        },
+      })
+      expect(sleeps).toEqual([])
+      expect(requests).toBe(1)
+      expect(report.results).toHaveLength(13)
+      expect(report.results[0].findings).toEqual(expect.arrayContaining([
+        'project_retry_budget_exhausted',
+        'project_transient_error',
+      ]))
+      expect(report.results.slice(1).every((result: any) =>
+        result.findings.includes('project_scan_skipped_after_budget'))).toBe(true)
+      expect(isProjectReportBlocking(report)).toBe(true)
+    } finally {
+      rmSync(outputRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('creates a fresh retry budget for every run', async () => {
+    const outputRoot = mkdtempSync(join(tmpdir(), 'project-freshness-budget-reset-'))
+    const requestCounts: number[] = []
+    const sleepTotals: number[] = []
+    try {
+      for (let run = 0; run < 2; run += 1) {
+        let requests = 0
+        let slept = 0
+        const report = await runProjectCheck({
+          outputJson: join(outputRoot, `project-freshness-${run}.json`),
+          outputMarkdown: join(outputRoot, `project-freshness-${run}.md`),
+          retryAttempts: 2,
+          maxRetryDelayMs: 1_000,
+          retryBudgetMs: 1_000,
+          retrySleepBudgetMs: 1_000,
+          clock: () => new Date('2026-09-26T00:00:00Z'),
+          sleepImpl: async (delayMs: number) => { slept += delayMs },
+          fetchImpl: async (url: string) => {
+            requests += 1
+            return {
+              status: 429,
+              url,
+              headers: new Headers({ 'retry-after': '3600' }),
+              json: async () => ({}),
+            }
+          },
+        })
+        requestCounts.push(requests)
+        sleepTotals.push(slept)
+        expect(isProjectReportBlocking(report)).toBe(true)
+      }
+      expect(requestCounts).toEqual([2, 2])
+      expect(sleepTotals).toEqual([1_000, 1_000])
+    } finally {
+      rmSync(outputRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('checks the 120 second wall-clock budget before every request', async () => {
+    const outputRoot = mkdtempSync(join(tmpdir(), 'project-freshness-wall-budget-'))
+    let requests = 0
+    let clockMs = Date.parse('2026-09-26T00:00:00Z')
+    try {
+      const report = await runProjectCheck({
+        outputJson: join(outputRoot, 'project-freshness.json'),
+        outputMarkdown: join(outputRoot, 'project-freshness.md'),
+        clock: () => new Date(clockMs),
+        sleepImpl: async () => { throw new Error('must not sleep') },
+        fetchImpl: async (url: string) => {
+          requests += 1
+          clockMs += 120_000
+          return {
+            status: 200,
+            url,
+            headers: new Headers(),
+            json: async () => ({
+              full_name: 'modelcontextprotocol/modelcontextprotocol',
+              archived: false,
+              default_branch: 'main',
+            }),
+          }
+        },
+      })
+      expect(requests).toBe(1)
+      expect(report.results[0].findings).toEqual(expect.arrayContaining([
+        'project_retry_budget_exhausted',
+        'project_transient_error',
+      ]))
+      expect(report.results[1].findings).toEqual(['project_scan_skipped_after_budget'])
+    } finally {
+      rmSync(outputRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('caps each request at three attempts', async () => {
+    let attempts = 0
+    const result = await requestProjectJson('https://api.github.com/repos/example/repo', {
+      retryAttempts: 99,
+      retryDelayMs: 0,
+      sleepImpl: async () => {},
+      fetchImpl: async (url: string) => {
+        attempts += 1
+        return { status: 503, url, headers: new Headers(), json: async () => ({}) }
+      },
+    })
+    expect(attempts).toBe(3)
+    expect(result.failure).toBe('transient')
   })
 
   it('escalates a changed license digest to manual review', async () => {
@@ -5028,6 +5736,9 @@ const retryable = new Set([408, 429, 500, 502, 503, 504])
 const shaPattern = /^[0-9a-f]{40}$/iu
 const maxSchemaErrors = 20
 const maxSchemaErrorLength = 240
+export const defaultProjectRetryBudgetMs = 120_000
+export const defaultProjectRetrySleepBudgetMs = 30_000
+const maxRequestAttempts = 3
 
 function responseHeader(response, name) {
   if (typeof response?.headers?.get === 'function') return response.headers.get(name)
@@ -5036,32 +5747,76 @@ function responseHeader(response, name) {
   return key ? String(response.headers[key]) : null
 }
 
-function nowMilliseconds(now) {
-  const value = typeof now === 'function' ? now() : now
+function timeMilliseconds(valueOrClock) {
+  const value = typeof valueOrClock === 'function' ? valueOrClock() : valueOrClock
   return value instanceof Date ? value.getTime() : new Date(value).getTime()
 }
 
-function headerDelayMs(response, now) {
+function headerDelayMs(response, clock) {
   const delays = []
   const retryAfter = responseHeader(response, 'retry-after')
   if (retryAfter !== null && retryAfter.trim() !== '') {
     const seconds = Number(retryAfter)
     const delay = Number.isFinite(seconds)
       ? seconds * 1_000
-      : Date.parse(retryAfter) - nowMilliseconds(now)
+      : Date.parse(retryAfter) - timeMilliseconds(clock)
     if (Number.isFinite(delay)) delays.push(Math.max(0, delay))
   }
   const resetHeader = responseHeader(response, 'x-ratelimit-reset')
   if (resetHeader !== null && resetHeader.trim() !== '') {
     const reset = Number(resetHeader)
-    if (Number.isFinite(reset)) delays.push(Math.max(0, (reset * 1_000) - nowMilliseconds(now)))
+    if (Number.isFinite(reset)) delays.push(Math.max(0, (reset * 1_000) - timeMilliseconds(clock)))
   }
   return delays.length > 0 ? Math.max(...delays) : null
 }
 
-function retryDelay(response, { attempt, retryDelayMs, maxRetryDelayMs, now }) {
-  const requested = headerDelayMs(response, now) ?? retryDelayMs * attempt
+function retryDelay(response, { attempt, retryDelayMs, maxRetryDelayMs, clock }) {
+  const requested = headerDelayMs(response, clock) ?? retryDelayMs * attempt
   return Math.min(Math.max(0, requested), maxRetryDelayMs)
+}
+
+function createRetryBudget(retryBudgetMs, retrySleepBudgetMs, clock) {
+  return {
+    deadlineMs: timeMilliseconds(clock) + retryBudgetMs,
+    remainingSleepMs: retrySleepBudgetMs,
+    exhausted: false,
+    clock,
+  }
+}
+
+function retryBudgetAllowsRequest(retryBudget) {
+  if (!retryBudget) return true
+  if (retryBudget.exhausted || timeMilliseconds(retryBudget.clock) >= retryBudget.deadlineMs) {
+    retryBudget.exhausted = true
+    return false
+  }
+  return true
+}
+
+function claimRetryDelay(retryBudget, delayMs) {
+  if (!retryBudget) return true
+  if (!retryBudgetAllowsRequest(retryBudget)) return false
+  const remainingWallMs = retryBudget.deadlineMs - timeMilliseconds(retryBudget.clock)
+  if (delayMs > retryBudget.remainingSleepMs || delayMs > remainingWallMs) {
+    retryBudget.exhausted = true
+    return false
+  }
+  retryBudget.remainingSleepMs -= delayMs
+  return true
+}
+
+function retryBudgetFailure(status = 0) {
+  return { status, data: null, failure: 'budget' }
+}
+
+function markExhaustedAfterFinalRetry(retryBudget) {
+  if (!retryBudget) return false
+  if (retryBudget.remainingSleepMs <= 0
+    || timeMilliseconds(retryBudget.clock) >= retryBudget.deadlineMs) {
+    retryBudget.exhausted = true
+    return true
+  }
+  return false
 }
 
 async function isRateLimited403(response) {
@@ -5110,9 +5865,13 @@ export async function requestProjectJson(url, {
   retryDelayMs = 250,
   maxRetryDelayMs = 60_000,
   now = new Date(),
+  clock = () => now,
   sleepImpl = (delayMs) => new Promise((done) => setTimeout(done, delayMs)),
+  retryBudget,
 } = {}) {
-  for (let attempt = 1; attempt <= retryAttempts; attempt += 1) {
+  const attemptLimit = Math.min(maxRequestAttempts, Math.max(1, Math.trunc(retryAttempts)))
+  for (let attempt = 1; attempt <= attemptLimit; attempt += 1) {
+    if (!retryBudgetAllowsRequest(retryBudget)) return retryBudgetFailure()
     try {
       const isGitHubApi = new URL(url).hostname === 'api.github.com'
       const response = await fetchImpl(url, {
@@ -5124,16 +5883,21 @@ export async function requestProjectJson(url, {
         },
       })
       const responseIsRetryable = retryable.has(response.status) || await isRateLimited403(response)
-      if (responseIsRetryable && attempt < retryAttempts) {
-        await sleepImpl(retryDelay(response, {
+      if (responseIsRetryable && attempt < attemptLimit) {
+        const delayMs = retryDelay(response, {
           attempt,
           retryDelayMs,
           maxRetryDelayMs,
-          now,
-        }))
+          clock,
+        })
+        if (!claimRetryDelay(retryBudget, delayMs)) return retryBudgetFailure(response.status)
+        await sleepImpl(delayMs)
         continue
       }
       if (response.status >= 400) {
+        if (responseIsRetryable && markExhaustedAfterFinalRetry(retryBudget)) {
+          return retryBudgetFailure(response.status)
+        }
         return {
           status: response.status,
           data: null,
@@ -5143,26 +5907,31 @@ export async function requestProjectJson(url, {
       try {
         return { status: response.status, data: await response.json(), failure: null }
       } catch {
-        if (attempt === retryAttempts) {
+        if (attempt === attemptLimit) {
+          if (markExhaustedAfterFinalRetry(retryBudget)) return retryBudgetFailure(response.status)
           return { status: response.status, data: null, failure: 'parse' }
         }
-        await sleepImpl(retryDelay(response, {
-          attempt,
-          retryDelayMs,
-          maxRetryDelayMs,
-          now,
-        }))
+        const delayMs = Math.min(retryDelayMs * attempt, maxRetryDelayMs)
+        if (!claimRetryDelay(retryBudget, delayMs)) return retryBudgetFailure(response.status)
+        await sleepImpl(delayMs)
       }
     } catch {
-      if (attempt === retryAttempts) return { status: 0, data: null, failure: 'network' }
-      await sleepImpl(Math.min(retryDelayMs * attempt, maxRetryDelayMs))
+      if (attempt === attemptLimit) {
+        if (markExhaustedAfterFinalRetry(retryBudget)) return retryBudgetFailure()
+        return { status: 0, data: null, failure: 'network' }
+      }
+      const delayMs = Math.min(retryDelayMs * attempt, maxRetryDelayMs)
+      if (!claimRetryDelay(retryBudget, delayMs)) return retryBudgetFailure()
+      await sleepImpl(delayMs)
     }
   }
   return { status: 0, data: null, failure: 'network' }
 }
 
 function recordFailure(findings, response) {
-  if (response.failure === 'transient') findings.push('project_transient_error')
+  if (response.failure === 'budget') {
+    findings.push('project_retry_budget_exhausted', 'project_transient_error')
+  } else if (response.failure === 'transient') findings.push('project_transient_error')
   else if (response.failure === 'network') findings.push('project_network_error')
   else if (response.failure === 'parse') findings.push('project_parse_error')
   else if (response.failure === 'http') findings.push('project_http_error')
@@ -5178,6 +5947,14 @@ function githubContentSha256(data) {
   return createHash('sha256').update(content).digest('hex')
 }
 
+function projectResult(subject, findings) {
+  return {
+    id: subject.id,
+    license_source_paths: subject.license_sources.map((source) => source.path),
+    findings: [...new Set(findings)],
+  }
+}
+
 export async function checkProjectSubject(subject, {
   fetchImpl = fetch,
   githubToken = process.env.GITHUB_TOKEN,
@@ -5185,7 +5962,9 @@ export async function checkProjectSubject(subject, {
   retryAttempts = 3,
   retryDelayMs = 250,
   maxRetryDelayMs = 60_000,
+  clock = () => now,
   sleepImpl = (delayMs) => new Promise((done) => setTimeout(done, delayMs)),
+  retryBudget,
 } = {}) {
   const api = `https://api.github.com/repos/${subject.canonical_repo}`
   const options = {
@@ -5195,14 +5974,22 @@ export async function checkProjectSubject(subject, {
     retryDelayMs,
     maxRetryDelayMs,
     now,
+    clock,
     sleepImpl,
+    retryBudget,
   }
   const findings = []
   let defaultBranch = null
 
+  if (!retryBudgetAllowsRequest(retryBudget)) {
+    recordFailure(findings, retryBudgetFailure())
+    return projectResult(subject, findings)
+  }
+
   const metadata = await requestProjectJson(api, options)
   if (metadata.failure) {
     recordFailure(findings, metadata)
+    if (metadata.failure === 'budget') return projectResult(subject, findings)
   } else {
     const metadataData = metadata.data
     defaultBranch = metadataData?.default_branch
@@ -5227,6 +6014,7 @@ export async function checkProjectSubject(subject, {
     const head = await requestProjectJson(`${api}/commits/${encodeURIComponent(defaultBranch)}`, options)
     if (head.failure) {
       recordFailure(findings, head)
+      if (head.failure === 'budget') return projectResult(subject, findings)
     } else {
       const headSha = head.data?.sha
       const headDate = head.data?.commit?.committer?.date
@@ -5240,7 +6028,10 @@ export async function checkProjectSubject(subject, {
   }
 
   const ref = await requestProjectJson(`${api}/commits/${encodeURIComponent(subject.pinned_ref)}`, options)
-  if (ref.failure) recordFailure(findings, ref)
+  if (ref.failure) {
+    recordFailure(findings, ref)
+    if (ref.failure === 'budget') return projectResult(subject, findings)
+  }
   else if (!isRecord(ref.data) || !validCommitSha(ref.data.sha)) {
     requireReview(findings, 'pinned_ref_response_invalid')
   } else if (ref.data.sha !== subject.pinned_commit) {
@@ -5257,6 +6048,7 @@ export async function checkProjectSubject(subject, {
       requireReview(findings, 'entrypoint_missing')
     } else if (entry.failure) {
       recordFailure(findings, entry)
+      if (entry.failure === 'budget') return projectResult(subject, findings)
     } else if (!isRecord(entry.data) || entry.data.path !== entrypoint.path) {
       requireReview(findings, 'entrypoint_response_invalid')
     }
@@ -5274,6 +6066,7 @@ export async function checkProjectSubject(subject, {
         requireReview(findings, 'license_source_missing')
       } else if (license.failure) {
         recordFailure(findings, license)
+        if (license.failure === 'budget') return projectResult(subject, findings)
       } else if (!isRecord(license.data)
         || license.data.path !== source.path
         || license.data.encoding !== 'base64'
@@ -5294,6 +6087,7 @@ export async function checkProjectSubject(subject, {
       requireReview(findings, 'project_release_missing')
     } else if (latest.failure) {
       recordFailure(findings, latest)
+      if (latest.failure === 'budget') return projectResult(subject, findings)
     } else {
       const validLatest = subject.pin_kind === 'tag'
         ? Array.isArray(latest.data) && isRecord(latest.data[0]) && nonEmpty(latest.data[0].name)
@@ -5312,11 +6106,7 @@ export async function checkProjectSubject(subject, {
   if (subject.review_by < reviewDateInTimeZone(now)) {
     requireReview(findings, 'project_review_due')
   }
-  return {
-    id: subject.id,
-    license_source_paths: subject.license_sources.map((source) => source.path),
-    findings: [...new Set(findings)],
-  }
+  return projectResult(subject, findings)
 }
 
 export function buildProjectFreshnessReport(results, generatedAt = new Date().toISOString()) {
@@ -5340,6 +6130,8 @@ const blockingFindings = new Set([
   'project_parse_error',
   'project_http_error',
   'project_schema_invalid',
+  'project_retry_budget_exhausted',
+  'project_scan_skipped_after_budget',
 ])
 
 export function isProjectReportBlocking(report) {
@@ -5384,6 +6176,9 @@ export async function runProjectCheck({
   retryAttempts = 3,
   retryDelayMs = 250,
   maxRetryDelayMs = 60_000,
+  retryBudgetMs = defaultProjectRetryBudgetMs,
+  retrySleepBudgetMs = defaultProjectRetrySleepBudgetMs,
+  clock = () => new Date(),
   sleepImpl = (delayMs) => new Promise((done) => setTimeout(done, delayMs)),
 } = {}) {
   const schemaErrors = validateProjectCatalogFile(projectPath)
@@ -5398,8 +6193,13 @@ export async function runProjectCheck({
   } else {
     const data = parse(readFileSync(projectPath, 'utf8'))
     const subjects = data.subjects.map((subject) => ({ ...data.defaults, ...subject }))
+    const retryBudget = createRetryBudget(retryBudgetMs, retrySleepBudgetMs, clock)
     const results = []
     for (const subject of subjects) {
+      if (!retryBudgetAllowsRequest(retryBudget)) {
+        results.push(projectResult(subject, ['project_scan_skipped_after_budget']))
+        continue
+      }
       results.push(await checkProjectSubject(subject, {
         fetchImpl,
         githubToken,
@@ -5407,7 +6207,9 @@ export async function runProjectCheck({
         retryAttempts,
         retryDelayMs,
         maxRetryDelayMs,
+        clock,
         sleepImpl,
+        retryBudget,
       }))
     }
     report = buildProjectFreshnessReport(results, now.toISOString())
@@ -5489,7 +6291,7 @@ pnpm test && pnpm validate && pnpm build
 GITHUB_TOKEN="$(gh auth token)" pnpm projects:check
 ```
 
-Expected: unit tests pass; real report has 13 results; default-branch HEAD is compared directly with `verified_default_head`; ordinary upstream changes appear only as `project_update_available`; malformed endpoint shapes, bounded schema reporting, and rate-limit retry behavior are covered; no schema, canonical, pin-ref, entrypoint, license-source, or license-digest failure appears.
+Expected: unit tests pass; real report has 13 results; default-branch HEAD is compared directly with `verified_default_head`; ordinary upstream changes appear only as `project_update_available`; malformed endpoint shapes and bounded schema reporting are covered. Every request gets at most three attempts; the scan shares a 120-second wall-clock and 30-second sleep budget. The subject that exhausts the budget records both `project_retry_budget_exhausted` and `project_transient_error`; later subjects record only `project_scan_skipped_after_budget`. All three findings remain strict-blocking, and injected `clock`/`sleepImpl` make the behavior deterministic.
 
 - [ ] **Step 6: Commit project freshness automation**
 
@@ -5502,16 +6304,391 @@ git commit -m "feat: monitor pinned project sources"
 
 **Files:**
 
+- Create: `scripts/publication-contracts.mjs`
 - Modify: `scripts/check-dist.mjs`
 - Modify: `tests/content.spec.ts`
 - Modify: `tests/project-pages.spec.ts`
+- Modify: `package.json`
+- Modify: `pnpm-lock.yaml`
 
-- [ ] **Step 1: Write failing dist fixtures for missing, extra, and complete project output**
+- [ ] **Step 1: Write failing structured publication-contract tests**
 
-Extend the existing dist fixture helper so it can create all current public targets. Add:
+Add final tests for all of these contracts before implementation:
 
-```ts
-const expectedProjectOutputs = [
+- normalize POSIX and Windows separators, reject absolute/drive/NUL/traversal paths, preserve case sensitivity, detect normalized collisions, and return a structured error for both valid and dangling symlinks;
+- parse course and project HTML structurally so comments, scripts, styles, templates, and unrelated text cannot satisfy the contract;
+- render Markdown through VitePress and inspect its tokens/HTML rather than scanning raw source strings; fenced code, inline code, comments, `template`, `pre`, `svg`, `noscript`, `script`, and `style` cannot create fake headings, links, images, or forbidden visible text;
+- require the exact 26 clean root-relative course anchors and the exact catalog-derived project document anchors, source anchors, license anchors, and interview anchors, with no duplicate, missing, or unexpected internal/external anchor;
+- reject remote images in Markdown, HTML `src`, `srcset`, `picture/source`, `noscript`, SVG `href`/`xlink:href`, protocol-relative URLs, backslash/control-character variants, malformed URLs, and comma-bearing data-URL candidate lists; allow only explicit local, `data:`, and `blob:` candidates;
+- require real visible `h2` elements in exact order, real visible “固定版本/关键源码入口” text, all eight approved outputs, and no extra project/Lab/capstone/superpowers output.
+
+Run:
+
+```bash
+pnpm vitest run tests/content.spec.ts tests/project-pages.spec.ts -t 'progressive project publication boundary|project publication boundary|project routes and catalog overview'
+```
+
+Expected: RED against the string/regex-based validator; failures must identify the specific path, anchor, image, or structural contract.
+
+- [ ] **Step 2: Add the parsing dependencies directly**
+
+Run:
+
+```bash
+pnpm add -D parse5@8.0.1 parse-srcset@1.0.2
+```
+
+The final direct dependency contract is `"parse5": "8.0.1"` and `"parse-srcset": "1.0.2"`; both must appear in `package.json` and `pnpm-lock.yaml`.
+
+- [ ] **Step 3: Add the shared publication parser**
+
+Create `scripts/publication-contracts.mjs` exactly as follows:
+
+```js
+import { existsSync, lstatSync, readdirSync, statSync } from 'node:fs'
+import { join, posix, relative } from 'node:path'
+import parseSrcset from 'parse-srcset'
+import { parse, parseFragment } from 'parse5'
+
+const hiddenHtmlElements = new Set(['script', 'style', 'template', 'noscript'])
+const hiddenMarkdownHtmlElements = new Set([
+  ...hiddenHtmlElements,
+  'code',
+  'pre',
+  'svg',
+  'publication-hidden',
+])
+const hiddenImageHtmlElements = new Set(['script', 'style', 'template'])
+const hiddenMarkdownImageHtmlElements = new Set([...hiddenImageHtmlElements, 'code', 'pre'])
+const localImageBase = new URL('https://local.invalid/')
+
+function attribute(node, name) {
+  return node.attrs?.find((candidate) => candidate.name === name)?.value
+}
+
+function hasClass(node, expected) {
+  return (attribute(node, 'class') ?? '').split(/\s+/u).includes(expected)
+}
+
+function visitElements(nodes, callback, hidden = false, hiddenElements = hiddenHtmlElements) {
+  for (const node of nodes ?? []) {
+    const nextHidden = hidden || hiddenElements.has(node.tagName)
+    if (!nextHidden && node.tagName) callback(node)
+    if (!nextHidden) visitElements(node.childNodes, callback, false, hiddenElements)
+  }
+}
+
+function elementsWithin(roots, predicate, hiddenElements = hiddenHtmlElements) {
+  const matches = []
+  visitElements(roots, (node) => {
+    if (predicate(node)) matches.push(node)
+  }, false, hiddenElements)
+  return matches
+}
+
+function visibleText(node, ignoredClasses = new Set(), hiddenElements = hiddenHtmlElements) {
+  if (hiddenElements.has(node.tagName) || [...ignoredClasses].some((name) => hasClass(node, name))) {
+    return ''
+  }
+  if (node.nodeName === '#text') return node.value ?? ''
+  return (node.childNodes ?? [])
+    .map((child) => visibleText(child, ignoredClasses, hiddenElements))
+    .join(' ')
+}
+
+function normalizedVisibleText(nodes, hiddenElements = hiddenHtmlElements) {
+  return nodes.map((node) => visibleText(node, new Set(['header-anchor']), hiddenElements))
+    .join(' ')
+    .replace(/\p{White_Space}+/gu, ' ')
+    .trim()
+}
+
+function normalizeRenderedMarkdownHref(href) {
+  return typeof href === 'string' && href.startsWith('/')
+    ? href.replace(/\.html(?=#|$)/u, '')
+    : href
+}
+
+function hrefsWithin(roots, hiddenElements = hiddenHtmlElements) {
+  return elementsWithin(roots, (node) => node.tagName === 'a', hiddenElements)
+    .map((node) => attribute(node, 'href') ?? null)
+}
+
+function parseSrcsetCandidates(srcset) {
+  try {
+    return parseSrcset(srcset).map((candidate) => candidate.url)
+  } catch {
+    return [null]
+  }
+}
+
+function imageCandidatesWithin(roots, hiddenElements = hiddenImageHtmlElements) {
+  return elementsWithin(
+    roots,
+    (node) => ['img', 'source', 'image'].includes(node.tagName),
+    hiddenElements,
+  ).flatMap((node) => {
+    if (node.tagName === 'image') {
+      return (node.attrs ?? [])
+        .filter((candidate) => candidate.name === 'href')
+        .map((candidate) => candidate.value)
+    }
+    return [
+      ...(attribute(node, 'src') === undefined ? [] : [attribute(node, 'src')]),
+      ...parseSrcsetCandidates(attribute(node, 'srcset') ?? ''),
+    ]
+  })
+}
+
+function listFiles(root) {
+  if (!existsSync(root)) return { files: [], errors: [] }
+  const files = []
+  const errors = []
+  for (const entry of readdirSync(root)) {
+    const path = join(root, entry)
+    const metadata = lstatSync(path)
+    if (metadata.isSymbolicLink()) {
+      try {
+        statSync(path)
+        errors.push({ path, kind: 'symlink' })
+      } catch {
+        errors.push({ path, kind: 'unreadable' })
+      }
+    } else if (metadata.isDirectory()) {
+      const nested = listFiles(path)
+      files.push(...nested.files)
+      errors.push(...nested.errors)
+    } else {
+      files.push(path)
+    }
+  }
+  return { files, errors }
+}
+
+export function normalizePublishedOutputPath(file) {
+  if (
+    file.includes('\0')
+    || file.startsWith('/')
+    || file.startsWith('\\')
+    || /^[A-Za-z]:/u.test(file)
+  ) {
+    return null
+  }
+
+  const normalized = posix.normalize(file.replace(/\\/gu, '/'))
+  return normalized === '..' || normalized.startsWith('../') ? null : normalized
+}
+
+export function indexDistFiles(root) {
+  const files = new Map()
+  const rawFiles = []
+  const errors = []
+  const listed = listFiles(root)
+  for (const issue of listed.errors) {
+    const raw = relative(root, issue.path)
+    errors.push(issue.kind === 'unreadable'
+      ? `构建产物包含无法读取的文件：${raw}`
+      : `构建产物包含符号链接：${raw}`)
+  }
+  for (const absolute of listed.files) {
+    const raw = relative(root, absolute)
+    rawFiles.push(raw)
+    const normalized = normalizePublishedOutputPath(raw)
+    if (normalized === null) continue
+    if (files.has(normalized)) {
+      errors.push(`构建产物路径规范化后重复：${normalized}`)
+      continue
+    }
+    files.set(normalized, absolute)
+  }
+  return { files, rawFiles, errors }
+}
+
+export function normalizeCleanCourseHref(href, siteBase) {
+  if (
+    typeof href !== 'string'
+    || !href.startsWith('/')
+    || href.startsWith('//')
+    || href.includes('\\')
+  ) {
+    return null
+  }
+  try {
+    const url = new URL(href, 'https://course.invalid')
+    if (
+      url.origin !== 'https://course.invalid'
+      || url.search !== ''
+      || url.hash !== ''
+      || url.pathname !== href
+      || !url.pathname.startsWith(`${siteBase}/`)
+    ) {
+      return null
+    }
+    const route = url.pathname.slice(siteBase.length)
+    return route.endsWith('/') ? null : route
+  } catch {
+    return null
+  }
+}
+
+export function extractCourseHtmlContract(html) {
+  const document = parse(html)
+  const courseMaps = elementsWithin(document.childNodes, (node) => hasClass(node, 'course-map'))
+  const vpDocs = elementsWithin(document.childNodes, (node) => hasClass(node, 'vp-doc'))
+  const pageRoots = vpDocs.length > 0 ? vpDocs : courseMaps
+  return {
+    hrefs: hrefsWithin(courseMaps),
+    courseText: courseMaps.map((node) => visibleText(node)).join(' '),
+    pageText: pageRoots.map((node) => visibleText(node)).join(' '),
+  }
+}
+
+export function extractProjectHtmlContract(html) {
+  const document = parse(html, { scriptingEnabled: false })
+  const vpDocs = elementsWithin(document.childNodes, (node) => hasClass(node, 'vp-doc'))
+  const headings = elementsWithin(vpDocs, (node) => node.tagName === 'h2')
+    .map((node) => visibleText(node, new Set(['header-anchor'])).replace(/\s+/gu, ' ').trim())
+  const sourceSections = elementsWithin(vpDocs, (node) => hasClass(node, 'project-source-links'))
+  const metaSections = elementsWithin(vpDocs, (node) => hasClass(node, 'project-meta'))
+  const licenseSections = elementsWithin(metaSections, (node) => node.tagName === 'details')
+  return {
+    text: normalizedVisibleText(vpDocs),
+    headings,
+    images: imageCandidatesWithin(vpDocs),
+    hrefs: elementsWithin(vpDocs, (node) =>
+      node.tagName === 'a' && !hasClass(node, 'header-anchor'))
+      .map((node) => attribute(node, 'href') ?? null),
+    sourceHrefs: hrefsWithin(sourceSections),
+    licenseHrefs: hrefsWithin(licenseSections),
+  }
+}
+
+export function extractProjectMarkdownContract(text, renderer) {
+  const source = text.replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/u, '')
+  const contentSource = source.replace(
+    /<(\/?)\s*(template|code|pre|svg|script|style|noscript)\b[^>]*>/giu,
+    (match, closing) => closing === '/'
+      ? '</publication-hidden>'
+      : /\/\s*>$/u.test(match)
+        ? '<publication-hidden></publication-hidden>'
+        : '<publication-hidden>',
+  )
+  const root = parseFragment(renderer.render(contentSource), { scriptingEnabled: false })
+  const imageRoot = parseFragment(renderer.render(source), { scriptingEnabled: false })
+  const headings = elementsWithin(
+    root.childNodes,
+    (node) => node.tagName === 'h2',
+    hiddenMarkdownHtmlElements,
+  ).map((node) => normalizedVisibleText([node], hiddenMarkdownHtmlElements))
+  const links = elementsWithin(
+    root.childNodes,
+    (node) => node.tagName === 'a' && !hasClass(node, 'header-anchor'),
+    hiddenMarkdownHtmlElements,
+  ).map((node) => normalizeRenderedMarkdownHref(attribute(node, 'href') ?? null))
+  return {
+    headings,
+    links,
+    images: imageCandidatesWithin(imageRoot.childNodes, hiddenMarkdownImageHtmlElements),
+    text: normalizedVisibleText(root.childNodes, hiddenMarkdownHtmlElements),
+  }
+}
+
+export function validatePinnedGithubSourceHref(href, expectedHref) {
+  if (href !== expectedHref) return false
+  try {
+    const url = new URL(href)
+    return url.protocol === 'https:'
+      && url.hostname === 'github.com'
+      && url.username === ''
+      && url.password === ''
+      && url.port === ''
+      && url.search === ''
+      && url.hash === ''
+  } catch {
+    return false
+  }
+}
+
+export function isRemoteImageCandidate(candidate) {
+  if (typeof candidate !== 'string' || candidate.trim() === '') return true
+  const value = candidate.trim()
+  const withoutAsciiControls = value.replace(/[\u0009\u000A\u000C\u000D]/gu, '')
+  try {
+    const url = new URL(value, localImageBase)
+    if (url.protocol === 'data:' || url.protocol === 'blob:') return false
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return true
+    return url.origin !== localImageBase.origin
+      || /^(?:https?:|\/\/)/iu.test(withoutAsciiControls)
+  } catch {
+    return true
+  }
+}
+```
+
+The parser is the only source of publication extraction semantics. Both source-Markdown tests and built-HTML validation must reuse it; do not add a second regex parser.
+
+- [ ] **Step 4: Replace the dist validator with the final structured implementation**
+
+Use the following final `scripts/check-dist.mjs`:
+
+```js
+import { existsSync, readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { loadProjectCatalog } from './project-catalog.mjs'
+import {
+  extractCourseHtmlContract,
+  extractProjectHtmlContract,
+  indexDistFiles,
+  isRemoteImageCandidate,
+  normalizeCleanCourseHref,
+  normalizePublishedOutputPath,
+  validatePinnedGithubSourceHref,
+} from './publication-contracts.mjs'
+
+const courseStages = [
+  '基础认知',
+  '核心机制',
+  '生产工程',
+  '应用模式',
+  '项目拆解',
+  '综合实战',
+]
+
+const publishedCourseRoutes = [
+  '/preface',
+  '/chapters/01-ai-native',
+  '/chapters/02-workflow-agent',
+  '/chapters/03-react',
+  '/chapters/04-tools-mcp',
+  '/frontier/context-engineering',
+  '/chapters/05-state-memory',
+  '/chapters/06-loop-graph',
+  '/chapters/07-multi-agent',
+  '/frontier/interoperability-identity',
+  '/chapters/08-evaluation',
+  '/chapters/09-safety-recovery',
+  '/chapters/10-production',
+  '/frontier/durable-execution',
+  '/frontier/agent-security-evaluation',
+  '/chapters/11-research-agent',
+  '/chapters/12-service-operations-agent',
+  '/chapters/13-coding-agent',
+  '/chapters/14-computer-use',
+  '/projects/mcp-python-sdk',
+  '/projects/aider',
+  '/projects/openhands',
+  '/projects/agent-benchmarks',
+  '/projects/dify',
+  '/projects/crewai',
+  '/case-study/delivery-agent',
+]
+
+const forbiddenCourseMarkers = ['/labs/', '/capstone/', '标记已读', '加入书签']
+const siteBase = '/agent-engineering-for-beginners'
+const projectCatalog = loadProjectCatalog(new URL('../sources/project-index.yml', import.meta.url))
+
+export const approvedProjectFiles = new Set([
   'projects/index.html',
   'projects/mcp-python-sdk.html',
   'projects/aider.html',
@@ -5520,136 +6697,8 @@ const expectedProjectOutputs = [
   'projects/dify.html',
   'projects/crewai.html',
   'projects/history-autogpt-flowise.html',
-]
-const fixtureCoreProjectFiles = new Set(expectedProjectOutputs.slice(1, 7))
-const fixtureProjectHeadings = [
-  '30 秒结论', '为什么选', '版本与边界', '原创建筑图', '唯一纵向调用链',
-  '关键源码入口', '一次请求的数据流', '阅读练习', '失败边界', '生产边界',
-  '高频面试点', '升级复核', '来源与归因',
-]
+])
 
-function createCompleteDistFixture() {
-  const dist = mkdtempSync(join(tmpdir(), 'agent-book-project-dist-'))
-  const stages = ['基础认知', '核心机制', '生产工程', '应用模式', '项目拆解', '综合实战']
-  const links = publishedCourseItems.map(({ itemId }) => {
-    const route = getContentItem(itemId).route
-    return `<a href="/agent-engineering-for-beginners${route}">${itemId}</a>`
-  })
-  writeFileSync(join(dist, 'index.html'), '<h1>public book</h1>')
-  mkdirSync(join(dist, 'course'), { recursive: true })
-  writeFileSync(
-    join(dist, 'course/index.html'),
-    `<nav class="course-map">${stages.join('')}本地进度将在页面加载后显示${links.join('')}</nav>`,
-  )
-  for (const { itemId } of publishedCourseItems) {
-    const route = getContentItem(itemId).route
-    const target = route.endsWith('/')
-      ? join(dist, route, 'index.html')
-      : join(dist, `${route}.html`)
-    mkdirSync(dirname(target), { recursive: true })
-    writeFileSync(target, `<h1>${itemId}</h1>`)
-  }
-  for (const relative of expectedProjectOutputs) {
-    const target = join(dist, relative)
-    mkdirSync(dirname(target), { recursive: true })
-    const isOverview = relative === 'projects/index.html'
-    const coreHeadings = fixtureCoreProjectFiles.has(relative) ? fixtureProjectHeadings.join('') : ''
-    writeFileSync(target, isOverview
-      ? '<main class="project-overview">开源项目拆解</main>'
-      : `<main>固定版本 关键源码入口 ${coreHeadings}</main>`)
-  }
-  return dist
-}
-
-describe('project publication boundary', () => {
-  it('requires every approved project output', () => {
-    const dist = createCompleteDistFixture()
-    try {
-      rmSync(join(dist, 'projects/aider.html'))
-      expect(validateDist(dist)).toContain('构建产物缺少项目页面：projects/aider.html')
-    } finally {
-      rmSync(dist, { recursive: true, force: true })
-    }
-  })
-
-  it('rejects extra project, lab, and capstone pages', () => {
-    const dist = createCompleteDistFixture()
-    try {
-      for (const relative of ['projects/unreviewed.html', 'labs/index.html', 'capstone/index.html']) {
-        mkdirSync(dirname(join(dist, relative)), { recursive: true })
-        writeFileSync(join(dist, relative), '<html></html>')
-      }
-      expect(validateDist(dist)).toEqual(expect.arrayContaining([
-        expect.stringContaining('projects/unreviewed.html'),
-        expect.stringContaining('labs/index.html'),
-        expect.stringContaining('capstone/index.html'),
-      ]))
-    } finally {
-      rmSync(dist, { recursive: true, force: true })
-    }
-  })
-
-  it('requires 26 exact course links and accepts only the eight approved project pages', () => {
-    const dist = createCompleteDistFixture()
-    try {
-      expect(validateDist(dist)).toEqual([])
-      const html = readFileSync(join(dist, 'course/index.html'), 'utf8')
-      expect(validateCourseDist(html)).toEqual([])
-    } finally {
-      rmSync(dist, { recursive: true, force: true })
-    }
-  })
-})
-```
-
-Add this exact content test:
-
-```ts
-import { interviewQuestions } from '../docs/.vitepress/theme/data/interviewQuestions'
-
-it('enforces the project page contract for every reading-only page', () => {
-  const coreIds = projectRouteRecords.slice(1, 7).map(([id]) => id)
-  for (const [id, route] of projectRouteRecords) {
-    const file = `docs${route.endsWith('/') ? `${route}index` : route}.md`
-    const text = readFileSync(file, 'utf8')
-    expect(text, file).not.toMatch(/npm install|pip install|docker run|API_KEY/u)
-    expect(text, file).not.toMatch(/!\[[^\]]*\]\(https?:\/\//u)
-    if (coreIds.includes(id)) {
-      const h2s = Array.from(text.matchAll(/^## (.+)$/gmu), (match) => match[1])
-      expect(h2s, file).toEqual(requiredProjectHeadings)
-      expect(new Set(h2s).size, `${file}: duplicate H2`).toBe(requiredProjectHeadings.length)
-      expect(text).toContain(`<ProjectMeta project-id="${id}" />`)
-      expect(text).toContain(`<ProjectCallChain project-id="${id}" />`)
-      expect(text).toContain(`<ProjectSourceLinks project-id="${id}" />`)
-    }
-  }
-  const questionIds = new Set(interviewQuestions.map((question) => question.id))
-  for (const page of projectCatalog.pages) {
-    for (const id of page.interview_question_ids) expect(questionIds.has(id), `${page.page_item_id}:${id}`).toBe(true)
-    const route = getContentItem(page.page_item_id).route
-    const file = `docs${route.endsWith('/') ? `${route}index` : route}.md`
-    const text = readFileSync(file, 'utf8')
-    const actualLinks = Array.from(text.matchAll(/\]\((\/chapters\/[^)#]+#iq-[^)]+)\)/gu), (match) => match[1])
-    const expectedLinks = page.interview_question_ids.map((id) => {
-      const question = interviewQuestions.find((candidate) => candidate.id === id)!
-      return `${question.path}#${id}`
-    })
-    expect(actualLinks, page.page_item_id).toEqual(expectedLinks)
-  }
-})
-```
-
-- [ ] **Step 2: Run dist tests and verify RED**
-
-Run: `pnpm vitest run tests/content.spec.ts tests/project-pages.spec.ts -t 'project publication boundary|project page contract'`
-
-Expected: FAIL only because the progressive gate does not yet require all eight approved outputs; the 26-link course contract already passes from Task 9.
-
-- [ ] **Step 3: Require the complete approved output allowlist**
-
-Do not modify `publishedCourseRoutes`; Task 9 already added the six project routes exactly once. Reuse `approvedProjectFiles` from Task 4 and add only the two classification sets:
-
-```js
 const coreProjectFiles = new Set([
   'projects/mcp-python-sdk.html',
   'projects/aider.html',
@@ -5662,124 +6711,1282 @@ const dissectionProjectFiles = new Set([
   ...coreProjectFiles,
   'projects/history-autogpt-flowise.html',
 ])
-```
-
-Keep `validatePublishedRouteBoundary(relativeFiles)` from Task 4 and add the final completeness check:
-
-```js
-for (const file of approvedProjectFiles) {
-  if (!relativeFiles.includes(file)) errors.push(`构建产物缺少项目页面：${file}`)
-}
-```
-
-The progressive boundary and its legacy fixture were finalized in Task 4; the 26-link course contract and `/projects/` course-marker change were finalized in Task 9. Do not rewrite those assertions here. This task adds only the eight-file completeness requirement and static page contracts.
-
-- [ ] **Step 4: Add static project-page checks**
-
-For each file in `dissectionProjectFiles`, run these exact checks:
-
-```js
 const coreProjectHeadings = [
   '30 秒结论', '为什么选', '版本与边界', '原创建筑图', '唯一纵向调用链',
   '关键源码入口', '一次请求的数据流', '阅读练习', '失败边界', '生产边界',
   '高频面试点', '升级复核', '来源与归因',
 ]
-for (const file of dissectionProjectFiles) {
-  if (!relativeFiles.includes(file)) continue
-  const projectHtml = readFileSync(join(distPath, file), 'utf8')
-  if (!projectHtml.includes('固定版本')) errors.push(`项目页缺少固定版本：${file}`)
-  if (!projectHtml.includes('关键源码入口')) errors.push(`项目页缺少源码入口：${file}`)
-  if (/blob\/(?:main|master)\//u.test(projectHtml)) errors.push(`项目页包含移动分支源码链接：${file}`)
-  if (!/github\.com\/[^/]+\/[^/]+\/blob\/[0-9a-f]{40}\//u.test(projectHtml)) errors.push(`项目页缺少固定 commit 源码链接：${file}`)
-  if (/<img\b[^>]*src=["']https?:\/\//iu.test(projectHtml)) errors.push(`项目页包含外链图片：${file}`)
-  if (coreProjectFiles.has(file)) {
-    for (const heading of coreProjectHeadings) {
-      if (!projectHtml.includes(heading)) errors.push(`核心项目页缺少章节 ${heading}：${file}`)
+
+export function validatePublishedRouteBoundary(relativeFiles) {
+  const forbidden = relativeFiles.filter((file) => {
+    const normalized = normalizePublishedOutputPath(file)
+    return normalized === null
+      || /^(?:labs|capstone|superpowers)(?:\.html|\/)/iu.test(normalized)
+      || (/^projects(?:\.html|\/)/iu.test(normalized) && !approvedProjectFiles.has(normalized))
+  })
+  return forbidden.length === 0
+    ? []
+    : [`构建产物包含未批准项目、实验或综合实战页面：${forbidden.join(', ')}`]
+}
+
+export function validateCourseDist(html) {
+  const errors = []
+  const contract = extractCourseHtmlContract(html)
+  const normalizedHrefs = contract.hrefs.map((href) => normalizeCleanCourseHref(href, siteBase))
+  const hasEveryRouteOnce = publishedCourseRoutes.every((route) =>
+    normalizedHrefs.filter((href) => href === route).length === 1,
+  )
+
+  if (
+    normalizedHrefs.length !== 26
+    || normalizedHrefs.includes(null)
+    || new Set(normalizedHrefs).size !== 26
+    || !hasEveryRouteOnce
+  ) {
+    errors.push('课程页必须包含 26 个唯一的公开课程链接')
+  }
+  if (!contract.courseText.includes('本地进度将在页面加载后显示')) {
+    errors.push('课程页缺少 SSR 中性进度文案')
+  }
+  for (const stage of courseStages) {
+    if (!contract.courseText.includes(stage)) errors.push(`课程页缺少阶段：${stage}`)
+  }
+  for (const marker of forbiddenCourseMarkers) {
+    if (contract.pageText.includes(marker)) errors.push(`课程页包含未发布入口或写操作：${marker}`)
+  }
+
+  return errors
+}
+
+function projectSourceUrl(subject, sourcePath) {
+  const encodedPath = sourcePath.split('/').map(encodeURIComponent).join('/')
+  return `https://github.com/${subject.canonical_repo}/blob/${subject.pinned_commit}/${encodedPath}`
+}
+
+function expectedProjectHrefs(file) {
+  const slug = file.slice('projects/'.length, -'.html'.length)
+  const page = projectCatalog.pages.find((candidate) =>
+    candidate.page_item_id === `project-${slug}`)
+  const subjects = page.subjects.map((subjectId) =>
+    projectCatalog.subjects.find((candidate) => candidate.id === subjectId))
+  return {
+    page,
+    subjects,
+    sources: subjects.flatMap((subject) => subject.entrypoints.map((entry) =>
+      projectSourceUrl(subject, entry.path))),
+    licenses: subjects.flatMap((subject) => subject.license_sources.map((source) =>
+      projectSourceUrl(subject, source.path))),
+  }
+}
+
+function expectedProjectDocumentHrefs(file) {
+  if (file === 'projects/index.html') {
+    const page = projectCatalog.pages.find((candidate) => candidate.page_item_id === 'projects-index')
+    const projectLinks = projectCatalog.pages.slice(1).map((candidate) =>
+      `${siteBase}/projects/${candidate.page_item_id.slice('project-'.length)}`)
+    const watchLinks = page.subjects
+      .map((subjectId) => projectCatalog.subjects.find((candidate) => candidate.id === subjectId))
+      .filter((subject) => subject.catalog_tier === 'watch-only')
+      .map((subject) => subject.canonical_url)
+    return [
+      ...projectLinks,
+      ...watchLinks,
+      `${siteBase}/frontier/agent-security-evaluation`,
+      `${siteBase}/chapters/09-safety-recovery`,
+      `${siteBase}/radar/`,
+      `${siteBase}/case-study/delivery-agent`,
+    ]
+  }
+
+  const expected = expectedProjectHrefs(file)
+  const metadata = expected.subjects.flatMap((subject) => [
+    subject.canonical_url,
+    subject.watch_url,
+  ])
+  const interview = expected.page.interview_question_ids.map((id) => {
+    const chapter = id.match(/^iq-(\d{2})-[a-z]$/u)?.[1]
+    const route = publishedCourseRoutes.find((candidate) =>
+      candidate.startsWith(`/chapters/${chapter}-`))
+    return `${siteBase}${route}#${id}`
+  })
+  return [...metadata, ...expected.licenses, ...expected.sources, ...interview]
+}
+
+function exactPinnedHrefs(actual, expected) {
+  return actual.length === expected.length
+    && new Set(actual).size === actual.length
+    && actual.every((href) => expected.some((candidate) =>
+      validatePinnedGithubSourceHref(href, candidate)))
+}
+
+function exactHrefs(actual, expected) {
+  return actual.length === expected.length
+    && new Set(actual).size === actual.length
+    && actual.every((href) => expected.includes(href))
+}
+
+export function validateDist(distPath) {
+  if (!existsSync(distPath)) return [`构建产物不存在：${distPath}`]
+
+  const errors = []
+  const indexed = indexDistFiles(distPath)
+  const relativeFiles = [...indexed.files.keys()]
+  errors.push(...indexed.errors)
+  const leaked = relativeFiles.filter((file) =>
+    file.split(/[\\/]/).some((segment) => segment.toLowerCase() === 'superpowers'))
+  if (leaked.length > 0) errors.push(`构建产物泄露 superpowers 页面：${leaked.join(', ')}`)
+  errors.push(...validatePublishedRouteBoundary(indexed.rawFiles))
+  for (const file of approvedProjectFiles) {
+    if (!relativeFiles.includes(file)) errors.push(`构建产物缺少项目页面：${file}`)
+  }
+  if (!relativeFiles.includes('index.html')) errors.push('构建产物缺少 index.html')
+
+  const coursePath = indexed.files.get('course/index.html')
+  if (coursePath === undefined) {
+    errors.push('构建产物缺少 course/index.html')
+  } else {
+    errors.push(...validateCourseDist(readFileSync(coursePath, 'utf8')))
+  }
+
+  for (const route of publishedCourseRoutes) {
+    const relativeTarget = route.endsWith('/')
+      ? `${route.slice(1)}index.html`
+      : `${route.slice(1)}.html`
+    if (!relativeFiles.includes(relativeTarget)) {
+      errors.push(`构建产物缺少公开课程目标：${relativeTarget}`)
     }
+  }
+
+  const projectContracts = new Map()
+  for (const file of approvedProjectFiles) {
+    const projectPath = indexed.files.get(file)
+    if (projectPath === undefined) continue
+    const contract = extractProjectHtmlContract(readFileSync(projectPath, 'utf8'))
+    projectContracts.set(file, contract)
+    if (!exactHrefs(contract.hrefs, expectedProjectDocumentHrefs(file))) {
+      errors.push(`项目页链接不符合公开契约：${file}`)
+    }
+  }
+
+  for (const file of dissectionProjectFiles) {
+    const contract = projectContracts.get(file)
+    if (contract === undefined) continue
+    if (!contract.text.includes('固定版本')) errors.push(`项目页缺少固定版本：${file}`)
+    if (!contract.text.includes('关键源码入口')) errors.push(`项目页缺少源码入口：${file}`)
+    const projectHrefs = [...contract.sourceHrefs, ...contract.licenseHrefs]
+    if (projectHrefs.some((href) => /\/blob\/(?:main|master)\//u.test(href))) {
+      errors.push(`项目页包含移动分支源码链接：${file}`)
+    }
+    if (!projectHrefs.some((href) => /\/blob\/[0-9a-f]{40}\//u.test(href))) {
+      errors.push(`项目页缺少固定 commit 源码链接：${file}`)
+    }
+    if (contract.images.some(isRemoteImageCandidate)) {
+      errors.push(`项目页包含外链图片：${file}`)
+    }
+    const expected = expectedProjectHrefs(file)
+    if (
+      !exactPinnedHrefs(contract.sourceHrefs, expected.sources)
+      || !exactPinnedHrefs(contract.licenseHrefs, expected.licenses)
+    ) {
+      errors.push(`项目页源码与许可链接不符合 catalog：${file}`)
+    }
+    if (coreProjectFiles.has(file)) {
+      if (
+        contract.headings.length !== coreProjectHeadings.length
+        || contract.headings.some((heading, index) => heading !== coreProjectHeadings[index])
+      ) {
+        errors.push(`核心项目页章节结构不匹配：${file}`)
+      }
+      for (const heading of coreProjectHeadings) {
+        if (!contract.headings.includes(heading)) errors.push(`核心项目页缺少章节 ${heading}：${file}`)
+      }
+    }
+  }
+
+  return errors
+}
+
+const invokedPath = process.argv[1] ? resolve(process.argv[1]) : ''
+if (invokedPath && pathToFileURL(invokedPath).href === import.meta.url) {
+  const distPath = resolve(process.argv[2] ?? 'docs/.vitepress/dist')
+  const errors = validateDist(distPath)
+  if (errors.length > 0) {
+    for (const error of errors) console.error(`- ${error}`)
+    process.exitCode = 1
+  } else {
+    console.log('dist validation passed')
   }
 }
 ```
 
-Apply the full 13-heading check only to `coreProjectFiles`. The overview and historical page use their own contracts from Task 8; `projects/index.html` must not be forced to contain a source list.
+This keeps the progressive allowlist reusable while the final `validateDist` requires all eight outputs. Every discovered file is canonicalized before validation; comparison remains POSIX and case-sensitive, and symlinks are findings rather than traversal inputs.
 
-- [ ] **Step 5: Run test, validation, and production build gates**
+- [ ] **Step 5: Add the final regression matrix**
+
+In `tests/content.spec.ts`, extend `createCompleteDistFixture` with catalog-derived metadata, source, license, interview, and overview anchors, and preserve real `h2` elements. The final test groups and cases are:
+
+```text
+progressive project publication boundary
+  allows any subset of the eight approved project outputs during implementation
+  allows every approved project output with POSIX and Windows separators
+  still rejects unapproved projects and every lab or capstone output
+  rejects absolute paths, Windows drive paths, and NUL bytes
+project publication boundary
+  returns a structured error for dangling dist symlinks
+  canonicalizes Windows-style approved outputs before every dist check
+  rejects output paths that collide after POSIX normalization
+  requires every approved project output
+  rejects extra project, lab, and capstone pages
+  requires 26 exact course links and accepts only the eight approved project pages
+  ignores comment and script bait instead of treating it as course markup
+  accepts only clean root-relative exact course URLs
+  enforces immutable, local, and complete static project output
+  ignores project contract bait in comments, scripts, styles, and templates
+  rejects every remote image candidate in structured project HTML
+  allows explicit local, data, and blob image candidates in project HTML
+  requires real project sections and h2 elements instead of string bait
+  requires the exact catalog-derived project source and license URLs
+  rejects missing and unexpected project source or license anchors
+  rejects unexpected internal or external anchors anywhere in the project document
+project routes and catalog overview
+  enforces the project page contract for every reading-only page
+  ignores fenced and commented fake Markdown contracts
+  normalizes browser-visible text across Markdown and HTML formatting
+  collects real Markdown and inline HTML links and images in source order
+  collects remote image candidates from Markdown, srcset, picture, and noscript
+  classifies image candidates with WHATWG URL semantics and fails closed
+  keeps project pages free of remote images for project asset provenance
+```
+
+The Markdown tests must construct `const markdown = await createMarkdownRenderer(resolve('docs'))`, call `extractProjectMarkdownContract(text, markdown)`, compare `contract.headings` with the exact 13-heading array, compare `contract.links` in source order, and filter `contract.images` through `isRemoteImageCandidate`.
+
+- [ ] **Step 6: Run the full publication gate**
 
 Run:
 
 ```bash
-pnpm vitest run tests/content.spec.ts tests/project-pages.spec.ts -t 'project publication boundary|project page contract'
-pnpm test && pnpm validate && pnpm build
+pnpm vitest run tests/content.spec.ts tests/project-pages.spec.ts
+pnpm test
+pnpm validate
+pnpm build
 ```
 
-Expected: complete fixture and real dist pass; missing or extra page fixtures fail with the exact assertions; course SSR contains 26 unique targets.
+Expected: all structured-source and built-output cases pass; `pnpm build` ends with `dist validation passed`.
 
-- [ ] **Step 6: Commit the publication contract**
+- [ ] **Step 7: Commit the publication contract**
 
 ```bash
-git add scripts/check-dist.mjs tests/content.spec.ts tests/project-pages.spec.ts
+git add scripts/publication-contracts.mjs scripts/check-dist.mjs tests/content.spec.ts tests/project-pages.spec.ts package.json pnpm-lock.yaml
 git commit -m "test: enforce project publication boundaries"
 ```
 
-### Task 13: Document the project-reading layer and run pre-merge acceptance
+### Task 13: Document and harden the final project-reading release
 
 **Files:**
 
 - Modify: `README.md`
+- Modify: `docs/.vitepress/theme/components/ProjectMeta.vue`
+- Modify: `docs/.vitepress/theme/components/ProjectSourceLinks.vue`
+- Modify: `docs/.vitepress/theme/style.css`
+- Modify: `sources/source-index.yml`
+- Modify: `tests/content.spec.ts`
 - Modify: `tests/project-pages.spec.ts`
-- Verify only: all files changed by Tasks 1–11
+- Modify: `package.json`
+- Modify: `pnpm-lock.yaml`
+- Verify only: every file changed by Tasks 1–12
 
-- [ ] **Step 1: Write the failing README boundary test**
+- [ ] **Step 1: Document the project-reading boundary**
 
-```ts
-describe('project documentation handoff', () => {
-  it('documents the project catalog without claiming labs exist', () => {
-    const readme = readFileSync('README.md', 'utf8')
-    expect(readme).toContain('/projects/')
-    expect(readme).toContain('六个核心源码拆解')
-    expect(readme).toContain('固定 commit')
-    expect(readme).toContain('Python Lab Kit 属于下一阶段')
-    expect(readme).toContain('仓库不会发布 `/labs/`')
-    expect(readme).not.toMatch(/\]\([^)]*\/labs\//u)
-  })
-})
-```
-
-- [ ] **Step 2: Run the README test and verify RED**
-
-Run: `pnpm vitest run tests/project-pages.spec.ts -t 'project documentation handoff'`
-
-Expected: FAIL because the README does not yet describe the second-stage project layer.
-
-- [ ] **Step 3: Add the exact README section**
-
-Insert after the course-map description:
+Insert this exact README section before “学习入口”:
 
 ```md
 ## 开源项目拆解
 
-`/projects/` 提供六个核心源码拆解：MCP 规范与 Python SDK、Aider、OpenHands、SWE-bench/τ²-bench、Dify、CrewAI。每页固定上游 commit、许可证作用域和一条纵向调用链；AutoGPT/Flowise 只作为历史反例，Hermes Agent/OpenClaw 只作为高权限观察项。
+`/projects/` 提供六个核心源码拆解：MCP 规范与 Python SDK、Aider、OpenHands、SWE-bench/τ²-bench、Dify、CrewAI。每页固定 commit（上游提交）、许可证作用域和一条纵向调用链；AutoGPT/Flowise 只作为历史反例，Hermes Agent/OpenClaw 只作为高权限观察项。
 
 这些页面是阅读型源码课程，不会安装或运行上游项目。Python Lab Kit 属于下一阶段；在独立设计、离线 fixture、成本上限和清理流程完成前，仓库不会发布 `/labs/`。
+
 ```
 
-- [ ] **Step 4: Run every automated gate**
+The README must describe six core dissections, fixed upstream commits, the historical/watch-only split, and the explicit no-Lab boundary without linking to `/labs/`.
+
+- [ ] **Step 2: Record the manually verified source baseline**
+
+Update these two `sources/source-index.yml` records exactly:
+
+```yaml
+  - id: pydantic-ai-repository
+    title: Pydantic AI
+    publisher: Pydantic
+    url: https://github.com/pydantic/pydantic-ai
+    grade: A
+    accessed: '2026-09-25'
+    version: rolling
+    last_verified: '2026-09-26'
+    review_by: '2026-10-26'
+    watch_url: https://github.com/pydantic/pydantic-ai/releases/latest
+    impact_chapters: ['04', '09']
+    note: 人工核验至 Pydantic AI v2.51.0，未改变现有稳定结论；学习类型约束、结构化结果和依赖注入，不把类型安全等同于事实正确。
+  - id: google-adk-repository
+    title: Agent Development Kit for Python
+    publisher: Google
+    url: https://github.com/google/adk-python
+    grade: A
+    accessed: '2026-09-25'
+    version: rolling
+    last_verified: '2026-09-26'
+    review_by: '2026-10-26'
+    watch_url: https://github.com/google/adk-python/releases/latest
+    impact_chapters: ['07', '08']
+    note: 人工核验至 Google ADK v2.10.0，未改变现有稳定结论；学习代码优先的 agent 组合、评测与部署接口；效率指标列入下一期 Radar 候选，当前不改正文。
+```
+
+Add exact `tests/content.spec.ts` assertions for every field above. The pre-refresh report had six `repository_updated` findings, including `pydantic-ai-repository` and `google-adk-repository`. After commit `5507d60`, the recorded report is `{ total: 33, healthy: 29, needs_review: 4 }`; only `langgraph-repository`, `crewai-repository`, `langfuse-repository`, and `phoenix-repository` remain, each with exactly `repository_updated`. This refresh updates review metadata only and does not change chapter conclusions.
+
+- [ ] **Step 3: Render explicit print-only source and license URLs**
+
+Use the final `ProjectSourceLinks.vue`:
+
+```vue
+<script setup lang="ts">
+import { computed } from 'vue'
+import { getProjectPage, getProjectSubject, projectSourceUrl } from '../data/projectCatalog'
+
+const props = defineProps<{ projectId: string }>()
+const rows = computed(() => getProjectPage(props.projectId).subjects.flatMap((subjectId) => {
+  const subject = getProjectSubject(subjectId)
+  return subject.entrypoints.map((entry) => ({
+    subjectId,
+    repo: subject.canonical_repo,
+    path: entry.path,
+    symbols: entry.symbols,
+    responsibility: entry.responsibility,
+    href: projectSourceUrl(subjectId, entry.path),
+  }))
+}))
+</script>
+
+<template>
+  <ol class="project-source-links" role="list">
+    <li v-for="row in rows" :key="`${row.subjectId}:${row.path}`" role="listitem">
+      <a :href="row.href"><code>{{ row.path }}</code></a>
+      <strong>{{ row.symbols.join(' · ') }}</strong>
+      <span>{{ row.responsibility }}</span>
+      <small>{{ row.repo }} · 固定 commit</small>
+      <span class="project-source-print-url" aria-hidden="true">{{ row.href }}</span>
+    </li>
+  </ol>
+</template>
+```
+
+Use the final `ProjectMeta.vue`:
+
+```vue
+<script setup lang="ts">
+import { computed } from 'vue'
+import { getProjectPage, getProjectSubject, projectSourceUrl } from '../data/projectCatalog'
+
+const props = defineProps<{ projectId: string }>()
+const page = computed(() => getProjectPage(props.projectId))
+const subjects = computed(() => page.value.subjects.map(getProjectSubject))
+const tierLabel = computed(() => page.value.catalog_tier === 'core' ? '核心拆解' : '历史反例')
+const statusLabels: Record<string, string> = { active: '活跃', archived: '已归档', eol: '已停止维护' }
+const statusLabel = (status: string) => statusLabels[status] ?? status
+</script>
+
+<template>
+  <aside class="project-meta" aria-label="项目版本与许可边界">
+    <p><strong>教学层级：</strong>{{ tierLabel }}</p>
+    <ul role="list">
+      <li v-for="subject in subjects" :key="subject.id" role="listitem">
+        <a :href="subject.canonical_url">{{ subject.canonical_repo }}</a>
+        <span><strong>固定版本：</strong>{{ subject.pinned_ref }} · <code>{{ subject.pinned_commit }}</code></span>
+        <span><strong>仓库状态：</strong>{{ statusLabel(subject.repository_status) }}<template v-if="subject.archived"> · GitHub 已归档</template></span>
+        <span><strong>核验：</strong>{{ subject.verified_at }}，下次 {{ subject.review_by }}</span>
+        <a :href="subject.watch_url">检查上游更新</a>
+        <details>
+          <summary>许可证边界</summary>
+          <p>{{ subject.license_summary }}</p>
+          <ul role="list">
+            <li
+              v-for="scope in subject.license_scopes"
+              :key="`${scope.expression}-${scope.path_or_glob ?? scope.selector}`"
+              role="listitem"
+            >
+              <code>{{ scope.basis }}</code> · <code>{{ scope.expression }}</code> ·
+              <code>{{ scope.path_or_glob ?? scope.selector }}</code> · {{ scope.scope }} — {{ scope.note }}
+            </li>
+          </ul>
+          <p>
+            许可证原文：
+            <a
+              v-for="source in subject.license_sources"
+              :key="source.path"
+              :href="projectSourceUrl(subject.id, source.path)"
+            ><code>{{ source.path }}</code></a>
+          </p>
+        </details>
+        <div class="project-license-print" aria-hidden="true">
+          <p><strong>许可证摘要：</strong>{{ subject.license_summary }}</p>
+          <ul>
+            <li
+              v-for="scope in subject.license_scopes"
+              :key="`print-${scope.expression}-${scope.path_or_glob ?? scope.selector}`"
+            >
+              {{ scope.basis }} · {{ scope.expression }} · {{ scope.path_or_glob ?? scope.selector }} · {{ scope.scope }} — {{ scope.note }}
+            </li>
+          </ul>
+          <p
+            v-for="source in subject.license_sources"
+            :key="`print-license-${source.path}`"
+            class="project-license-print-url"
+          >
+            许可证原文：{{ projectSourceUrl(subject.id, source.path) }}
+          </p>
+        </div>
+      </li>
+    </ul>
+  </aside>
+</template>
+```
+
+The print URL is explicit text (`{{ row.href }}`) with `aria-hidden="true"`; do not recreate URLs with `a[href]::after` or any CSS generated-content pseudo-element.
+
+- [ ] **Step 4: Lock the final responsive and print cascade**
+
+Install the parser dependencies used by the regression guard:
+
+```bash
+pnpm add -D postcss@8.5.28 postcss-selector-parser@7.1.6
+```
+
+The final project-specific CSS block is:
+
+```css
+.project-meta,
+.project-chain-section,
+.project-overview section {
+  margin: 1.5rem 0;
+  border: 1px solid var(--reading-rule);
+  border-radius: 12px;
+  background: var(--reading-bg);
+}
+
+.project-meta,
+.project-chain-section,
+.project-overview section {
+  padding: 1rem 1.1rem;
+}
+
+.project-meta > ul,
+.project-overview ol,
+.project-overview ul,
+.project-call-chain,
+.project-source-links {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.project-meta > ul > li,
+.project-source-links > li {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.85rem 0;
+  border-top: 1px solid var(--reading-rule);
+}
+
+.project-meta > ul > li {
+  grid-template-columns: minmax(0, 1fr) !important;
+  min-width: 0 !important;
+}
+
+.project-meta > ul > li > * {
+  min-width: 0 !important;
+}
+
+.project-source-links > li {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.project-architecture {
+  margin: 1rem 0;
+}
+
+.project-architecture figcaption {
+  color: var(--reading-text);
+  font-weight: 750;
+  font-size: 1.05rem;
+}
+
+.project-architecture-tracks {
+  display: grid;
+  gap: 1rem;
+}
+
+.project-architecture-nodes,
+.project-call-chain {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.project-architecture-nodes span {
+  position: relative;
+  padding: 0.7rem;
+  border: 1px solid var(--reading-rule);
+  border-radius: 8px;
+  background: var(--reading-bg-soft);
+  text-align: center;
+}
+
+.project-architecture-nodes span:not(:last-child)::after {
+  position: absolute;
+  inset-inline-end: -0.65rem;
+  content: '→';
+  color: var(--reading-link);
+}
+
+.project-call-chain li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.4rem;
+  min-width: 0;
+  padding: 0.85rem;
+  border-left: 3px solid var(--reading-link);
+  background: var(--reading-bg-soft);
+}
+
+.project-meta code,
+.project-call-chain code,
+.project-source-links code {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.project-chain-track-group h4,
+.project-meta small,
+.project-source-links small {
+  color: var(--reading-text-soft);
+  font-size: 0.8rem;
+}
+
+.project-chain-warning {
+  padding-left: 0.8rem;
+  border-left: 3px solid var(--reading-risk);
+}
+
+.project-risk-tag {
+  display: inline-block;
+  margin: 0.25rem 0.25rem 0 0;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid var(--reading-risk);
+  border-radius: 999px;
+  color: var(--reading-risk);
+}
+
+.project-safety-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.project-license-print {
+  display: none;
+}
+
+.project-license-print-url {
+  overflow-wrap: anywhere;
+}
+
+.project-source-print-url {
+  display: none;
+}
+
+.project-meta summary {
+  min-height: 44px;
+  touch-action: manipulation;
+}
+
+.project-overview a,
+.project-source-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  touch-action: manipulation;
+}
+
+.project-meta :focus-visible,
+.project-overview :focus-visible,
+.project-source-links :focus-visible {
+  outline: 3px solid var(--reading-link);
+  outline-offset: 3px;
+}
+
+@media (max-width: 700px) {
+  .project-architecture-nodes,
+  .project-call-chain {
+    grid-template-columns: 1fr;
+  }
+
+  .project-architecture-nodes span:not(:last-child)::after {
+    inset-inline-end: auto;
+    inset-block-end: -0.8rem;
+    inset-inline-start: 50%;
+    content: '↓';
+  }
+
+  .project-meta,
+  .project-chain-section,
+  .project-overview section {
+    padding: 0.9rem;
+  }
+}
+
+@media print {
+  .course-stage-more,
+  .course-stage-more > summary,
+  .course-progress progress,
+  .course-stage progress {
+    display: none;
+  }
+
+  .vp-doc ol.course-print-items {
+    display: grid;
+    grid-column: 2;
+    gap: 0.75rem;
+    list-style: none;
+  }
+
+  .course-print-items li {
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--reading-rule);
+  }
+
+  .course-print-items span {
+    font-weight: 800;
+  }
+
+  .course-stage,
+  .course-item {
+    break-inside: avoid;
+  }
+
+  .project-meta details {
+    display: none !important;
+  }
+
+  .project-meta > ul,
+  .project-source-links,
+  .project-call-chain {
+    display: block;
+  }
+
+  .project-meta > ul > li,
+  .project-source-links > li,
+  .project-call-chain li {
+    display: block;
+    break-inside: avoid;
+  }
+
+  .project-meta > ul > li > *,
+  .project-source-links > li > *,
+  .project-call-chain li > * {
+    display: block;
+  }
+
+  .project-license-print {
+    display: block !important;
+  }
+
+  .project-architecture {
+    display: none !important;
+  }
+
+  .project-call-chain {
+    grid-template-columns: 1fr;
+  }
+
+  .project-source-print-url {
+    display: block !important;
+    max-width: 100% !important;
+    overflow-wrap: anywhere !important;
+    white-space: normal !important;
+  }
+}
+```
+
+The `.project-meta > ul > li` mobile-width declarations and the print-only `.project-source-print-url` declarations are deliberately `!important`. The regression test parses selectors and nested media conditions so earlier/later rules, higher specificity, comma branches, `not screen`, comments, and generated `attr(href)` content cannot silently defeat the approved cascade.
+
+- [ ] **Step 5: Add the final presentation regression block**
+
+Use the final `project presentation primitives` test block from `tests/project-pages.spec.ts`:
+
+```ts
+describe('project presentation primitives', () => {
+  it('loads the validated project catalog and fails closed on inherited IDs', () => {
+    expect(getProjectPage('project-aider').subjects).toEqual(['aider'])
+    expect(getProjectSubject('aider').pinned_ref).toBe('v0.86.0')
+    expect(getProjectSubject('hermes-agent').risk_tags).toEqual(['长期自主', '长期记忆', '外部系统'])
+    expect(getProjectSubject('openclaw').risk_tags).toEqual(['长期自主', 'IM', '桌面控制', '外部系统'])
+    expect(getProjectChain('aider-repo-to-verified-edit').steps).toHaveLength(21)
+
+    for (const id of ['missing', 'toString', 'constructor', '__proto__']) {
+      expect(() => getProjectPage(id)).toThrow(`Unknown project page: ${id}`)
+      expect(() => getProjectSubject(id)).toThrow(`Unknown project subject: ${id}`)
+      expect(() => getProjectChain(id)).toThrow(`Unknown project chain: ${id}`)
+    }
+  })
+
+  it('generates immutable source links from the pinned commit', () => {
+    expect(projectSourceUrl('aider', 'aider/main.py')).toBe(
+      'https://github.com/Aider-AI/aider/blob/a4be6ccd87ebaa59b361f3f028d116ce1761b626/aider/main.py',
+    )
+    expect(projectSourceUrl('aider', 'LICENSE.txt')).toContain(
+      '/blob/a4be6ccd87ebaa59b361f3f028d116ce1761b626/LICENSE.txt',
+    )
+    expect(() => projectSourceUrl('aider', 'README.md')).toThrow(
+      'Undeclared project source: aider/README.md',
+    )
+  })
+
+  it('URL-encodes each declared source path segment without encoding separators', () => {
+    const specialCatalog = structuredClone(projectCatalog)
+    const aider = specialCatalog.subjects.find((subject) => subject.id === 'aider')!
+    aider.entrypoints.push({
+      path: 'docs/path with space/#guide?100%.md',
+      symbols: ['render special path'],
+      responsibility: 'Exercise reserved URL characters in a declared source path.',
+    })
+    const specialLookup = createProjectCatalogLookup(specialCatalog)
+
+    expect(specialLookup.projectSourceUrl('aider', 'docs/path with space/#guide?100%.md')).toBe(
+      'https://github.com/Aider-AI/aider/blob/a4be6ccd87ebaa59b361f3f028d116ce1761b626/docs/path%20with%20space/%23guide%3F100%25.md',
+    )
+  })
+
+  it('loads the catalog relative to the loader module instead of the process working directory', () => {
+    const loader = readFileSync('docs/.vitepress/theme/data/projectCatalog.data.ts', 'utf8')
+    expect(loader).not.toContain('process.cwd()')
+    expect(loader).not.toContain('watchedFiles[0]')
+    expect(loader).toContain('import.meta.url')
+    expect(loader).toContain("new URL('../../../../sources/project-index.yml', import.meta.url)")
+  })
+
+  it('registers four SSR-safe components with native list and disclosure semantics', () => {
+    const loader = readFileSync('docs/.vitepress/theme/data/projectCatalog.data.ts', 'utf8')
+    expect(loader).toContain("import { defineLoader } from 'vitepress'")
+    expect(loader).not.toContain('type { Loader }')
+
+    const core = readFileSync('docs/.vitepress/theme/data/projectCatalogCore.ts', 'utf8')
+    expect(core).not.toContain('projectCatalog.data')
+
+    const theme = readFileSync('docs/.vitepress/theme/index.ts', 'utf8')
+    for (const name of ['ProjectOverview', 'ProjectMeta', 'ProjectCallChain', 'ProjectSourceLinks']) {
+      expect(theme).toContain(`'${name}'`)
+    }
+
+    const chain = readFileSync('docs/.vitepress/theme/components/ProjectCallChain.vue', 'utf8')
+    expect(chain).toContain('<figure')
+    expect(chain).toContain('class="project-architecture"')
+    expect(chain).toContain('本书归纳 · 原创建筑关系图')
+    expect(chain).toContain('<ol')
+    expect(chain).toContain('role="list"')
+    expect(chain).toContain('role="listitem"')
+    expect(chain).toContain('源码事实：')
+    expect(chain).toContain('本书归纳：')
+    expect(chain).toContain('不要误解')
+
+    const meta = readFileSync('docs/.vitepress/theme/components/ProjectMeta.vue', 'utf8')
+    expect(meta).toContain('仓库状态')
+    expect(meta).toContain('教学层级')
+    expect(meta).toContain('<details')
+    expect(meta).toContain('project-license-print')
+    expect(meta).not.toContain('pinned_commit.slice')
+    expect(meta).toContain('scope.basis')
+    expect(meta).toContain('scope.path_or_glob ?? scope.selector')
+    expect(meta).toContain('projectSourceUrl(subject.id, source.path)')
+
+    const sources = readFileSync('docs/.vitepress/theme/components/ProjectSourceLinks.vue', 'utf8')
+    for (const field of ['row.path', 'row.symbols', 'row.responsibility']) {
+      expect(sources).toContain(field)
+    }
+    expect(sources).not.toContain('row.symbol }}')
+
+    const overview = readFileSync('docs/.vitepress/theme/components/ProjectOverview.vue', 'utf8')
+    expect(overview).toContain('subject.risk_tags')
+    for (const id of ['frontier-agent-security-evaluation', 'chapter-09-safety-recovery', 'radar']) {
+      expect(overview).toContain(id)
+    }
+  })
+
+  it('parses responsive project rules by media scope and effective cascade', async () => {
+    const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
+    expect(pkg.devDependencies.postcss).toBe('8.5.28')
+    expect(pkg.devDependencies['postcss-selector-parser']).toBe('7.1.6')
+
+    const sourceComponent = readFileSync(
+      'docs/.vitepress/theme/components/ProjectSourceLinks.vue',
+      'utf8',
+    )
+    expect(sourceComponent).toContain('class="project-source-print-url"')
+    expect(sourceComponent).toContain('aria-hidden="true"')
+    expect(sourceComponent).toContain('{{ row.href }}')
+    expect(readFileSync('docs/.vitepress/theme/components/ProjectMeta.vue', 'utf8'))
+      .toContain('class="project-license-print-url"')
+
+    const { default: postcss } = await import('postcss')
+    const { default: selectorParser } = await import('postcss-selector-parser')
+    expect(selectorParser).toBeTypeOf('function')
+    const root = postcss.parse(readFileSync('docs/.vitepress/theme/style.css', 'utf8'))
+    const rules: any[] = []
+    root.walkRules((rule) => rules.push(rule))
+
+    const selectors = (rule: any) => postcss.list.comma(rule.selector).map((value) => value.trim())
+    const scope = (rule: any) => {
+      let parent = rule.parent
+      while (parent && parent !== root) {
+        if (parent.type === 'atrule' && parent.name === 'media') {
+          return parent.params.replace(/\s+/gu, '').toLowerCase()
+        }
+        parent = parent.parent
+      }
+      return 'root'
+    }
+    const findExactRule = (expectedSelectors: string[], expectedScope: string) => {
+      const expected = [...expectedSelectors].sort()
+      const matches = rules.filter((rule) =>
+        scope(rule) === expectedScope
+        && JSON.stringify([...selectors(rule)].sort()) === JSON.stringify(expected))
+      expect(matches, `${expectedScope}: ${expectedSelectors.join(', ')}`).toHaveLength(1)
+      return matches[0]
+    }
+    const declarations = (rule: any) => Object.fromEntries(
+      rule.nodes
+        .filter((node: any) => node.type === 'decl')
+        .map((node: any) => [node.prop, { value: node.value, important: Boolean(node.important) }]),
+    )
+    const expectEffectiveRule = (
+      expectedSelectors: string[],
+      expectedScope: string,
+      expectedDeclarations: Record<string, { value: string, important?: boolean }>,
+    ) => {
+      const rule = findExactRule(expectedSelectors, expectedScope)
+      const actual = declarations(rule)
+      for (const [property, expected] of Object.entries(expectedDeclarations)) {
+        expect(actual[property], `${rule.selector} ${property}`).toEqual({
+          value: expected.value,
+          important: expected.important ?? false,
+        })
+      }
+      const laterRules = rules.slice(rules.indexOf(rule) + 1)
+      for (const selector of expectedSelectors) {
+        for (const property of Object.keys(expectedDeclarations)) {
+          const overrides = laterRules.filter((candidate) =>
+            scope(candidate) === expectedScope
+            && selectors(candidate).includes(selector)
+            && Boolean(declarations(candidate)[property]))
+          expect(overrides, `later ${expectedScope} override: ${selector} ${property}`).toEqual([])
+        }
+      }
+    }
+
+    expectEffectiveRule(['.project-meta > ul > li'], 'root', {
+      'grid-template-columns': { value: 'minmax(0, 1fr)', important: true },
+      'min-width': { value: '0', important: true },
+    })
+    expectEffectiveRule(['.project-meta > ul > li > *'], 'root', {
+      'min-width': { value: '0', important: true },
+    })
+    expectEffectiveRule(['.project-source-links > li'], 'root', {
+      'grid-template-columns': { value: 'minmax(0, 1fr)' },
+    })
+    expectEffectiveRule(['.project-call-chain li'], 'root', {
+      'grid-template-columns': { value: 'minmax(0, 1fr)' },
+      'min-width': { value: '0' },
+    })
+    expectEffectiveRule(['.project-license-print-url'], 'root', {
+      'overflow-wrap': { value: 'anywhere' },
+    })
+    expectEffectiveRule(['.project-source-print-url'], 'root', {
+      display: { value: 'none' },
+    })
+
+    expectEffectiveRule(
+      ['.project-architecture-nodes', '.project-call-chain'],
+      '(max-width:700px)',
+      { 'grid-template-columns': { value: '1fr' } },
+    )
+    expectEffectiveRule(
+      ['.project-meta', '.project-chain-section', '.project-overview section'],
+      '(max-width:700px)',
+      { padding: { value: '0.9rem' } },
+    )
+
+    expectEffectiveRule(
+      ['.project-meta > ul', '.project-source-links', '.project-call-chain'],
+      'print',
+      { display: { value: 'block' } },
+    )
+    expectEffectiveRule(
+      ['.project-meta > ul > li', '.project-source-links > li', '.project-call-chain li'],
+      'print',
+      { display: { value: 'block' }, 'break-inside': { value: 'avoid' } },
+    )
+    expectEffectiveRule(
+      ['.project-meta > ul > li > *', '.project-source-links > li > *', '.project-call-chain li > *'],
+      'print',
+      { display: { value: 'block' } },
+    )
+    expectEffectiveRule(['.project-source-print-url'], 'print', {
+      display: { value: 'block', important: true },
+      'max-width': { value: '100%', important: true },
+      'overflow-wrap': { value: 'anywhere', important: true },
+      'white-space': { value: 'normal', important: true },
+    })
+
+    const mediaAncestors = (rule: any) => {
+      const ancestors: string[] = []
+      let parent = rule.parent
+      while (parent && parent !== root) {
+        if (parent.type === 'atrule' && parent.name === 'media') ancestors.unshift(parent.params)
+        parent = parent.parent
+      }
+      return ancestors
+    }
+    const mediaBranches = (params: string) => postcss.list.comma(params)
+      .map((branch) => branch.trim().toLowerCase())
+    const branchAllowsPrint = (branch: string) => {
+      if (/\bnot\s+print\b/u.test(branch)) return false
+      if (/\b(?:only\s+)?screen\b/u.test(branch) && !/\bnot\s+screen\b/u.test(branch)) return false
+      return true
+    }
+    const branchAllowsMobile = (branch: string, width = 390) => {
+      if (/\bnot\s+screen\b/u.test(branch)) return false
+      if (/\bprint\b/u.test(branch) && !/\bnot\s+print\b/u.test(branch)) return false
+      const min = [...branch.matchAll(/min-width\s*:\s*(\d+)px/gu)].map((match) => Number(match[1]))
+      const max = [...branch.matchAll(/max-width\s*:\s*(\d+)px/gu)].map((match) => Number(match[1]))
+      return min.every((value) => width >= value) && max.every((value) => width <= value)
+    }
+    const appliesToPrint = (rule: any) => mediaAncestors(rule)
+      .every((params) => mediaBranches(params).some(branchAllowsPrint))
+    const appliesToMobile = (rule: any) => mediaAncestors(rule)
+      .every((params) => mediaBranches(params).some((branch) => branchAllowsMobile(branch)))
+    const selectorAnalysis = (selector: string) => {
+      const selectorRoot = selectorParser().astSync(selector)
+      const selectorNode: any = selectorRoot.nodes[0]
+      const specificity = [0, 0, 0]
+      const classes = new Set<string>()
+      const tags = new Set<string>()
+      const pseudos = new Set<string>()
+      selectorNode.walk((node: any) => {
+        if (node.type === 'id') specificity[0] += 1
+        else if (node.type === 'class' || node.type === 'attribute') specificity[1] += 1
+        else if (node.type === 'pseudo') {
+          if (node.value.startsWith('::')) specificity[2] += 1
+          else specificity[1] += 1
+        } else if (node.type === 'tag') specificity[2] += 1
+        if (node.type === 'class') classes.add(node.value)
+        if (node.type === 'tag') tags.add(node.value)
+        if (node.type === 'pseudo') pseudos.add(node.value)
+      })
+      const nodes = selectorNode.nodes as any[]
+      const lastCombinator = nodes.reduce(
+        (index, node, candidate) => node.type === 'combinator' ? candidate : index,
+        -1,
+      )
+      const lastCompound = nodes.slice(lastCombinator + 1)
+      return {
+        classes,
+        lastHasLi: lastCompound.some((node) => node.type === 'tag' && node.value === 'li'),
+        pseudos,
+        specificity,
+        tags,
+      }
+    }
+    const compareSpecificity = (left: number[], right: number[]) => {
+      for (let index = 0; index < 3; index += 1) {
+        if (left[index] !== right[index]) return left[index] - right[index]
+      }
+      return 0
+    }
+    const criticalCascadeViolations = (css: string) => {
+      const fixtureRoot = postcss.parse(css)
+      const fixtureRules: any[] = []
+      fixtureRoot.walkRules((rule) => fixtureRules.push(rule))
+      const fixtureSelectors = (rule: any) => postcss.list.comma(rule.selector)
+        .map((value) => value.trim())
+      const fixtureDeclarations = (rule: any) => rule.nodes
+        .filter((node: any) => node.type === 'decl')
+      const fixtureMediaAncestors = (rule: any) => {
+        const ancestors: string[] = []
+        let parent = rule.parent
+        while (parent && parent !== fixtureRoot) {
+          if (parent.type === 'atrule' && parent.name === 'media') ancestors.unshift(parent.params)
+          parent = parent.parent
+        }
+        return ancestors
+      }
+      const fixtureAppliesToPrint = (rule: any) => fixtureMediaAncestors(rule)
+        .every((params) => mediaBranches(params).some(branchAllowsPrint))
+      const fixtureAppliesToMobile = (rule: any) => fixtureMediaAncestors(rule)
+        .every((params) => mediaBranches(params).some((branch) => branchAllowsMobile(branch)))
+      const exactRules = (selector: string, media: 'root' | 'print') => fixtureRules.filter((rule) => {
+        const exactSelector = fixtureSelectors(rule).length === 1 && fixtureSelectors(rule)[0] === selector
+        if (!exactSelector) return false
+        const ancestors = fixtureMediaAncestors(rule).map((value) => value.replace(/\s+/gu, '').toLowerCase())
+        return media === 'root' ? ancestors.length === 0 : ancestors.length === 1 && ancestors[0] === 'print'
+      })
+      const errors: string[] = []
+      const metaRules = exactRules('.project-meta > ul > li', 'root')
+      const printBaseRules = exactRules('.project-source-print-url', 'root')
+      const printRules = exactRules('.project-source-print-url', 'print')
+      if (metaRules.length !== 1) errors.push('missing approved mobile meta rule')
+      if (printBaseRules.length !== 1) errors.push('missing approved screen-hidden print URL rule')
+      if (printRules.length !== 1) errors.push('missing approved print URL rule')
+
+      const metaRule = metaRules[0]
+      const printRule = printRules[0]
+      const metaIndex = fixtureRules.indexOf(metaRule)
+      const printIndex = fixtureRules.indexOf(printRule)
+      const metaSpecificity = selectorAnalysis('.project-meta > ul > li').specificity
+      const printSpecificity = selectorAnalysis('.project-source-print-url').specificity
+      const metaExpected: Record<string, string> = {
+        'grid-template-columns': 'minmax(0, 1fr)',
+        'min-width': '0',
+      }
+      const printExpected: Record<string, string> = {
+        display: 'block',
+        'max-width': '100%',
+        'overflow-wrap': 'anywhere',
+        'white-space': 'normal',
+      }
+      if (metaRule) {
+        const actual = Object.fromEntries(fixtureDeclarations(metaRule).map((node: any) => [node.prop, node]))
+        for (const [property, value] of Object.entries(metaExpected)) {
+          if (actual[property]?.value !== value || !actual[property]?.important) {
+            errors.push(`approved mobile meta ${property} must be ${value} !important`)
+          }
+        }
+      }
+      if (printRule) {
+        const actual = Object.fromEntries(fixtureDeclarations(printRule).map((node: any) => [node.prop, node]))
+        for (const [property, value] of Object.entries(printExpected)) {
+          if (actual[property]?.value !== value || !actual[property]?.important) {
+            errors.push(`approved print URL ${property} must be ${value} !important`)
+          }
+        }
+      }
+
+      fixtureRules.forEach((rule, ruleIndex) => {
+        fixtureSelectors(rule).forEach((selector) => {
+          const analysis = selectorAnalysis(selector)
+          const declarationByProperty = Object.fromEntries(
+            fixtureDeclarations(rule).map((node: any) => [node.prop, node]),
+          )
+          const targetsMetaRow = analysis.classes.has('project-meta') && analysis.lastHasLi
+          if (targetsMetaRow && fixtureAppliesToMobile(rule)) {
+            for (const property of Object.keys(metaExpected)) {
+              const declaration = declarationByProperty[property]
+              if (!declaration || rule === metaRule) continue
+              if (declaration.important) {
+                errors.push(`competing mobile !important: ${selector} ${property}`)
+              } else if (metaRule && ruleIndex > metaIndex
+                && compareSpecificity(analysis.specificity, metaSpecificity) >= 0) {
+                errors.push(`later mobile override: ${selector} ${property}`)
+              }
+            }
+          }
+
+          if (analysis.classes.has('project-source-print-url') && fixtureAppliesToPrint(rule)) {
+            for (const property of Object.keys(printExpected)) {
+              const declaration = declarationByProperty[property]
+              if (!declaration || rule === printRule) continue
+              const approvedScreenDefault = rule === printBaseRules[0]
+                && property === 'display'
+                && declaration.value === 'none'
+                && !declaration.important
+              if (approvedScreenDefault) continue
+              if (declaration.important) {
+                errors.push(`competing print !important: ${selector} ${property}`)
+              } else if (printRule && ruleIndex > printIndex
+                && compareSpecificity(analysis.specificity, printSpecificity) >= 0) {
+                errors.push(`later print override: ${selector} ${property}`)
+              }
+            }
+          }
+
+          const hasLinkPseudo = analysis.tags.has('a')
+            && [...analysis.pseudos].some((pseudo) => pseudo.startsWith('::'))
+          if (hasLinkPseudo && fixtureDeclarations(rule).some((node: any) =>
+            node.prop === 'content' && /attr\(href\)/u.test(node.value))) {
+            errors.push(`link pseudo attr(href): ${selector}`)
+          }
+        })
+      })
+      return errors
+    }
+
+    const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
+    expect(criticalCascadeViolations(style)).toEqual([])
+    const legacyApprovedRulesRemain = (css: string) => {
+      const fixtureRoot = postcss.parse(css)
+      let meta = 0
+      let printUrl = 0
+      fixtureRoot.walkRules((rule) => {
+        const actual = postcss.list.comma(rule.selector).map((value) => value.trim())
+        if (actual.length === 1 && actual[0] === '.project-meta > ul > li' && rule.parent === fixtureRoot) meta += 1
+        if (actual.length === 1 && actual[0] === '.project-source-print-url'
+          && rule.parent?.type === 'atrule' && rule.parent.params.replace(/\s+/gu, '') === 'print') printUrl += 1
+      })
+      return meta === 1 && printUrl === 1
+    }
+    const ruleWithDeclarations = (
+      selector: string,
+      values: Array<[string, string, boolean?]>,
+    ) => {
+      const rule = postcss.rule({ selector })
+      for (const [prop, value, important = false] of values) {
+        rule.append(postcss.decl({ prop, value, important }))
+      }
+      return rule
+    }
+
+    const earlierPrint = root.clone()
+    const earlierPrintMedia = postcss.atRule({ name: 'media', params: 'print' })
+    earlierPrintMedia.append(ruleWithDeclarations(
+      '.project-source-links .project-source-print-url',
+      [['display', 'none', true]],
+    ))
+    earlierPrint.prepend(earlierPrintMedia)
+    expect(legacyApprovedRulesRemain(earlierPrint.toString())).toBe(true)
+    expect(criticalCascadeViolations(earlierPrint.toString()))
+      .toContain('competing print !important: .project-source-links .project-source-print-url display')
+
+    const laterSame = root.clone()
+    const laterPrintMedia = postcss.atRule({ name: 'media', params: 'print' })
+    laterPrintMedia.append(ruleWithDeclarations(
+      '.project-source-print-url',
+      [['display', 'none', true]],
+    ))
+    laterSame.append(laterPrintMedia)
+    expect(criticalCascadeViolations(laterSame.toString()))
+      .toContain('missing approved print URL rule')
+
+    const nestedNotScreen = root.clone()
+    const notScreenMedia = postcss.atRule({ name: 'media', params: 'not screen' })
+    const nestedColorMedia = postcss.atRule({ name: 'media', params: '(color)' })
+    nestedColorMedia.append(ruleWithDeclarations(
+      '.project-source-links .project-source-print-url',
+      [['white-space', 'nowrap', true]],
+    ))
+    notScreenMedia.append(nestedColorMedia)
+    nestedNotScreen.prepend(notScreenMedia)
+    expect(legacyApprovedRulesRemain(nestedNotScreen.toString())).toBe(true)
+    expect(criticalCascadeViolations(nestedNotScreen.toString()))
+      .toContain('competing print !important: .project-source-links .project-source-print-url white-space')
+
+    const mobileOverlap = root.clone()
+    const narrowMedia = postcss.atRule({ name: 'media', params: '(max-width: 390px)' })
+    narrowMedia.append(ruleWithDeclarations(
+      '.project-meta > ul > li.is-tight',
+      [['grid-template-columns', 'max-content'], ['min-width', 'max-content']],
+    ))
+    mobileOverlap.append(narrowMedia)
+    expect(legacyApprovedRulesRemain(mobileOverlap.toString())).toBe(true)
+    expect(criticalCascadeViolations(mobileOverlap.toString())).toEqual(expect.arrayContaining([
+      'later mobile override: .project-meta > ul > li.is-tight grid-template-columns',
+      'later mobile override: .project-meta > ul > li.is-tight min-width',
+    ]))
+
+    const commentAndWrongMedia = root.clone()
+    const commentRules: any[] = []
+    commentAndWrongMedia.walkRules((rule) => {
+      const actual = postcss.list.comma(rule.selector).map((value) => value.trim())
+      if (actual.length === 1 && actual[0] === '.project-meta > ul > li'
+        && rule.parent === commentAndWrongMedia) commentRules.push(rule)
+    })
+    const removedMeta = commentRules[0]
+    const wrongMedia = postcss.atRule({ name: 'media', params: '(min-width: 701px)' })
+    wrongMedia.append(removedMeta.clone())
+    removedMeta.replaceWith(postcss.comment({ text: removedMeta.toString() }))
+    commentAndWrongMedia.append(wrongMedia)
+    expect(criticalCascadeViolations(commentAndWrongMedia.toString()))
+      .toContain('missing approved mobile meta rule')
+
+    const allowedProjectWrapping = new Set([
+      '.project-meta code',
+      '.project-call-chain code',
+      '.project-source-links code',
+      '.project-license-print-url',
+      '.project-source-print-url',
+    ])
+    for (const rule of rules) {
+      const actual = declarations(rule)
+      if (actual['overflow-wrap']?.value === 'anywhere') {
+        for (const selector of selectors(rule).filter((value) => value.startsWith('.project'))) {
+          expect(allowedProjectWrapping.has(selector), `broad project wrap: ${selector}`).toBe(true)
+        }
+      }
+      if (selectors(rule).includes('.project-license-print p')) {
+        expect(actual['word-break']?.value).not.toBe('break-all')
+      }
+      if (selectors(rule).some((selector) => selector.includes('.project-source-links') && selector.includes('::after'))) {
+        expect(actual.content?.value ?? '').not.toMatch(/attr\(href\)/u)
+      }
+      if (selectors(rule).some((selector) => selector.startsWith('.project'))) {
+        for (const declaration of Object.values(actual) as Array<{ value: string }>) {
+          expect(declaration.value).not.toMatch(/#[0-9a-f]{6}\b/iu)
+        }
+      }
+    }
+  })
+
+  it('enforces the scoped Vue and TypeScript check during production builds', () => {
+    const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
+    const tsconfig = JSON.parse(readFileSync('tsconfig.projects.json', 'utf8'))
+    expect(pkg.scripts['typecheck:projects']).toBe('vue-tsc --noEmit -p tsconfig.projects.json')
+    expect(pkg.scripts.build).toContain('pnpm typecheck:projects')
+    expect(pkg.devDependencies['vue-tsc']).toBe('^3.3.11')
+    expect(pkg.devDependencies.typescript).toBe('^5.9.3')
+    expect(pkg.devDependencies['@types/node']).toBe('^24.10.0')
+    expect(tsconfig.compilerOptions.types).toEqual(['vitepress/client', 'node'])
+  })
+})
+
+```
+
+This test is intentionally structural: PostCSS 8.5.28 parses declarations and media scope, `postcss-selector-parser` 7.1.6 computes selector targets/specificity, and mutations prove the guard catches competing `!important`, later same/higher-specificity overrides, wrong media placement, and link pseudo-elements that expose `attr(href)`.
+
+- [ ] **Step 6: Run every automated gate and the refreshed source checks**
 
 Run:
 
 ```bash
 set -e
-pnpm vitest run tests/project-pages.spec.ts -t 'project documentation handoff'
-pnpm test && pnpm validate && pnpm build
+pnpm vitest run tests/project-pages.spec.ts tests/content.spec.ts
+pnpm test
+pnpm validate
+pnpm build
 GITHUB_TOKEN="$(gh auth token)" pnpm sources:check
 node --input-type=module <<'NODE'
 import { readFileSync } from 'node:fs'
 const report = JSON.parse(readFileSync('reports/source-freshness.json', 'utf8'))
-const allowed = new Set(['repository_updated'])
-const blocking = report.results.flatMap((result) =>
-  result.findings.filter((finding) => !allowed.has(finding)).map((finding) => `${result.id}:${finding}`),
-)
-if (report.schema_errors?.length) blocking.push(...report.schema_errors.map((error) => `schema:${error}`))
-if (blocking.length) throw new Error(`Blocking source findings:\n${blocking.join('\n')}`)
+const expected = new Map([
+  ['langgraph-repository', ['repository_updated']],
+  ['crewai-repository', ['repository_updated']],
+  ['langfuse-repository', ['repository_updated']],
+  ['phoenix-repository', ['repository_updated']],
+])
+if (JSON.stringify(report.summary) !== JSON.stringify({ total: 33, healthy: 29, needs_review: 4 })) {
+  throw new Error(`Unexpected source summary: ${JSON.stringify(report.summary)}`)
+}
+const actual = new Map(report.results.filter((result) => result.findings.length > 0)
+  .map((result) => [result.id, result.findings]))
+if (JSON.stringify([...actual]) !== JSON.stringify([...expected])) {
+  throw new Error(`Unexpected source findings: ${JSON.stringify([...actual])}`)
+}
 console.log(JSON.stringify(report.summary))
 NODE
 GITHUB_TOKEN="$(gh auth token)" pnpm run projects:check -- --strict
@@ -5787,163 +7994,59 @@ git diff origin/main...HEAD --check
 git status --short
 ```
 
-Expected:
+Expected: all tests, validation, build, and dist checks pass; the source report matches the exact post-`5507d60` four-item review set; the project report has 13 subjects and no blocking finding.
 
-- all tests pass;
-- content, provenance, project schema, build, and dist gates pass;
-- source report contains the existing source inventory and the explicit parser allows only `repository_updated`; every network, parse, HTTP, schema, redirect, version, or archive finding blocks release;
-- project report contains 13 subjects with no schema, canonical, pin-ref, entrypoint, license-source, or license-digest failure; ordinary update notices may remain non-blocking;
-- range diff check prints nothing;
-- only the intended README/test changes remain before commit.
+- [ ] **Step 7: Verify all eight pages at mobile and desktop widths**
 
-- [ ] **Step 5: Commit the README**
-
-```bash
-git add README.md tests/project-pages.spec.ts
-git commit -m "docs: describe the project reading layer"
-```
-
-- [ ] **Step 6: Start the built preview and verify route status**
-
-Run `pnpm preview -- --port 4175` in a persistent terminal. In another terminal, run this accumulating matrix; it checks all 39 registered routes in both clean and trailing-slash forms instead of exiting on the first failure:
+Start `pnpm preview -- --port 4175` in a persistent terminal. Use a fresh browser session and HAR, then exercise every page at both approved viewports:
 
 ```bash
 set -e
-site_root='http://127.0.0.1:4175/agent-engineering-for-beginners'
+rm -f /tmp/project-catalog-acceptance.har
+agent-browser --session project-catalog-acceptance network har start
 routes=(
-  course paths preface
-  chapters/01-ai-native chapters/02-workflow-agent chapters/03-react
-  chapters/04-tools-mcp chapters/05-state-memory chapters/06-loop-graph
-  chapters/07-multi-agent chapters/08-evaluation chapters/09-safety-recovery
-  chapters/10-production chapters/11-research-agent chapters/12-service-operations-agent
-  chapters/13-coding-agent chapters/14-computer-use
-  frontier/context-engineering frontier/interoperability-identity
-  frontier/durable-execution frontier/agent-security-evaluation
-  case-study/delivery-agent radar radar/2026-09
-  appendix/glossary appendix/review-checklist appendix/reading
-  appendix/application-matrix appendix/chapter-template appendix/interview
-  appendix/interview-training
-  projects projects/mcp-python-sdk projects/aider projects/openhands
-  projects/agent-benchmarks projects/dify projects/crewai
+  projects/
+  projects/mcp-python-sdk
+  projects/aider
+  projects/openhands
+  projects/agent-benchmarks
+  projects/dify
+  projects/crewai
   projects/history-autogpt-flowise
 )
-failures=()
-for route in "${routes[@]}"; do
-  for suffix in "" "/"; do
-    url="$site_root/$route$suffix"
-    code=$(curl -L -sS -o /dev/null -w '%{http_code}' "$url")
-    if [ "$code" != '200' ]; then failures+=("$code $url"); fi
-  done
-done
-root_code=$(curl -L -sS -o /dev/null -w '%{http_code}' "$site_root/")
-if [ "$root_code" != '200' ]; then failures+=("$root_code $site_root/"); fi
-printf '%s\n' "${failures[@]}"
-test "${#failures[@]}" -eq 0
-```
-
-Then run the negative matrix:
-
-```bash
-set -e
-failures=()
-for route in labs labs/example capstone capstone/example projects/unreviewed; do
-  url="$site_root/$route/"
-  code=$(curl -L -sS -o /dev/null -w '%{http_code}' "$url")
-  if [ "$code" != '404' ]; then failures+=("$code $url"); fi
-done
-printf '%s\n' "${failures[@]}"
-test "${#failures[@]}" -eq 0
-```
-
-Expected: all positive variants return 200; every negative route returns 404; both failure arrays are empty.
-
-- [ ] **Step 7: Run browser acceptance with named sessions**
-
-Use `agent-browser --session project-catalog-acceptance` and complete all checks:
-
-1. At both 1440×1000 light and 390×844 dark, `/projects/` shows six core links, one historical link, two watch-only external subjects, no Lab action, and no page-level overflow.
-2. At 390×844 dark, open `/projects/openhands`, `/projects/agent-benchmarks`, and `/projects/history-autogpt-flowise`; at 1440×1000 light, repeat OpenHands and benchmarks. Verify `scrollWidth === innerWidth`, source paths wrap or scroll only inside their container, and focus uses a visible outline.
-3. Snapshot each complex page without `-i`; verify repository status, catalog tier, fixed ref/SHA, license scope, ordered call chain, “怎么看”, “不要误解”, failure boundary, and interview links are present in the accessibility tree.
-4. In a separate `project-catalog-nojs` session, run `agent-browser --session project-catalog-nojs network route "**/*.js" --abort` before opening a project page. Verify all eight routes: the overview must retain its core/history/watch-only taxonomy and safety boundary; the other seven pages must retain metadata, full SHA, license scope, call chain, source links, and failure boundary in server-rendered HTML.
-5. Confirm `.project-overview` and project pages contain no write controls, network-driven data loaders, login prompts, or model execution buttons.
-6. On each core page, click one fixed source link and confirm the destination URL contains the exact 40-character pinned commit, then return and re-snapshot before using another ref.
-7. Confirm console and page error lists are empty.
-
-Run the desktop overview check:
-
-```bash
-set -e
-agent-browser --session project-catalog-acceptance network har start
-agent-browser --session project-catalog-acceptance set viewport 1440 1000
-agent-browser --session project-catalog-acceptance set media light
-agent-browser --session project-catalog-acceptance open http://127.0.0.1:4175/agent-engineering-for-beginners/projects/
-agent-browser --session project-catalog-acceptance wait --load networkidle
-agent-browser --session project-catalog-acceptance snapshot -s '.project-overview'
-agent-browser --session project-catalog-acceptance eval --stdin <<'EVALEOF'
+for viewport in '1440 1000 light desktop' '390 844 dark mobile'; do
+  read -r width height theme label <<< "$viewport"
+  agent-browser --session project-catalog-acceptance set viewport "$width" "$height"
+  agent-browser --session project-catalog-acceptance set media "$theme"
+  for route in "${routes[@]}"; do
+    url="http://127.0.0.1:4175/agent-engineering-for-beginners/$route"
+    agent-browser --session project-catalog-acceptance open "$url"
+    agent-browser --session project-catalog-acceptance wait --load networkidle
+    agent-browser --session project-catalog-acceptance eval --stdin <<'EVALEOF'
 (() => {
-  const root = document.querySelector('.project-overview')
+  const text = document.querySelector('.vp-doc')?.textContent ?? ''
+  const isIndex = location.pathname.endsWith('/projects/')
+  const required = isIndex
+    ? ['核心源码拆解', '历史反例', '前沿高权限观察区', '不是初学者默认安装步骤']
+    : ['固定版本', '仓库状态', '教学层级', '许可证边界', '源码事实', '本书归纳', '关键源码入口', '失败边界']
   const result = {
+    url: location.href,
     width: innerWidth,
     scrollWidth: document.documentElement.scrollWidth,
-    coreLinks: root?.querySelectorAll('[aria-labelledby="project-core-title"] a').length,
-    historyLinks: root?.querySelectorAll('[aria-labelledby="project-history-title"] a').length,
-    watchLinks: root?.querySelectorAll('[aria-labelledby="project-watch-title"] > ul a').length,
-    riskTags: Array.from(root?.querySelectorAll('.project-risk-tag') ?? []).map((node) => node.textContent?.trim()),
-    labActions: Array.from(root?.querySelectorAll('a,button') ?? []).filter((node) => /lab|实验/i.test(node.textContent ?? '')).length,
+    missing: required.filter((item) => !text.includes(item)),
   }
-  if (result.scrollWidth !== result.width || result.coreLinks !== 6 || result.historyLinks !== 1 || result.watchLinks !== 2 || result.labActions !== 0) throw new Error(JSON.stringify(result))
+  if (result.width !== result.scrollWidth || result.missing.length > 0) throw new Error(JSON.stringify(result))
   return JSON.stringify(result)
 })()
 EVALEOF
-agent-browser --session project-catalog-acceptance screenshot /tmp/projects-index-1440-light.png --full
-agent-browser --session project-catalog-acceptance set viewport 390 844
-agent-browser --session project-catalog-acceptance set media dark
-agent-browser --session project-catalog-acceptance open http://127.0.0.1:4175/agent-engineering-for-beginners/projects/
-agent-browser --session project-catalog-acceptance eval 'if(document.documentElement.scrollWidth!==innerWidth)throw new Error(JSON.stringify({url:location.href,width:innerWidth,scrollWidth:document.documentElement.scrollWidth}));location.href'
-agent-browser --session project-catalog-acceptance screenshot /tmp/projects-index-390-dark.png --full
+    agent-browser --session project-catalog-acceptance screenshot "/tmp/${route//\//-}-${label}.png" --full
+  done
+done
 ```
 
-Run the 390px dark checks for all complex layouts:
+Verify keyboard order with real key events:
 
 ```bash
-set -e
-agent-browser --session project-catalog-acceptance set viewport 390 844
-agent-browser --session project-catalog-acceptance set media dark
-for route in projects/openhands projects/agent-benchmarks projects/history-autogpt-flowise; do
-  agent-browser --session project-catalog-acceptance open "http://127.0.0.1:4175/agent-engineering-for-beginners/$route"
-  agent-browser --session project-catalog-acceptance wait --load networkidle
-  agent-browser --session project-catalog-acceptance snapshot -s '.vp-doc'
-  agent-browser --session project-catalog-acceptance eval --stdin <<'EVALEOF'
-(() => {
-  const required = ['固定版本', '仓库状态', '教学层级', '源码事实', '本书归纳', '怎么看', '不要误解', '失败边界']
-  const text = document.querySelector('.vp-doc')?.textContent ?? ''
-  const result = { width: innerWidth, scrollWidth: document.documentElement.scrollWidth, missing: required.filter((item) => !text.includes(item)) }
-  if (result.width !== result.scrollWidth || result.missing.length) throw new Error(JSON.stringify(result))
-  return JSON.stringify(result)
-})()
-EVALEOF
-done
-agent-browser --session project-catalog-acceptance open http://127.0.0.1:4175/agent-engineering-for-beginners/projects/openhands
-agent-browser --session project-catalog-acceptance screenshot /tmp/project-openhands-390-dark.png --full
-agent-browser --session project-catalog-acceptance open http://127.0.0.1:4175/agent-engineering-for-beginners/projects/agent-benchmarks
-agent-browser --session project-catalog-acceptance screenshot /tmp/project-benchmarks-390-dark.png --full
-agent-browser --session project-catalog-acceptance set viewport 1440 1000
-agent-browser --session project-catalog-acceptance set media light
-for route in projects/openhands projects/agent-benchmarks; do
-  agent-browser --session project-catalog-acceptance open "http://127.0.0.1:4175/agent-engineering-for-beginners/$route"
-  agent-browser --session project-catalog-acceptance wait --load networkidle
-  agent-browser --session project-catalog-acceptance eval 'if(document.documentElement.scrollWidth!==innerWidth)throw new Error(JSON.stringify({url:location.href,width:innerWidth,scrollWidth:document.documentElement.scrollWidth}));location.href'
-done
-agent-browser --session project-catalog-acceptance open http://127.0.0.1:4175/agent-engineering-for-beginners/projects/openhands
-agent-browser --session project-catalog-acceptance screenshot /tmp/project-openhands-1440-light.png --full
-agent-browser --session project-catalog-acceptance open http://127.0.0.1:4175/agent-engineering-for-beginners/projects/agent-benchmarks
-agent-browser --session project-catalog-acceptance screenshot /tmp/project-benchmarks-1440-light.png --full
-```
-
-Use actual keyboard events and collect the focused link text:
-
-```bash
-set -e
 agent-browser --session project-catalog-acceptance open http://127.0.0.1:4175/agent-engineering-for-beginners/projects/
 agent-browser --session project-catalog-acceptance press Tab
 agent-browser --session project-catalog-acceptance press Enter
@@ -5958,12 +8061,69 @@ for label in 'MCP 规范与 Python SDK' 'Aider 源码拆解' 'OpenHands 源码�
 done
 ```
 
-Expected: focus follows DOM/visual order, reaches every internal project link and watch-only external link, and each focused interactive element has a non-zero visible outline.
+Expected: all 16 page/viewport combinations have `scrollWidth === innerWidth`, all required visible text, and no console or page errors; focus follows DOM/visual order, reaches all internal and watch-only links, and has a non-zero outline.
 
-Verify all eight routes without JavaScript:
+- [ ] **Step 8: Verify all seven dissection PDFs**
+
+Generate a PDF for each non-index project page while on-screen license disclosures remain closed. Then validate page text with the seven Unicode ligature replacements `ﬀ/ﬁ/ﬂ/ﬃ/ﬄ/ﬅ/ﬆ`:
 
 ```bash
 set -e
+pdf_routes=(mcp-python-sdk aider openhands agent-benchmarks dify crewai history-autogpt-flowise)
+for route in "${pdf_routes[@]}"; do
+  agent-browser --session project-catalog-acceptance open "http://127.0.0.1:4175/agent-engineering-for-beginners/projects/$route"
+  agent-browser --session project-catalog-acceptance eval 'const open=Array.from(document.querySelectorAll(".project-meta details")).filter((node)=>node.open).length;if(open!==0)throw new Error(String(open));"0 open disclosures"'
+  agent-browser --session project-catalog-acceptance pdf "/tmp/project-$route.pdf"
+done
+node --input-type=module <<'NODE'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { parse } from 'yaml'
+const catalog = parse(readFileSync('sources/project-index.yml', 'utf8'))
+const subjects = Object.fromEntries(catalog.subjects.map((subject) => [subject.id, subject]))
+const expected = Object.fromEntries(catalog.pages.slice(1).map((page) => [
+  page.page_item_id.slice('project-'.length),
+  page.subjects.flatMap((subjectId) => {
+    const subject = subjects[subjectId]
+    const url = (path) => `${subject.canonical_url}/blob/${subject.pinned_commit}/${path.split('/').map(encodeURIComponent).join('/')}`
+    return [
+      subject.pinned_commit,
+      ...subject.entrypoints.flatMap((entry) => [entry.path, ...entry.symbols, entry.responsibility, url(entry.path)]),
+      ...subject.license_sources.flatMap((source) => [source.path, url(source.path)]),
+    ]
+  }),
+]))
+writeFileSync('/tmp/project-pdf-expectations.json', JSON.stringify(expected))
+NODE
+python3 - <<'PY'
+import json
+from pathlib import Path
+from pypdf import PdfReader
+ligatures = str.maketrans({
+    'ﬀ': 'ff', 'ﬁ': 'fi', 'ﬂ': 'fl', 'ﬃ': 'ffi', 'ﬄ': 'ffl', 'ﬅ': 'ft', 'ﬆ': 'st',
+})
+expected = json.loads(Path('/tmp/project-pdf-expectations.json').read_text(encoding='utf-8'))
+blank_pages = 0
+for route, required in expected.items():
+    reader = PdfReader(f'/tmp/project-{route}.pdf')
+    pages = [(page.extract_text() or '').translate(ligatures) for page in reader.pages]
+    blank_pages += sum(not page.strip() for page in pages)
+    compact = ''.join('\n'.join(pages).split())
+    missing = [item for item in required if ''.join(item.translate(ligatures).split()) not in compact]
+    assert not missing, f'{route} missing: {missing}'
+assert blank_pages == 0, f'blank PDF pages: {blank_pages}'
+print({'pdfs': len(expected), 'blank_pages': blank_pages, 'ligature_mappings': len(ligatures)})
+PY
+```
+
+Expected: `{'pdfs': 7, 'blank_pages': 0, 'ligature_mappings': 7}`; every fixed source and license URL is present in extracted text, with no CSS pseudo-element URL reconstruction.
+
+- [ ] **Step 9: Validate fresh HARs and no-JavaScript SSR**
+
+Start the no-JavaScript route only after starting a new HAR, and remove prior artifacts so request counts cannot be inherited from earlier navigation:
+
+```bash
+set -e
+rm -f /tmp/project-catalog-nojs.har
 agent-browser --session project-catalog-nojs network har start
 agent-browser --session project-catalog-nojs network route '**/*.js' --abort
 for route in projects/ projects/mcp-python-sdk projects/aider projects/openhands projects/agent-benchmarks projects/dify projects/crewai projects/history-autogpt-flowise; do
@@ -5977,43 +8137,28 @@ for route in projects/ projects/mcp-python-sdk projects/aider projects/openhands
     ? ['核心源码拆解', '历史反例', '前沿高权限观察区', '不是初学者默认安装步骤']
     : ['固定版本', '仓库状态', '教学层级', '许可证边界', '源码事实', '本书归纳', '关键源码入口', '失败边界']
   const missing = required.filter((item) => !text.includes(item))
-  const hasFullSha = isIndex || /\b[0-9a-f]{40}\b/u.test(text)
   const pinnedSourceLinks = Array.from(document.querySelectorAll('.project-source-links a'))
-  const contract = isIndex ? {} : {
-    metadata: Boolean(document.querySelector('.project-meta')),
-    licenseScopes: document.querySelectorAll('.project-meta details li[role="listitem"]').length > 0,
-    callChain: document.querySelectorAll('.project-call-chain [role="listitem"]').length > 0,
-    sourceEntries: document.querySelectorAll('.project-source-links [role="listitem"]').length > 0,
-    pinnedSources: pinnedSourceLinks.length > 0 && pinnedSourceLinks.every((a) => /\/blob\/[0-9a-f]{40}\//u.test(a.href)),
-    interviewLinks: document.querySelectorAll('.vp-doc a[href*="#iq-"]').length > 0,
+  if (!text.trim() || anchors === 0 || missing.length
+    || (!isIndex && (pinnedSourceLinks.length === 0
+      || pinnedSourceLinks.some((anchor) => !/\/blob\/[0-9a-f]{40}\//u.test(anchor.href))))) {
+    throw new Error(JSON.stringify({ url: location.href, anchors, missing }))
   }
-  const invalidContract = Object.entries(contract).filter(([, valid]) => !valid).map(([key]) => key)
-  if (!text.trim() || anchors === 0 || missing.length || !hasFullSha || invalidContract.length) {
-    throw new Error(JSON.stringify({ url: location.href, anchors, missing, hasFullSha, invalidContract }))
-  }
-  return JSON.stringify({ url: location.href, anchors, missing, hasFullSha, invalidContract })
+  return JSON.stringify({ url: location.href, anchors, missing })
 })()
 EVALEOF
 done
-```
-
-Finally run:
-
-```bash
-set -e
 agent-browser --session project-catalog-acceptance network har stop /tmp/project-catalog-acceptance.har
 agent-browser --session project-catalog-nojs network har stop /tmp/project-catalog-nojs.har
 node --input-type=module <<'NODE'
 import { readFileSync } from 'node:fs'
-
 const sessions = [
   { path: '/tmp/project-catalog-acceptance.har', allowAbortedJavaScript: false },
   { path: '/tmp/project-catalog-nojs.har', allowAbortedJavaScript: true },
 ]
 const failures = []
+const counts = []
 for (const session of sessions) {
-  const har = JSON.parse(readFileSync(session.path, 'utf8'))
-  const entries = har?.log?.entries
+  const entries = JSON.parse(readFileSync(session.path, 'utf8'))?.log?.entries
   if (!Array.isArray(entries) || entries.length === 0) {
     failures.push(`${session.path}: HAR contains no request entries`)
     continue
@@ -6024,18 +8169,19 @@ for (const session of sessions) {
     const status = Number(entry?.response?.status)
     let isJavaScript = false
     try { isJavaScript = /\.m?js$/iu.test(new URL(url).pathname) } catch {}
-    const isAllowedAbort = session.allowAbortedJavaScript && status <= 0 && isJavaScript
-    if (isAllowedAbort) allowedAbortCount += 1
-    if (!Number.isFinite(status) || status >= 400 || (status <= 0 && !isAllowedAbort)) {
+    const allowedAbort = session.allowAbortedJavaScript && status <= 0 && isJavaScript
+    if (allowedAbort) allowedAbortCount += 1
+    if (!Number.isFinite(status) || status >= 400 || (status <= 0 && !allowedAbort)) {
       failures.push(`${session.path}: ${status} ${url}`)
     }
   }
   if (session.allowAbortedJavaScript && allowedAbortCount === 0) {
     failures.push(`${session.path}: no actively aborted JavaScript request was captured`)
   }
+  counts.push({ path: session.path, requests: entries.length, allowedAbortCount })
 }
 if (failures.length > 0) throw new Error(`HAR network failures:\n${failures.join('\n')}`)
-console.log('HAR network gate passed')
+console.log(JSON.stringify(counts))
 NODE
 test -z "$(agent-browser --session project-catalog-acceptance console)"
 test -z "$(agent-browser --session project-catalog-acceptance errors)"
@@ -6043,91 +8189,11 @@ test -z "$(agent-browser --session project-catalog-nojs console)"
 test -z "$(agent-browser --session project-catalog-nojs errors)"
 ```
 
-Expected: both HAR files contain request entries; the normal session has no missing/zero status and no response `>=400`; the no-JavaScript session captures at least one actively aborted `.js`/`.mjs` request and has no other missing/zero status or response `>=400`. Console and page-error outputs remain empty.
+Expected: both fresh HARs contain at least one request; the normal session has no missing/zero status or response `>=400`; the no-JavaScript session has at least one intentionally aborted `.js`/`.mjs` request and no other missing/zero status or response `>=400`. Report the freshly measured `requests` and `allowedAbortCount`; do not reuse historical network counts.
 
-Save screenshots:
+- [ ] **Step 10: Verify route and public boundaries, then stop local processes**
 
-```text
-/tmp/projects-index-1440-light.png
-/tmp/projects-index-390-dark.png
-/tmp/project-openhands-390-dark.png
-/tmp/project-benchmarks-390-dark.png
-/tmp/project-openhands-1440-light.png
-/tmp/project-benchmarks-1440-light.png
-```
-
-- [ ] **Step 8: Verify print output**
-
-Generate PDFs for `/projects/openhands` and `/projects/agent-benchmarks` while license details are closed on screen:
-
-```bash
-set -e
-agent-browser --session project-catalog-acceptance open http://127.0.0.1:4175/agent-engineering-for-beginners/projects/openhands
-agent-browser --session project-catalog-acceptance eval 'JSON.stringify(Array.from(document.querySelectorAll(".project-meta details")).map((node)=>node.open))'
-agent-browser --session project-catalog-acceptance pdf /tmp/project-openhands.pdf
-agent-browser --session project-catalog-acceptance open http://127.0.0.1:4175/agent-engineering-for-beginners/projects/agent-benchmarks
-agent-browser --session project-catalog-acceptance eval 'JSON.stringify(Array.from(document.querySelectorAll(".project-meta details")).map((node)=>node.open))'
-agent-browser --session project-catalog-acceptance pdf /tmp/project-benchmarks.pdf
-```
-
-Both `eval` commands must return only `false` values. Extract and assert content with:
-
-```bash
-set -e
-if command -v pdftotext >/dev/null 2>&1; then
-  pdftotext /tmp/project-openhands.pdf /tmp/project-openhands.txt
-  pdftotext /tmp/project-benchmarks.pdf /tmp/project-benchmarks.txt
-else
-  python3 - <<'PY'
-from pathlib import Path
-from pypdf import PdfReader
-for stem in ('project-openhands', 'project-benchmarks'):
-    text = '\n'.join(page.extract_text() or '' for page in PdfReader(f'/tmp/{stem}.pdf').pages)
-    Path(f'/tmp/{stem}.txt').write_text(text, encoding='utf-8')
-PY
-fi
-node --input-type=module <<'NODE'
-import { readFileSync, writeFileSync } from 'node:fs'
-import { parse } from 'yaml'
-const catalog = parse(readFileSync('sources/project-index.yml', 'utf8'))
-const subjects = Object.fromEntries(catalog.subjects.map((subject) => [subject.id, subject]))
-const chains = Object.fromEntries(catalog.chains.map((chain) => [chain.id, chain]))
-const pageIds = ['project-openhands', 'project-agent-benchmarks']
-const expected = Object.fromEntries(pageIds.map((pageId) => {
-  const page = catalog.pages.find((candidate) => candidate.page_item_id === pageId)
-  const chain = chains[page.primary_chain_id]
-  const values = page.subjects.flatMap((subjectId) => {
-    const subject = subjects[subjectId]
-    return [
-      subject.pinned_commit,
-      ...subject.entrypoints.flatMap((entry) => [entry.path, ...entry.symbols, entry.responsibility]),
-      ...subject.license_sources.map((source) => `${subject.canonical_url}/blob/${subject.pinned_commit}/${source.path}`),
-    ]
-  })
-  values.push(...chain.steps.flatMap((step) => [step.label, step.source_path, step.symbol, step.responsibility]))
-  return [pageId, [...new Set(values)]]
-}))
-writeFileSync('/tmp/project-pdf-expectations.json', JSON.stringify(expected))
-NODE
-python3 - <<'PY'
-import json
-from pathlib import Path
-expected = json.loads(Path('/tmp/project-pdf-expectations.json').read_text(encoding='utf-8'))
-for page_id, required in expected.items():
-    stem = 'project-benchmarks' if page_id == 'project-agent-benchmarks' else page_id
-    text = Path(f'/tmp/{stem}.txt').read_text(encoding='utf-8')
-    compact = ''.join(text.split())
-    missing = [item for item in required if ''.join(item.split()) not in compact]
-    assert not missing, f'{stem} missing: {missing}'
-    assert '许可证边界' not in text, f'{stem} printed the closed disclosure summary'
-PY
-```
-
-Expected: the PDFs contain complete primary chains, source paths, and full commit SHAs; the closed disclosure summary is absent because the print-only license fallback supplies the content.
-
-- [ ] **Step 9: Verify public and copyright boundaries**
-
-Run:
+Retain the 79 positive clean/trailing-slash requests and five negative requests from the existing route matrix. Then run:
 
 ```bash
 set -e
@@ -6139,34 +8205,24 @@ if [ -d docs/public/project-assets ] && find docs/public/project-assets -type f 
   echo 'unexpected direct project asset in the no-asset baseline'
   exit 1
 fi
-if rg -n "!\\[[^]]*\\]\\(https?://|<img[^>]+src=['\"]https?://" docs/projects; then
-  echo 'unexpected remote image embedding'
-  exit 1
-fi
 git diff origin/main...HEAD --check
 git status --short --branch
-```
-
-Expected: no process/Lab/capstone output, no unregistered project asset, no remote image embedding, no range whitespace error, and a clean worktree.
-
-- [ ] **Step 10: Close browser sessions and the preview server**
-
-```bash
 agent-browser --session project-catalog-acceptance close
 agent-browser --session project-catalog-nojs close
 lsof -nP -iTCP:4175 -sTCP:LISTEN
 ```
 
-Send Ctrl-C to the exact persistent preview terminal session, then rerun the `lsof` command. Expected: the final `lsof` output is empty; do not use a broad process kill.
+Send Ctrl-C only to the exact persistent preview session, then rerun `lsof`; expected output is empty.
 
 - [ ] **Step 11: Push the feature branch and request final review; do not merge**
 
 ```bash
 set -e
 git push -u origin feat/open-source-project-dissections
+git rev-parse HEAD
 ```
 
-Send the final branch HEAD, commit list, test counts, real project freshness summary, preview route matrix, accessibility evidence, PDF evidence, and screenshots to the user and reviewer. Wait for explicit review approval before merging `main` or deploying Pages.
+Send the final immutable feature HEAD, commit list, test counts, source/project freshness summaries, 79/5 route matrix, all 16 responsive page checks, seven PDF results, fresh HAR counts, and screenshots to the reviewer. Wait for explicit review approval before Task 14.
 
 ### Task 14: Merge the approved branch, deploy Pages, and verify production
 
@@ -6279,53 +8335,72 @@ test "${#failures[@]}" -eq 0
 
 Expected: all 79 positive requests return 200, all five negative requests return 404, and the failure array is empty.
 
-- [ ] **Step 5: Run production browser and no-JavaScript checks**
+- [ ] **Step 5: Run production browser, no-JavaScript, PDF, and HAR checks**
+
+Before the page matrix, verify the deployed course and engineering-path contracts:
 
 ```bash
 set -e
-agent-browser --session project-catalog-production network har start
-agent-browser --session project-catalog-production set viewport 390 844
-agent-browser --session project-catalog-production set media dark
-agent-browser --session project-catalog-production open https://mengen-ink.github.io/agent-engineering-for-beginners/course/
+site_root='https://mengen-ink.github.io/agent-engineering-for-beginners'
+agent-browser --session project-catalog-production open "$site_root/course/"
 agent-browser --session project-catalog-production wait --load networkidle
-agent-browser --session project-catalog-production eval --stdin <<'EVALEOF'
+agent-browser --session project-catalog-production eval 'const r={links:document.querySelectorAll(".course-map a").length,projectItems:document.querySelectorAll(".course-stage:nth-child(5) .course-item").length,overflow:document.documentElement.scrollWidth-innerWidth};if(r.links!==26||r.projectItems!==7||r.overflow!==0)throw new Error(JSON.stringify(r));JSON.stringify(r)'
+agent-browser --session project-catalog-production open "$site_root/paths/"
+agent-browser --session project-catalog-production find role button click --name '工程实战'
+agent-browser --session project-catalog-production eval 'if(document.querySelectorAll(".path-step").length!==17||document.documentElement.scrollWidth!==innerWidth)throw new Error("engineering path mismatch");"17 steps"'
+```
+
+#### Responsive matrix
+
+Use fresh production browser sessions and HARs, then exercise every page at both approved viewports:
+
+```bash
+set -e
+rm -f /tmp/production-project-catalog-production.har
+agent-browser --session project-catalog-production network har start
+routes=(
+  projects/
+  projects/mcp-python-sdk
+  projects/aider
+  projects/openhands
+  projects/agent-benchmarks
+  projects/dify
+  projects/crewai
+  projects/history-autogpt-flowise
+)
+for viewport in '1440 1000 light desktop' '390 844 dark mobile'; do
+  read -r width height theme label <<< "$viewport"
+  agent-browser --session project-catalog-production set viewport "$width" "$height"
+  agent-browser --session project-catalog-production set media "$theme"
+  for route in "${routes[@]}"; do
+    url="https://mengen-ink.github.io/agent-engineering-for-beginners/$route"
+    agent-browser --session project-catalog-production open "$url"
+    agent-browser --session project-catalog-production wait --load networkidle
+    agent-browser --session project-catalog-production eval --stdin <<'EVALEOF'
 (() => {
+  const text = document.querySelector('.vp-doc')?.textContent ?? ''
+  const isIndex = location.pathname.endsWith('/projects/')
+  const required = isIndex
+    ? ['核心源码拆解', '历史反例', '前沿高权限观察区', '不是初学者默认安装步骤']
+    : ['固定版本', '仓库状态', '教学层级', '许可证边界', '源码事实', '本书归纳', '关键源码入口', '失败边界']
   const result = {
+    url: location.href,
     width: innerWidth,
     scrollWidth: document.documentElement.scrollWidth,
-    links: document.querySelectorAll('.course-map a').length,
-    projectItems: document.querySelectorAll('.course-stage:nth-child(5) .course-item').length,
+    missing: required.filter((item) => !text.includes(item)),
   }
-  if (result.width !== result.scrollWidth || result.links !== 26 || result.projectItems !== 7) throw new Error(JSON.stringify(result))
+  if (result.width !== result.scrollWidth || result.missing.length > 0) throw new Error(JSON.stringify(result))
   return JSON.stringify(result)
 })()
 EVALEOF
-agent-browser --session project-catalog-production screenshot /tmp/course-map-projects-production-390-dark.png --full
-
-for route in projects/openhands projects/agent-benchmarks projects/history-autogpt-flowise; do
-  agent-browser --session project-catalog-production open "https://mengen-ink.github.io/agent-engineering-for-beginners/$route"
-  agent-browser --session project-catalog-production eval 'if(document.documentElement.scrollWidth!==innerWidth)throw new Error(JSON.stringify({url:location.href,width:innerWidth,scrollWidth:document.documentElement.scrollWidth}));location.href'
+    agent-browser --session project-catalog-production screenshot "/tmp/${route//\//-}-${label}.png" --full
+  done
 done
-agent-browser --session project-catalog-production screenshot /tmp/project-history-production-390-dark.png --full
-agent-browser --session project-catalog-production open https://mengen-ink.github.io/agent-engineering-for-beginners/projects/
-agent-browser --session project-catalog-production eval 'const r={core:document.querySelectorAll("[aria-labelledby=project-core-title] a").length,history:document.querySelectorAll("[aria-labelledby=project-history-title] a").length,watch:document.querySelectorAll("[aria-labelledby=project-watch-title] > ul a").length,overflow:document.documentElement.scrollWidth-innerWidth};if(r.core!==6||r.history!==1||r.watch!==2||r.overflow!==0)throw new Error(JSON.stringify(r));JSON.stringify(r)'
-agent-browser --session project-catalog-production screenshot /tmp/projects-index-production-390-dark.png --full
+```
 
-agent-browser --session project-catalog-production open https://mengen-ink.github.io/agent-engineering-for-beginners/paths/
-agent-browser --session project-catalog-production find role button click --name '工程实战'
-agent-browser --session project-catalog-production eval 'if(document.querySelectorAll(".path-step").length!==17||document.documentElement.scrollWidth!==innerWidth)throw new Error("engineering path mismatch");"17 steps"'
+Verify production keyboard order with real key events:
 
-agent-browser --session project-catalog-production open https://mengen-ink.github.io/agent-engineering-for-beginners/projects/
-agent-browser --session project-catalog-production set viewport 1440 1000
-agent-browser --session project-catalog-production set media light
-agent-browser --session project-catalog-production snapshot -s '.project-overview'
-agent-browser --session project-catalog-production eval 'const r={core:document.querySelectorAll("[aria-labelledby=project-core-title] a").length,history:document.querySelectorAll("[aria-labelledby=project-history-title] a").length,watch:document.querySelectorAll("[aria-labelledby=project-watch-title] > ul a").length,overflow:document.documentElement.scrollWidth-innerWidth};if(r.core!==6||r.history!==1||r.watch!==2||r.overflow!==0)throw new Error(JSON.stringify(r));JSON.stringify(r)'
-agent-browser --session project-catalog-production screenshot /tmp/projects-index-production-1440-light.png --full
-for route in projects/openhands projects/agent-benchmarks; do
-  agent-browser --session project-catalog-production open "https://mengen-ink.github.io/agent-engineering-for-beginners/$route"
-  agent-browser --session project-catalog-production wait --load networkidle
-  agent-browser --session project-catalog-production eval 'if(document.documentElement.scrollWidth!==innerWidth)throw new Error(JSON.stringify({url:location.href,width:innerWidth,scrollWidth:document.documentElement.scrollWidth}));location.href'
-done
+```bash
 agent-browser --session project-catalog-production open https://mengen-ink.github.io/agent-engineering-for-beginners/projects/
 agent-browser --session project-catalog-production press Tab
 agent-browser --session project-catalog-production press Enter
@@ -6338,7 +8413,71 @@ done
 for label in 'MCP 规范与 Python SDK' 'Aider 源码拆解' 'OpenHands 源码拆解' 'Agent 评测基准' 'Dify 源码拆解' 'CrewAI 源码拆解' 'AutoGPT 与 Flowise' 'NousResearch/hermes-agent' 'openclaw/openclaw'; do
   rg -Fq "$label" "$focus_log"
 done
+```
 
+Expected: all 16 page/viewport combinations have `scrollWidth === innerWidth`, all required visible text, and no console or page errors; focus follows DOM/visual order, reaches all internal and watch-only links, and has a non-zero outline.
+
+#### Seven-PDF matrix
+
+Generate a PDF for each non-index project page while on-screen license disclosures remain closed. Then validate page text with the seven Unicode ligature replacements `ﬀ/ﬁ/ﬂ/ﬃ/ﬄ/ﬅ/ﬆ`:
+
+```bash
+set -e
+pdf_routes=(mcp-python-sdk aider openhands agent-benchmarks dify crewai history-autogpt-flowise)
+for route in "${pdf_routes[@]}"; do
+  agent-browser --session project-catalog-production open "https://mengen-ink.github.io/agent-engineering-for-beginners/projects/$route"
+  agent-browser --session project-catalog-production eval 'const open=Array.from(document.querySelectorAll(".project-meta details")).filter((node)=>node.open).length;if(open!==0)throw new Error(String(open));"0 open disclosures"'
+  agent-browser --session project-catalog-production pdf "/tmp/production-project-$route.pdf"
+done
+node --input-type=module <<'NODE'
+import { readFileSync, writeFileSync } from 'node:fs'
+import { parse } from 'yaml'
+const catalog = parse(readFileSync('sources/project-index.yml', 'utf8'))
+const subjects = Object.fromEntries(catalog.subjects.map((subject) => [subject.id, subject]))
+const expected = Object.fromEntries(catalog.pages.slice(1).map((page) => [
+  page.page_item_id.slice('project-'.length),
+  page.subjects.flatMap((subjectId) => {
+    const subject = subjects[subjectId]
+    const url = (path) => `${subject.canonical_url}/blob/${subject.pinned_commit}/${path.split('/').map(encodeURIComponent).join('/')}`
+    return [
+      subject.pinned_commit,
+      ...subject.entrypoints.flatMap((entry) => [entry.path, ...entry.symbols, entry.responsibility, url(entry.path)]),
+      ...subject.license_sources.flatMap((source) => [source.path, url(source.path)]),
+    ]
+  }),
+]))
+writeFileSync('/tmp/production-project-pdf-expectations.json', JSON.stringify(expected))
+NODE
+python3 - <<'PY'
+import json
+from pathlib import Path
+from pypdf import PdfReader
+ligatures = str.maketrans({
+    'ﬀ': 'ff', 'ﬁ': 'fi', 'ﬂ': 'fl', 'ﬃ': 'ffi', 'ﬄ': 'ffl', 'ﬅ': 'ft', 'ﬆ': 'st',
+})
+expected = json.loads(Path('/tmp/production-project-pdf-expectations.json').read_text(encoding='utf-8'))
+blank_pages = 0
+for route, required in expected.items():
+    reader = PdfReader(f'/tmp/production-project-{route}.pdf')
+    pages = [(page.extract_text() or '').translate(ligatures) for page in reader.pages]
+    blank_pages += sum(not page.strip() for page in pages)
+    compact = ''.join('\n'.join(pages).split())
+    missing = [item for item in required if ''.join(item.translate(ligatures).split()) not in compact]
+    assert not missing, f'{route} missing: {missing}'
+assert blank_pages == 0, f'blank PDF pages: {blank_pages}'
+print({'pdfs': len(expected), 'blank_pages': blank_pages, 'ligature_mappings': len(ligatures)})
+PY
+```
+
+Expected: `{'pdfs': 7, 'blank_pages': 0, 'ligature_mappings': 7}`; every fixed source and license URL is present in extracted text, with no CSS pseudo-element URL reconstruction.
+
+#### Fresh HAR and no-JavaScript matrix
+
+Start the no-JavaScript route only after starting a new HAR, and remove prior artifacts so request counts cannot be inherited from earlier navigation:
+
+```bash
+set -e
+rm -f /tmp/production-project-catalog-production-nojs.har
 agent-browser --session project-catalog-production-nojs network har start
 agent-browser --session project-catalog-production-nojs network route '**/*.js' --abort
 for route in projects/ projects/mcp-python-sdk projects/aider projects/openhands projects/agent-benchmarks projects/dify projects/crewai projects/history-autogpt-flowise; do
@@ -6352,78 +8491,28 @@ for route in projects/ projects/mcp-python-sdk projects/aider projects/openhands
     ? ['核心源码拆解', '历史反例', '前沿高权限观察区', '不是初学者默认安装步骤']
     : ['固定版本', '仓库状态', '教学层级', '许可证边界', '源码事实', '本书归纳', '关键源码入口', '失败边界']
   const missing = required.filter((item) => !text.includes(item))
-  const hasFullSha = isIndex || /\b[0-9a-f]{40}\b/u.test(text)
   const pinnedSourceLinks = Array.from(document.querySelectorAll('.project-source-links a'))
-  const contract = isIndex ? {} : {
-    metadata: Boolean(document.querySelector('.project-meta')),
-    licenseScopes: document.querySelectorAll('.project-meta details li[role="listitem"]').length > 0,
-    callChain: document.querySelectorAll('.project-call-chain [role="listitem"]').length > 0,
-    sourceEntries: document.querySelectorAll('.project-source-links [role="listitem"]').length > 0,
-    pinnedSources: pinnedSourceLinks.length > 0 && pinnedSourceLinks.every((a) => /\/blob\/[0-9a-f]{40}\//u.test(a.href)),
-    interviewLinks: document.querySelectorAll('.vp-doc a[href*="#iq-"]').length > 0,
+  if (!text.trim() || anchors === 0 || missing.length
+    || (!isIndex && (pinnedSourceLinks.length === 0
+      || pinnedSourceLinks.some((anchor) => !/\/blob\/[0-9a-f]{40}\//u.test(anchor.href))))) {
+    throw new Error(JSON.stringify({ url: location.href, anchors, missing }))
   }
-  const invalidContract = Object.entries(contract).filter(([, valid]) => !valid).map(([key]) => key)
-  if (!text.trim() || anchors === 0 || missing.length || !hasFullSha || invalidContract.length) {
-    throw new Error(JSON.stringify({ url: location.href, anchors, missing, hasFullSha, invalidContract }))
-  }
-  return JSON.stringify({ url: location.href, anchors, missing, hasFullSha, invalidContract })
+  return JSON.stringify({ url: location.href, anchors, missing })
 })()
 EVALEOF
 done
-
-agent-browser --session project-catalog-production open https://mengen-ink.github.io/agent-engineering-for-beginners/projects/openhands
-agent-browser --session project-catalog-production pdf /tmp/project-openhands-production.pdf
-agent-browser --session project-catalog-production open https://mengen-ink.github.io/agent-engineering-for-beginners/projects/agent-benchmarks
-agent-browser --session project-catalog-production pdf /tmp/project-benchmarks-production.pdf
-node --input-type=module <<'NODE'
-import { readFileSync, writeFileSync } from 'node:fs'
-import { parse } from 'yaml'
-const catalog = parse(readFileSync('sources/project-index.yml', 'utf8'))
-const subjects = Object.fromEntries(catalog.subjects.map((subject) => [subject.id, subject]))
-const chains = Object.fromEntries(catalog.chains.map((chain) => [chain.id, chain]))
-const expected = Object.fromEntries(['project-openhands', 'project-agent-benchmarks'].map((pageId) => {
-  const page = catalog.pages.find((candidate) => candidate.page_item_id === pageId)
-  const chain = chains[page.primary_chain_id]
-  const values = page.subjects.flatMap((subjectId) => {
-    const subject = subjects[subjectId]
-    return [
-      subject.pinned_commit,
-      ...subject.entrypoints.flatMap((entry) => [entry.path, entry.symbol, entry.responsibility]),
-      ...subject.license_sources.map((source) => `${subject.canonical_url}/blob/${subject.pinned_commit}/${source.path}`),
-    ]
-  })
-  values.push(...chain.steps.flatMap((step) => [step.label, step.source_path, step.symbol, step.responsibility]))
-  return [pageId, [...new Set(values)]]
-}))
-writeFileSync('/tmp/project-production-pdf-expectations.json', JSON.stringify(expected))
-NODE
-python3 - <<'PY'
-import json
-from pathlib import Path
-from pypdf import PdfReader
-expected = json.loads(Path('/tmp/project-production-pdf-expectations.json').read_text(encoding='utf-8'))
-for page_id, required in expected.items():
-    stem = 'project-benchmarks-production' if page_id == 'project-agent-benchmarks' else f'{page_id}-production'
-    text = '\n'.join(page.extract_text() or '' for page in PdfReader(f'/tmp/{stem}.pdf').pages)
-    compact = ''.join(text.split())
-    missing = [item for item in required if ''.join(item.split()) not in compact]
-    assert not missing, f'{stem} missing: {missing}'
-    assert '许可证边界' not in text, f'{stem} printed the closed disclosure summary'
-    Path(f'/tmp/{stem}.txt').write_text(text, encoding='utf-8')
-PY
-agent-browser --session project-catalog-production network har stop /tmp/project-catalog-production.har
-agent-browser --session project-catalog-production-nojs network har stop /tmp/project-catalog-production-nojs.har
+agent-browser --session project-catalog-production network har stop /tmp/production-project-catalog-production.har
+agent-browser --session project-catalog-production-nojs network har stop /tmp/production-project-catalog-production-nojs.har
 node --input-type=module <<'NODE'
 import { readFileSync } from 'node:fs'
-
 const sessions = [
-  { path: '/tmp/project-catalog-production.har', allowAbortedJavaScript: false },
-  { path: '/tmp/project-catalog-production-nojs.har', allowAbortedJavaScript: true },
+  { path: '/tmp/production-project-catalog-production.har', allowAbortedJavaScript: false },
+  { path: '/tmp/production-project-catalog-production-nojs.har', allowAbortedJavaScript: true },
 ]
 const failures = []
+const counts = []
 for (const session of sessions) {
-  const har = JSON.parse(readFileSync(session.path, 'utf8'))
-  const entries = har?.log?.entries
+  const entries = JSON.parse(readFileSync(session.path, 'utf8'))?.log?.entries
   if (!Array.isArray(entries) || entries.length === 0) {
     failures.push(`${session.path}: HAR contains no request entries`)
     continue
@@ -6434,18 +8523,19 @@ for (const session of sessions) {
     const status = Number(entry?.response?.status)
     let isJavaScript = false
     try { isJavaScript = /\.m?js$/iu.test(new URL(url).pathname) } catch {}
-    const isAllowedAbort = session.allowAbortedJavaScript && status <= 0 && isJavaScript
-    if (isAllowedAbort) allowedAbortCount += 1
-    if (!Number.isFinite(status) || status >= 400 || (status <= 0 && !isAllowedAbort)) {
+    const allowedAbort = session.allowAbortedJavaScript && status <= 0 && isJavaScript
+    if (allowedAbort) allowedAbortCount += 1
+    if (!Number.isFinite(status) || status >= 400 || (status <= 0 && !allowedAbort)) {
       failures.push(`${session.path}: ${status} ${url}`)
     }
   }
   if (session.allowAbortedJavaScript && allowedAbortCount === 0) {
     failures.push(`${session.path}: no actively aborted JavaScript request was captured`)
   }
+  counts.push({ path: session.path, requests: entries.length, allowedAbortCount })
 }
 if (failures.length > 0) throw new Error(`HAR network failures:\n${failures.join('\n')}`)
-console.log('HAR network gate passed')
+console.log(JSON.stringify(counts))
 NODE
 test -z "$(agent-browser --session project-catalog-production console)"
 test -z "$(agent-browser --session project-catalog-production errors)"
@@ -6453,8 +8543,10 @@ test -z "$(agent-browser --session project-catalog-production-nojs console)"
 test -z "$(agent-browser --session project-catalog-production-nojs errors)"
 ```
 
-Expected: course map reports 26 links and 7 project items with zero overflow; engineering path reports 17 steps; project index reports 6 core, 1 history, 2 watch links; the no-JS overview meets its taxonomy contract and the other seven no-JS pages retain metadata, full SHA, licenses, chain, source entries, and failure boundary; the inline Python block validates both PDFs. Both production HAR files are non-empty; the normal session has no missing/zero status or response `>=400`, and the no-JS session contains at least one actively aborted JavaScript request but no other missing/zero status or response `>=400`; console and page-error outputs are empty.
+Expected: both fresh HARs contain at least one request; the normal session has no missing/zero status or response `>=400`; the no-JavaScript session has at least one intentionally aborted `.js`/`.mjs` request and no other missing/zero status or response `>=400`. Report the freshly measured `requests` and `allowedAbortCount`; do not reuse historical network counts.
 
+
+Expected: course map reports 26 links and 7 project items; engineering path reports 17 steps; all 16 project page/viewport combinations have no overflow; all seven PDFs have zero blank pages and retain every full source/license URL after seven-ligature normalization; both fresh HARs satisfy the same status/abort policy as local acceptance; console and page-error outputs are empty.
 - [ ] **Step 6: Report final evidence and close sessions**
 
 ```bash
