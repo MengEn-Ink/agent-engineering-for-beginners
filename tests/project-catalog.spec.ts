@@ -154,6 +154,40 @@ describe('project catalog schema', () => {
     const missingArchived = structuredClone(validCatalog)
     delete missingArchived.subjects[0].archived
     expect(validateProjectCatalog(missingArchived)).toContain('Subject aider archived must be boolean')
+
+    for (const watchUrl of [
+      'https://',
+      'https://[',
+      'http://github.com/Aider-AI/aider/releases/latest',
+      '//github.com/Aider-AI/aider/releases/latest',
+      'https://other.example/Aider-AI/aider/releases/latest',
+      'https://github.com/other/aider/releases/latest',
+      'https://user:secret@github.com/Aider-AI/aider/releases/latest',
+      'https://github.com:8443/Aider-AI/aider/releases/latest',
+      'https://github.com/Aider-AI/aider/releases/latest?from=test',
+      'https://github.com/Aider-AI/aider/releases/latest#fragment',
+      'https://github.com/Aider-AI/aider/tags',
+    ]) {
+      const invalidWatchUrl = structuredClone(validCatalog)
+      invalidWatchUrl.subjects[0].watch_url = watchUrl
+      expect(validateProjectCatalog(invalidWatchUrl)).toContain('Subject aider has invalid watch_url')
+    }
+
+    const repositoryWatchUrl = structuredClone(validCatalog)
+    repositoryWatchUrl.subjects[0].watch_url = 'https://github.com/Aider-AI/aider'
+    expect(validateProjectCatalog(repositoryWatchUrl)).toEqual([])
+
+    const tagWatchUrl = structuredClone(validCatalog)
+    tagWatchUrl.subjects[0].pin_kind = 'tag'
+    tagWatchUrl.subjects[0].watch_url = 'https://github.com/Aider-AI/aider/tags'
+    expect(validateProjectCatalog(tagWatchUrl)).toEqual([])
+
+    const discussionWatchUrl = structuredClone(validCatalog)
+    discussionWatchUrl.subjects[0].repository_status = 'eol'
+    discussionWatchUrl.subjects[0].archived = true
+    discussionWatchUrl.subjects[0].catalog_tier = 'historical'
+    discussionWatchUrl.subjects[0].watch_url = 'https://github.com/Aider-AI/aider/discussions/6727'
+    expect(validateProjectCatalog(discussionWatchUrl)).toEqual([])
   })
 
   it('fails closed for unknown page, subject, chain, and source-path references', () => {
@@ -232,6 +266,33 @@ describe('project catalog schema', () => {
     expect(validateProjectCatalog(legacySymbol)).toContain(
       'Subject aider entrypoint aider/main.py requires non-empty symbols',
     )
+
+    const invalidRepositoryPaths = [
+      '', '../secret.ts', '/absolute.ts', 'C:/absolute.ts', './relative.ts',
+      'src//agent.ts', 'src/./agent.ts', 'src/../agent.ts', String.raw`src\agent.ts`,
+      'src\0agent.ts', 'src%2fagent.ts', 'src%5Cagent.ts', '%2e%2e/agent.ts',
+      '%252e%252e%252fagent.ts', '\uD800',
+    ]
+    for (const path of invalidRepositoryPaths) {
+      const invalidEntrypoint = structuredClone(validCatalog)
+      invalidEntrypoint.subjects[0].entrypoints[0].path = path
+      invalidEntrypoint.chains[0].steps[0].source_path = path
+      expect(validateProjectCatalog(invalidEntrypoint)).toContain(
+        'Subject aider entrypoint at index 0 has invalid repository path',
+      )
+
+      const invalidLicenseSource = structuredClone(validCatalog)
+      invalidLicenseSource.subjects[0].license_sources[0].path = path
+      expect(validateProjectCatalog(invalidLicenseSource)).toContain(
+        'Subject aider license source at index 0 has invalid repository path',
+      )
+    }
+
+    const unicodePaths = structuredClone(validCatalog)
+    unicodePaths.subjects[0].entrypoints[0].path = 'src/agent tools/机器人 🤖.ts'
+    unicodePaths.chains[0].steps[0].source_path = 'src/agent tools/机器人 🤖.ts'
+    unicodePaths.subjects[0].license_sources[0].path = 'licenses/第三方 🚀.txt'
+    expect(validateProjectCatalog(unicodePaths)).toEqual([])
   })
 
   it('parses YAML without accepting an empty or malformed registry', () => {
@@ -282,6 +343,35 @@ describe('project catalog schema', () => {
       'Project catalog integration requires contentItems',
       'Project catalog integration requires interviewQuestions',
     ])
+
+    const malformedScalarCases: Array<(catalog: any) => void> = [
+      (catalog) => { catalog.defaults.review_by = Symbol('review') },
+      (catalog) => { catalog.pages[0].primary_chain_id = Symbol('chain') },
+      (catalog) => { catalog.subjects[0].canonical_repo = Symbol('repo') },
+      (catalog) => { catalog.subjects[0].pinned_commit = Symbol('sha') },
+      (catalog) => { catalog.subjects[0].verified_default_head = Symbol('head') },
+      (catalog) => { catalog.subjects[0].watch_url = Symbol('watch') },
+      (catalog) => { catalog.subjects[0].entrypoints[0].path = Symbol('path') },
+      (catalog) => { catalog.subjects[0].license_sources[0].path = Symbol('license') },
+      (catalog) => { catalog.subjects[0].license_sources[0].sha256 = Symbol('digest') },
+    ]
+    for (const mutate of malformedScalarCases) {
+      const malformed = structuredClone(validCatalog) as any
+      mutate(malformed)
+      expect(() => validateProjectCatalog(malformed)).not.toThrow()
+      expect(validateProjectCatalog(malformed).length).toBeGreaterThan(0)
+      expect(validateProjectCatalog(malformed).every((error) => typeof error === 'string')).toBe(true)
+    }
+
+    const malformedIntegration = structuredClone(validCatalog) as any
+    malformedIntegration.pages[0].page_item_id = Symbol('page')
+    malformedIntegration.pages[0].interview_question_ids = [Symbol('question')]
+    expect(() => validateProjectCatalogIntegration(malformedIntegration, {
+      contentItems: [], interviewQuestions: [],
+    })).not.toThrow()
+    expect(validateProjectCatalogIntegration(malformedIntegration, {
+      contentItems: [], interviewQuestions: [],
+    }).every((error) => typeof error === 'string')).toBe(true)
   })
 })
 
