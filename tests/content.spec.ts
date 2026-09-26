@@ -152,9 +152,13 @@ function createCompleteDistFixture() {
     const coreHeadings = fixtureCoreProjectFiles.has(relative)
       ? fixtureProjectHeadings.map((heading) => `<h2>${heading}</h2>`).join('')
       : ''
-    writeFileSync(target, isOverview
+    const pageContent = isOverview
       ? `<main><div class="vp-doc">${fixtureProjectOverview()}</div></main>`
-      : `<main><div class="vp-doc">固定版本 关键源码入口 ${coreHeadings}${fixtureProjectSections(relative)}</div></main>`)
+      : `<main><div class="vp-doc">固定版本 关键源码入口 ${coreHeadings}${fixtureProjectSections(relative)}</div></main>`
+    writeFileSync(
+      target,
+      `<div class="Layout"><header class="VPNav"></header><div class="VPContent"><article class="VPDoc">${pageContent}</article></div></div>`,
+    )
   }
   return dist
 }
@@ -1556,6 +1560,12 @@ describe('project publication boundary', () => {
       for (const css of [
         '[class$="-source-links"]{background-image:var(--remote)}',
         String.raw`[class$="\2d source-links"]{background-image:env(remote-image)}`,
+        '[class="Layout"]{background-image:var(--outer-remote)}',
+        String.raw`[class$="\4c ayout"]{mask-image:env(outer-mask)}`,
+        ':not(.definitely-absent){background-image:var(--state)}',
+        ':is(.definitely-absent,*){background-image:attr(data-image url)}',
+        '.Layout:hover{background-image:var(--hover)}',
+        '.VPDoc::before{mask-image:env(pseudo-mask)}',
         '*{background-image:attr(data-image url)}',
         '.remote{background:url(https://evil.example/a.png)}',
         '@import "//evil.example/theme.css";',
@@ -1572,9 +1582,9 @@ describe('project publication boundary', () => {
         String.raw`.remote{background-image:image-set(-webkit-cross-fade(u\72l(https://evil.example/nested-escaped.png),url(/local.png),50%) 1x)}`,
         '.remote{background-image:image("https://evil.example/image-function.png",red)}',
         String.raw`.remote{background-image:image("https\3A \2F \2F evil.example/image-escaped.png",transparent)}`,
-        '.project-remote{background-image:image-set(var(--remote) 1x)}',
-        '.project-remote{background-image:env(remote-image)}',
-        '.project-remote{background-image:attr(data-image url)}',
+        '.project-source-links{background-image:image-set(var(--remote) 1x)}',
+        '.project-source-links{background-image:env(remote-image)}',
+        '.project-source-links{background-image:attr(data-image url)}',
         String.raw`@im\70ort "https://evil.example/escaped-import.css";`,
         String.raw`@import "https\3A //evil.example/escaped-scheme.css" layer(project);`,
         String.raw`@import "\68\74\74\70\73\3A \2F \2F evil.example/escaped-characters.css" supports(display:grid) screen;`,

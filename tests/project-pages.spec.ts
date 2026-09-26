@@ -546,16 +546,17 @@ ${escapedImportTarget}
   })
 
   it('identifies project selectors from parsed class nodes only', () => {
-    const projectClassTokens = new Set([
-      'project-card', 'project-panel', 'project-call-chain', 'project-exact', 'project-token',
-      'project-x',
-    ])
+    const projectClassTokenSets = [new Set([
+      'Layout', 'VPContent', 'VPDoc', 'vp-doc', 'project-card', 'project-panel',
+      'project-call-chain', 'project-exact', 'project-token', 'project-x', 'project-remote',
+      'project-is', 'project-where', 'project-not', 'project-child', 'project-list',
+    ])]
     for (const selector of ['[class="project-exact"]', '[class~="project-token"]']) {
       const resources = extractCssResourceCandidates(
         `${selector}{background-image:var(--remote)}`,
         {
           dynamicResources: 'project',
-          projectClassTokens,
+          projectClassTokenSets,
         },
       )
       expect(resources, selector).toContain(null)
@@ -587,12 +588,16 @@ ${escapedImportTarget}
       '[class]',
       ':root{background-image:var(--remote)}',
       '*{mask-image:env(remote-mask)}',
+      ':not(.definitely-absent){background-image:var(--remote)}',
+      ':is(.definitely-absent,*){background-image:env(remote-image)}',
+      '.Layout:hover{background-image:var(--remote)}',
+      '.VPDoc::before{mask-image:attr(data-mask url)}',
       '.broken:not([class="project-card"',
     ]) {
       const css = selector.includes('{') ? selector : `${selector}{background-image:var(--remote)}`
       const resources = extractCssResourceCandidates(css, {
         dynamicResources: 'project',
-        projectClassTokens,
+        projectClassTokenSets,
       })
       expect(resources, selector).toContain(null)
       expect(resources.some(isRemoteImageCandidate), selector).toBe(true)
@@ -613,36 +618,303 @@ ${escapedImportTarget}
       const css = `${selector}{background-image:var(--safe)}`
       expect(extractCssResourceCandidates(css, {
         dynamicResources: 'project',
-        projectClassTokens,
+        projectClassTokenSets,
       }), selector)
         .toEqual([])
     }
 
-    const resolvedLocal = extractCssResourceCandidates(
-      ':root{--safe-project-image:url(/local.png)}[class$="-card"]{background-image:var(--safe-project-image)}',
-      { dynamicResources: 'project', projectClassTokens },
+    for (const css of [
+      ':root{--img:"https://evil.example/a.png"}.project-card{background-image:image(var(--img),red)}',
+      ':root{--a:var(--b);--b:url(/local.png)}.project-card{background-image:var(--a)}',
+      ':root{--a:initial}.project-card{background-image:var(--a,url(https://evil.example/fallback.png))}',
+      '.unrelated{--img:red}.project-card{background-image:var(--img,url(/local-fallback.png))}',
+      ':root{--a:var(--b);--b:var(--a)}.project-card{background-image:var(--a)}',
+      '.project-card{background-image:var(--missing,url(/local.png))}',
+      '.project-card{background-image:env(local-image,url(/local.png))}',
+      '.project-card{background-image:attr(data-image url,/local.png)}',
+    ]) {
+      const resources = extractCssResourceCandidates(css, {
+        dynamicResources: 'project',
+        projectClassTokenSets,
+      })
+      expect(resources, css).toContain(null)
+      expect(resources.some(isRemoteImageCandidate), css).toBe(true)
+    }
+  })
+
+  it('fails closed for dynamic mask shorthands on project selectors', () => {
+    for (const property of [
+      'mask',
+      '-webkit-mask',
+      String.raw`m\61 sk`,
+      String.raw`background-\69mage`,
+    ]) {
+      const resources = extractCssResourceCandidates(
+        `.project-card{${property}:var(--remote) no-repeat}`,
+        {
+          dynamicResources: 'project',
+          projectClassTokenSets: [new Set(['project-card'])],
+        },
+      )
+      expect(resources, property).toContain(null)
+      expect(resources.some(isRemoteImageCandidate), property).toBe(true)
+    }
+  })
+
+  it('matches HTML and SVG attribute selector case against real document elements', () => {
+    const contract = extractProjectHtmlContract(
+      '<main class="vp-doc"><section data-kind="project"></section><button type="button"></button><link as="font"><svg viewBox="0 0 10 10"><rect /></svg></main>',
     )
-    expect(resolvedLocal).toContain('/local.png')
-    expect(resolvedLocal.some(isRemoteImageCandidate)).toBe(false)
+    const options = {
+      dynamicResources: 'project',
+      projectDocuments: [{
+        classTokens: contract.classTokens,
+        attributeValues: contract.attributeValues,
+        selectorElements: contract.selectorElements,
+      }],
+    }
+    for (const selector of [
+      '[DATA-KIND]',
+      '[as=FONT]',
+      '[type=BUTTON]',
+      '[viewBox]',
+      ':nth-child(1 of :not(.definitely-absent))',
+    ]) {
+      const resources = extractCssResourceCandidates(
+        `${selector}{cursor:var(--remote)}`,
+        options,
+      )
+      expect(resources, selector).toContain(null)
+      expect(resources.some(isRemoteImageCandidate), selector).toBe(true)
+    }
+    expect(extractCssResourceCandidates(
+      '[viewbox]{cursor:var(--remote)}',
+      options,
+    )).toEqual([])
+    expect(extractCssResourceCandidates(
+      '[type=BUTTON s]{cursor:var(--remote)}',
+      options,
+    )).toEqual([])
+
+    const svgOnly = extractProjectHtmlContract(
+      '<main class="vp-doc"><svg><g as="font" /></svg></main>',
+    )
+    expect(extractCssResourceCandidates('[as=FONT]{cursor:var(--remote)}', {
+      dynamicResources: 'project',
+      projectDocuments: [{
+        classTokens: svgOnly.classTokens,
+        attributeValues: svgOnly.attributeValues,
+        selectorElements: svgOnly.selectorElements,
+      }],
+    })).toEqual([])
+  })
+
+  it('extracts SVG presentation resource attributes with CSS value semantics', () => {
+    const contract = extractProjectHtmlContract(`
+<main class="vp-doc"><svg>
+  <rect filter="url(https://evil.example/filter.svg#x)" />
+  <path fill="url(#local-gradient)" stroke="var(--dynamic-stroke)" />
+</svg></main>
+`)
+    expect(contract.resources).toEqual(expect.arrayContaining([
+      'https://evil.example/filter.svg#x',
+      '#local-gradient',
+      null,
+    ]))
+    expect(contract.resources.some(isRemoteImageCandidate)).toBe(true)
+  })
+
+  it('rejects inline icon overrides and active SVG URL mechanisms', () => {
+    const unsafeIcon = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Crect filter='url(https%3A%2F%2Fevil.example%2Ffilter.svg%23x)'/%3E%3C/svg%3E"
+    for (const markup of [
+      `<span class="vp-icon" style="--icon:url(&quot;${unsafeIcon}&quot;)"></span>`,
+      `<style>.vp-icon{--icon:url("${unsafeIcon}")}</style>`,
+      '<svg xml:base="https://evil.example/"><image href="relative.png" /></svg>',
+      '<svg><image href="/safe.png"><animate attributeName="href" values="/safe.png;https://evil.example/remote.png" /></image></svg>',
+    ]) {
+      const contract = extractProjectHtmlContract(`<main class="vp-doc">${markup}</main>`)
+      expect(contract.resources, markup).toContain(null)
+      expect(contract.resources.some(isRemoteImageCandidate), markup).toBe(true)
+    }
+    const caseSensitiveCustomProperty = extractProjectHtmlContract(
+      '<main class="vp-doc"><span class="vp-icon" style="--Icon:var(--unrelated)"></span></main>',
+    )
+    expect(caseSensitiveCustomProperty.resources).toEqual([])
+
+    for (const outerOverride of [
+      `<span class="vp-icon" style="--icon:url(&quot;${unsafeIcon}&quot;)"></span>`,
+      `<style>.vp-icon{--icon:url("${unsafeIcon}")}</style>`,
+    ]) {
+      const contract = extractProjectHtmlContract(
+        `${outerOverride}<main class="vp-doc"></main>`,
+      )
+      expect(contract.resources, outerOverride).toContain(null)
+    }
   })
 
   it('extracts the authoritative project class tokens from rendered HTML', () => {
     const contract = extractProjectHtmlContract(`
-<main><div class="vp-doc project-page project-x">
-  <section class="project-call-chain extra-class"></section>
+<div class="Layout"><header class="VPNav"></header><main class="VPContent">
+<article class="VPDoc"><div class="vp-doc project-page project-x">
+  <section class="project-call-chain extra-class" data-kind="project"></section>
   <!-- <div class="project-comment-bait"></div> -->
   <script>const bait = '<div class="project-script-bait"></div>'</script>
-</div></main>
+</div></article></main></div>
 `)
 
     expect(contract).toHaveProperty('classTokens')
     expect([...contract.classTokens]).toEqual([
+      'Layout',
+      'VPNav',
+      'VPContent',
+      'VPDoc',
       'vp-doc',
       'project-page',
       'project-x',
       'project-call-chain',
       'extra-class',
     ])
+  })
+
+  it('allows only the exact VitePress 1.6.4 generated icon mask contract', () => {
+    const genericSelector = '[class^=vpi-]:not(.bg),[class*=" vpi-"]:not(.bg),.vp-icon:not(.bg)'
+    const externalSelector = ':is(.vp-external-link-icon,.vp-doc a[href*="://"],.vp-doc a[target=_blank]):not(:is(.no-icon,svg a,:has(img,svg))):after'
+    const safeIcon = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cuse href='%23icon'/%3E%3C/svg%3E"
+    const vendorCss = `${genericSelector}{-webkit-mask:var(--icon) no-repeat;mask:var(--icon) no-repeat}.vpi-test{--icon:url("${safeIcon}")}${externalSelector}{--icon:url("${safeIcon}");-webkit-mask-image:var(--icon);mask-image:var(--icon)}`
+    const document = extractProjectHtmlContract(
+      '<div class="Layout"><span class="vpi-test"></span><main class="vp-doc"><a href="https://example.com">external</a></main></div>',
+    )
+    const options = {
+      dynamicResources: 'project',
+      projectDocuments: [{
+        classTokens: document.classTokens,
+        attributeValues: document.attributeValues,
+        selectorElements: document.selectorElements,
+      }],
+      vitePressVersion: '1.6.4',
+      allCss: [vendorCss],
+      vitePressIconDefinitionHash: 'b6072c6b7a4450fe7a21c3e5eed18ee5453c862880eaa7f16d4b26d632abe182',
+    }
+    expect(extractCssResourceCandidates(vendorCss, options).some(isRemoteImageCandidate))
+      .toBe(false)
+
+    const auxiliaryIconCss = `.vpi-social-github{--icon:url("${safeIcon}")}`
+    expect(extractCssResourceCandidates(vendorCss, {
+      ...options,
+      allCss: [vendorCss, auxiliaryIconCss],
+    }).some(isRemoteImageCandidate)).toBe(false)
+    expect(extractCssResourceCandidates(vendorCss, {
+      ...options,
+      allCss: [vendorCss, '.vp-icon{--Icon:var(--unrelated)}'],
+    }).some(isRemoteImageCandidate)).toBe(false)
+
+    const unsafeCases = [
+      { css: vendorCss, version: '1.6.5' },
+      { css: vendorCss.replace(genericSelector, `${genericSelector}.changed`), version: '1.6.4' },
+      { css: vendorCss.replace('-webkit-mask:', 'background-image:'), version: '1.6.4' },
+      { css: vendorCss.replace('var(--icon) no-repeat', 'var(--icon) no-repeat center'), version: '1.6.4' },
+      { css: vendorCss.replace('var(--icon)', 'var(--icon, url(/fallback.svg))'), version: '1.6.4' },
+      { css: vendorCss.replace('mask-image:var(--icon)', 'mask-image:var(--icon)!important'), version: '1.6.4' },
+      { css: vendorCss.replace('.vpi-test{--icon', '.changed{--icon'), version: '1.6.4' },
+      { css: vendorCss.replace(`.vpi-test{--icon:url("${safeIcon}")}`, ''), version: '1.6.4' },
+      { css: `${vendorCss}.vpi-test{--icon:url("${safeIcon}")}`, version: '1.6.4' },
+      {
+        css: vendorCss.replace(
+          `.vpi-test{--icon:url("${safeIcon}")}`,
+          `@media not all{.vpi-test{--icon:url("${safeIcon}")}}`,
+        ),
+        version: '1.6.4',
+      },
+      { css: vendorCss + String.raw`.vp-icon{--\69 con:var(--runtime-icon)}`, version: '1.6.4' },
+      { css: vendorCss.replace(`url("${safeIcon}")`, 'url("https://evil.example/icon.svg")'), version: '1.6.4' },
+      { css: vendorCss.replace(`url("${safeIcon}")`, 'var(--other-icon)'), version: '1.6.4' },
+      { css: vendorCss.replace(`url("${safeIcon}")`, 'url("blob:https://example.com/icon")'), version: '1.6.4' },
+      {
+        css: vendorCss.replace(
+          safeIcon,
+          "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cimage href='https://evil.example/nested.png'/%3E%3C/svg%3E",
+        ),
+        version: '1.6.4',
+      },
+      {
+        css: vendorCss.replace(
+          safeIcon,
+          "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Crect filter='url(https%3A%2F%2Fevil.example%2Ffilter.svg%23x)'/%3E%3C/svg%3E",
+        ),
+        version: '1.6.4',
+      },
+      {
+        css: vendorCss.replace(
+          safeIcon,
+          "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' xml%3Abase='https%3A%2F%2Fevil.example%2F'%3E%3Cimage href='relative.png'/%3E%3C/svg%3E",
+        ),
+        version: '1.6.4',
+      },
+      {
+        css: vendorCss.replace(
+          safeIcon,
+          "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Canimate attributeName='href' values='%23safe%3Bhttps%3A%2F%2Fevil.example%2Fremote.svg'/%3E%3C/svg%3E",
+        ),
+        version: '1.6.4',
+      },
+      {
+        css: vendorCss.replace(
+          safeIcon,
+          "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cg%3E%3C%2Fsvg%3E",
+        ),
+        version: '1.6.4',
+      },
+      {
+        css: vendorCss.replace(
+          safeIcon,
+          "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' xmlns%3As='http://www.w3.org/2000/svg'%3E%3Cs%3Aimage href='https%3A%2F%2Fevil.example%2Fx.png'%2F%3E%3C%2Fsvg%3E",
+        ),
+        version: '1.6.4',
+        expectedHash: 'a38f82ea674149a1ddee7c59e3c1af4dee801b6d4bcaf56500f563d89fffefc7',
+      },
+      {
+        css: vendorCss.replace(
+          safeIcon,
+          "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' xmlns%3As='http://www.w3.org/2000/svg'%3E%3Cs%3Aanimate attributeName='href' values='%23safe%3Bhttps%3A%2F%2Fevil.example%2Fx.svg'%2F%3E%3C%2Fsvg%3E",
+        ),
+        version: '1.6.4',
+        expectedHash: 'f062c94de8d87d4798be4d280b7334593ee6c2e8e1b5b66641f911f414ef575c',
+      },
+      {
+        css: vendorCss.replace(
+          safeIcon,
+          "data:image/svg+xml,%3C%3Fxml-stylesheet href='https%3A%2F%2Fevil.example%2Fx.css'%3F%3E%3Csvg xmlns='http://www.w3.org/2000/svg'%2F%3E",
+        ),
+        version: '1.6.4',
+        expectedHash: '555677f50f9425e2a0183ecb4502e629b74a1cd3fe21ee41ca357f5ae28239b6',
+      },
+    ]
+    for (const { css, version, expectedHash } of unsafeCases) {
+      expect(extractCssResourceCandidates(css, {
+        ...options,
+        vitePressVersion: version,
+        allCss: [css],
+        vitePressIconDefinitionHash: expectedHash ?? options.vitePressIconDefinitionHash,
+      }).some(isRemoteImageCandidate), `${version}: ${css}`).toBe(true)
+    }
+
+    const wrongNamespaceIcon = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' xmlns%3Ax='urn%3Abait'%3E%3Cx%3Aimage href='https%3A%2F%2Fevil.example%2Fignored.png'%2F%3E%3C%2Fsvg%3E"
+    const wrongNamespaceCss = vendorCss.replace(safeIcon, wrongNamespaceIcon)
+    expect(extractCssResourceCandidates(wrongNamespaceCss, {
+      ...options,
+      allCss: [wrongNamespaceCss],
+      vitePressIconDefinitionHash: '59a70e0750649c2b2ab05cfcceeb7cd295911714652ae46ae11e96d1f765c334',
+    }).some(isRemoteImageCandidate)).toBe(false)
+
+    for (const auxiliaryCss of [
+      '.vpi-social-github{--icon:var(--other-icon)}',
+      '.vpi-social-github{--icon:url("https://evil.example/icon.svg")}',
+    ]) {
+      expect(extractCssResourceCandidates(vendorCss, {
+        ...options,
+        allCss: [vendorCss, auxiliaryCss],
+      }).some(isRemoteImageCandidate), auxiliaryCss).toBe(true)
+    }
   })
 
   it('keeps project pages free of remote images for project asset provenance', () => {

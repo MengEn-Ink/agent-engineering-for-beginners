@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { existsSync, lstatSync, readdirSync, statSync } from 'node:fs'
 import { join, posix, relative } from 'node:path'
 import parseSrcset from 'parse-srcset'
@@ -5,6 +6,8 @@ import { parse, parseFragment, Tokenizer } from 'parse5'
 import postcss from 'postcss'
 import selectorParser from 'postcss-selector-parser'
 import valueParser from 'postcss-value-parser'
+import { SaxesParser } from 'saxes'
+import { parse as parseYaml } from 'yaml'
 
 const hiddenHtmlElements = new Set(['script', 'style', 'template', 'noscript'])
 const hiddenMarkdownHtmlElements = new Set([
@@ -18,6 +21,8 @@ const hiddenImageHtmlElements = new Set([...hiddenResourceHtmlElements, 'style']
 const localImageBase = new URL('https://local.invalid/')
 const htmlNamespace = 'http://www.w3.org/1999/xhtml'
 const svgNamespace = 'http://www.w3.org/2000/svg'
+const xlinkNamespace = 'http://www.w3.org/1999/xlink'
+const xmlNamespace = 'http://www.w3.org/XML/1998/namespace'
 const fetchingLinkRels = new Set([
   'icon', 'manifest', 'mask-icon', 'modulepreload', 'prefetch', 'preload', 'stylesheet',
 ])
@@ -47,6 +52,23 @@ const svgResourceHrefElements = new Set([
   'textpath',
   'use',
 ])
+const svgXmlResourceHrefElements = new Set([
+  'animate',
+  'animateMotion',
+  'animateTransform',
+  'cursor',
+  'feImage',
+  'filter',
+  'image',
+  'linearGradient',
+  'mpath',
+  'pattern',
+  'radialGradient',
+  'script',
+  'set',
+  'textPath',
+  'use',
+])
 const cssImageContainerFunctions = new Set(['cross-fade', '-webkit-cross-fade', 'image'])
 const cssUnresolvedFunctions = new Set(['attr', 'env', 'var'])
 const cssResourceFunctions = new Set([
@@ -62,6 +84,7 @@ const cssResourceProperties = new Set([
   'clip-path',
   'cursor',
   'list-style-image',
+  'mask',
   'mask-image',
   'offset-path',
   'shape-outside',
@@ -69,6 +92,68 @@ const cssResourceProperties = new Set([
   '-webkit-mask',
   '-webkit-mask-image',
 ])
+const svgPresentationResourceAttributes = new Set([
+  'clip-path',
+  'cursor',
+  'fill',
+  'filter',
+  'marker',
+  'marker-end',
+  'marker-mid',
+  'marker-start',
+  'mask',
+  'stroke',
+])
+const svgCssResourceProperties = new Set([
+  ...cssResourceProperties,
+  ...svgPresentationResourceAttributes,
+])
+const disallowedSvgResourceElements = new Set([
+  'animate',
+  'animatemotion',
+  'animatetransform',
+  'discard',
+  'mpath',
+  'set',
+])
+const disallowedSvgXmlResourceElements = new Set([
+  'animate',
+  'animateMotion',
+  'animateTransform',
+  'discard',
+  'mpath',
+  'set',
+])
+const htmlAsciiInsensitiveAttributeValues = new Set([
+  'accept', 'accept-charset', 'align', 'alink', 'as', 'axis', 'bgcolor', 'charset', 'checked',
+  'clear', 'codetype', 'color', 'compact', 'declare', 'defer', 'dir', 'direction',
+  'disabled', 'enctype', 'face', 'frame', 'hreflang', 'http-equiv', 'lang', 'language',
+  'link', 'media', 'method', 'multiple', 'nohref', 'noresize', 'noshade', 'nowrap',
+  'readonly', 'rel', 'rev', 'rules', 'scope', 'scrolling', 'selected', 'shape', 'target',
+  'text', 'type', 'valign', 'valuetype', 'vlink',
+])
+const vitePressIconMaskVersion = '1.6.4'
+const vitePressGenericIconSelector = '[class^=vpi-]:not(.bg),[class*=" vpi-"]:not(.bg),.vp-icon:not(.bg)'
+const vitePressExternalIconSelector = ':is(.vp-external-link-icon,.vp-doc a[href*="://"],.vp-doc a[target=_blank]):not(:is(.no-icon,svg a,:has(img,svg))):after'
+const vitePressIconConsumers = new Map([
+  [`${vitePressGenericIconSelector}\0-webkit-mask`, 'var(--icon) no-repeat'],
+  [`${vitePressGenericIconSelector}\0mask`, 'var(--icon) no-repeat'],
+  [`${vitePressExternalIconSelector}\0-webkit-mask-image`, 'var(--icon)'],
+  [`${vitePressExternalIconSelector}\0mask-image`, 'var(--icon)'],
+])
+
+export function readLockedVitePressVersion(lockText) {
+  try {
+    const lock = parseYaml(lockText)
+    const version = lock?.importers?.['.']?.devDependencies?.vitepress?.version
+    const match = typeof version === 'string' ? version.match(/^(\d+\.\d+\.\d+)(?:\(|$)/u) : null
+    return match && Object.hasOwn(lock?.packages ?? {}, `vitepress@${match[1]}`)
+      ? match[1]
+      : null
+  } catch {
+    return null
+  }
+}
 
 function attribute(node, name) {
   return node.attrs?.find((candidate) => candidate.name === name)?.value
@@ -345,6 +430,7 @@ function extractCssNodes(nodes, resourceContext = false, resolveVariable, resolv
       resources.push(...imageFunctionResources(node, resolveVariable, resolvingVariables))
     } else if (resourceContext && functionName === 'var') {
       resources.push(...(resolveVariable?.(node, resolvingVariables) ?? [null]))
+      resources.push(...extractCssNodes(node.nodes ?? [], false))
     } else if (resourceContext && cssUnresolvedFunctions.has(functionName)) {
       resources.push(null)
     } else {
@@ -385,70 +471,74 @@ function consumeCssIdentifier(value) {
   return name && { raw: name.raw, rest: value.slice(name.end).trim() }
 }
 
-function classAttributeCanMatchProject(node, projectClassTokens) {
-  if (node.attribute.toLowerCase() !== 'class') return false
-  if (!node.operator || node.value === undefined) return true
-  const value = node.insensitive ? node.value.toLowerCase() : node.value
-  const tokens = [...projectClassTokens].map((token) =>
-    node.insensitive ? token.toLowerCase() : token)
-  const literalTokens = value.split(/[ \t\n\f\r]+/u)
-
-  if (node.operator === '=') {
-    return literalTokens.some((token) => token.startsWith('project-') || tokens.includes(token))
-  }
-  if (node.operator === '~=') return value.startsWith('project-') || tokens.includes(value)
-  if (node.operator === '^=') {
-    return 'project-'.startsWith(value) || tokens.some((token) => token.startsWith(value))
-  }
-  if (node.operator === '$=') return tokens.some((token) => token.endsWith(value))
-  if (node.operator === '*=') {
-    return 'project-'.includes(value) || tokens.some((token) => token.includes(value))
-  }
-  if (node.operator === '|=') {
-    return value === 'project'
-      || value.startsWith('project-')
-      || tokens.some((token) => token === value || token.startsWith(`${value}-`))
-  }
+function attributeMatchesValue(node, actual, element) {
+  if (!node.operator) return true
+  if (node.value === undefined) return false
+  const defaultInsensitive = node.insensitive === undefined
+    && element?.namespaceURI === htmlNamespace
+    && htmlAsciiInsensitiveAttributeValues.has(node.attribute.toLowerCase())
+  const insensitive = node.insensitive === true || defaultInsensitive
+  const value = insensitive ? node.value.toLowerCase() : node.value
+  const candidate = insensitive ? actual.toLowerCase() : actual
+  if (node.operator === '=') return candidate === value
+  if (node.operator === '~=') return candidate.split(/[ \t\n\f\r]+/u).includes(value)
+  if (node.operator === '^=') return candidate.startsWith(value)
+  if (node.operator === '$=') return candidate.endsWith(value)
+  if (node.operator === '*=') return candidate.includes(value)
+  if (node.operator === '|=') return candidate === value || candidate.startsWith(`${value}-`)
   return true
 }
 
-function insideNegation(node) {
-  let parent = node.parent
-  while (parent && parent.type !== 'selector') {
-    if (parent.type === 'pseudo' && parent.value.toLowerCase() === ':not') return true
-    parent = parent.parent
+function documentMatchesAttribute(node, document) {
+  if (document.selectorElements) {
+    return document.selectorElements.some((element) => {
+      const values = [...element.attributeValues]
+        .filter(([name]) => element.namespaceURI === htmlNamespace
+          ? name.toLowerCase() === node.attribute.toLowerCase()
+          : name === node.attribute)
+        .flatMap(([, candidates]) => [...candidates])
+      return values.some((value) => attributeMatchesValue(node, value, element))
+    })
   }
-  return false
+  return [...(document.attributeValues.get(node.attribute) ?? [])]
+    .some((value) => attributeMatchesValue(node, value))
 }
 
-function belongsToProjectRule(declaration, projectClassTokens) {
+function belongsToProjectRule(declaration, projectDocuments) {
   let container = declaration.parent
   while (container) {
     if (container.type === 'rule') {
       try {
-        let projectScoped = false
-        let hasPositiveClassConstraint = false
+        let reachable = false
         selectorParser((selectors) => {
           selectors.each((selector) => {
-            let branchMatched = false
-            let branchConstrained = false
-            selector.walkClasses((node) => {
-              if (insideNegation(node)) return
-              branchConstrained = true
-              if (node.value.startsWith('project-') || projectClassTokens.has(node.value)) {
-                branchMatched = true
+            let hasConservativePseudo = false
+            selector.walkPseudos((node) => {
+              if ([':has', ':is', ':not', ':where'].includes(node.value.toLowerCase())) {
+                hasConservativePseudo = true
               }
             })
-            selector.walkAttributes((node) => {
-              if (insideNegation(node)) return
-              branchConstrained = true
-              if (classAttributeCanMatchProject(node, projectClassTokens)) branchMatched = true
+            if (hasConservativePseudo) {
+              reachable = true
+              return
+            }
+            const constraints = []
+            selector.walkClasses((node) => {
+              constraints.push((document) => document.classTokens.has(node.value))
             })
-            if (branchMatched || !branchConstrained) projectScoped = true
-            if (branchConstrained) hasPositiveClassConstraint = true
+            selector.walkAttributes((node) => {
+              constraints.push((document) => documentMatchesAttribute(node, document))
+            })
+            if (
+              constraints.length === 0
+              || projectDocuments.some((document) =>
+                constraints.every((constraint) => constraint(document)))
+            ) {
+              reachable = true
+            }
           })
         }).processSync(container.selector)
-        if (projectScoped || !hasPositiveClassConstraint) return true
+        if (reachable) return true
       } catch {
         return true
       }
@@ -458,39 +548,253 @@ function belongsToProjectRule(declaration, projectClassTokens) {
   return false
 }
 
+function normalizeSelectorSignature(selector) {
+  try {
+    return selectorParser().processSync(selector, { lossless: false })
+  } catch {
+    return null
+  }
+}
+
+function normalizeDeclarationProperty(property) {
+  const decoded = decodeCssEscapes(property)
+  if (decoded === null) return null
+  return decoded.startsWith('--') ? decoded : decoded.toLowerCase()
+}
+
+function vitePressIconDefinitionHash(definitions) {
+  const tuples = definitions.map((declaration) => {
+    const selector = declaration.parent?.type === 'rule'
+      ? normalizeSelectorSignature(declaration.parent.selector)
+      : null
+    const property = normalizeDeclarationProperty(declaration.prop)
+    if (selector === null || property !== '--icon') return null
+    const atRules = []
+    let container = declaration.parent?.parent
+    while (container && container.type !== 'root') {
+      if (container.type !== 'atrule') return null
+      const name = decodeCssEscapes(container.name)
+      if (name === null) return null
+      atRules.unshift({ name: name.toLowerCase(), params: container.params.trim() })
+      container = container.parent
+    }
+    return { atRules, selector, property, value: declaration.value.trim() }
+  })
+  if (tuples.some((tuple) => tuple === null)) return null
+  tuples.sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)))
+  return createHash('sha256').update(JSON.stringify(tuples)).digest('hex')
+}
+
+function extractSvgXmlResourceCandidates(svg) {
+  if (/<!DOCTYPE/iu.test(svg)) return null
+  let depth = 0
+  let rootIsSvg = false
+  let roots = 0
+  const resources = []
+  const elements = []
+  try {
+    const parser = new SaxesParser({ xmlns: true })
+    parser.on('opentag', (node) => {
+      if (depth === 0) {
+        roots += 1
+        rootIsSvg = node.uri === svgNamespace && node.local === 'svg'
+      }
+      depth += 1
+      const frame = { isStyle: node.uri === svgNamespace && node.local === 'style', text: '' }
+      elements.push(frame)
+      if (node.uri !== svgNamespace) return
+      if (disallowedSvgXmlResourceElements.has(node.local) || node.local === 'foreignObject') {
+        resources.push(null)
+      }
+      const attributes = Object.values(node.attributes)
+      if (attributes.some((candidate) =>
+        candidate.uri === xmlNamespace && candidate.local === 'base')) {
+        resources.push(null)
+      }
+      if (svgXmlResourceHrefElements.has(node.local)) {
+        for (const candidate of attributes.filter((attribute) => attribute.local === 'href')) {
+          resources.push(candidate.uri === '' || candidate.uri === xlinkNamespace
+            ? candidate.value
+            : null)
+        }
+      }
+      for (const candidate of attributes) {
+        if (candidate.uri !== '') continue
+        if (svgPresentationResourceAttributes.has(candidate.local)) {
+          resources.push(...extractCssValueResources(candidate.value, true))
+        } else if (candidate.local === 'style') {
+          resources.push(...embeddedCssResourceCandidates(
+            `publication-resource{${candidate.value}}`,
+            true,
+          ))
+        }
+      }
+    })
+    const appendStyleText = (text) => {
+      const frame = elements.at(-1)
+      if (frame?.isStyle) frame.text += text
+    }
+    parser.on('text', appendStyleText)
+    parser.on('cdata', appendStyleText)
+    parser.on('processinginstruction', () => {
+      resources.push(null)
+    })
+    parser.on('closetag', () => {
+      const frame = elements.pop()
+      if (frame?.isStyle) resources.push(...embeddedCssResourceCandidates(frame.text, true))
+      depth -= 1
+    })
+    parser.write(svg).close()
+    return roots === 1 && rootIsSvg && depth === 0 ? resources : null
+  } catch {
+    return null
+  }
+}
+
+function decodeSvgDataResource(candidate) {
+  const comma = candidate.indexOf(',')
+  if (comma < 0) return null
+  const metadata = candidate.slice(5, comma).toLowerCase()
+  if (!metadata.startsWith('image/svg+xml')) return null
+  try {
+    return metadata.split(';').includes('base64')
+      ? Buffer.from(candidate.slice(comma + 1), 'base64').toString('utf8')
+      : decodeURIComponent(candidate.slice(comma + 1))
+  } catch {
+    return null
+  }
+}
+
+function isSafeVitePressIconResource(candidate, options, depth = 0) {
+  if (depth > 2 || typeof candidate !== 'string') return false
+  const value = candidate.trim()
+  if (/^blob:/iu.test(value)) return false
+  if (/^data:/iu.test(value)) {
+    const svg = decodeSvgDataResource(value)
+    if (svg === null) return false
+    const resources = extractSvgXmlResourceCandidates(svg)
+    if (resources === null) return false
+    return resources.every((nested) =>
+      isSafeVitePressIconResource(nested, options, depth + 1))
+  }
+  if (isRemoteImageCandidate(value)) return false
+  if (depth > 0 && value.startsWith('#')) return true
+  if (depth > 0 && !options.distFiles) return false
+  if (!options.distFiles || (!value.startsWith('/') && depth === 0)) return true
+  try {
+    const url = new URL(value, localImageBase)
+    const relativePath = url.pathname
+      .replace(/^\/agent-engineering-for-beginners\//u, '')
+      .replace(/^\//u, '')
+    return options.distFiles.has(relativePath)
+  } catch {
+    return false
+  }
+}
+
+function exactVitePressIconConsumer(declaration) {
+  if (declaration.parent?.type !== 'rule' || declaration.important) return false
+  const selector = normalizeSelectorSignature(declaration.parent.selector)
+  if (selector === null) return false
+  const property = normalizeDeclarationProperty(declaration.prop)
+  return property !== null
+    && vitePressIconConsumers.get(`${selector}\0${property}`) === declaration.value
+}
+
+function vitePressIconMaskPolicyIsValid(options) {
+  if (options.vitePressVersion !== vitePressIconMaskVersion) return false
+  const definitions = []
+  const contractDefinitions = []
+  const consumers = []
+  for (const css of options.allCss ?? []) {
+    let root
+    try {
+      root = postcss.parse(css)
+    } catch {
+      return false
+    }
+    const sheetDefinitions = []
+    const sheetConsumers = []
+    root.walkDecls((declaration) => {
+      const property = normalizeDeclarationProperty(declaration.prop)
+      if (property === null) return
+      if (property === '--icon') {
+        definitions.push(declaration)
+        sheetDefinitions.push(declaration)
+      }
+      const selector = declaration.parent?.type === 'rule'
+        ? normalizeSelectorSignature(declaration.parent.selector)
+        : null
+      if (
+        selector !== null
+        && (selector === vitePressGenericIconSelector || selector === vitePressExternalIconSelector)
+        && ['mask', '-webkit-mask', 'mask-image', '-webkit-mask-image'].includes(property)
+      ) {
+        consumers.push(declaration)
+        sheetConsumers.push(declaration)
+      }
+    })
+    if (sheetConsumers.length > 0) contractDefinitions.push(...sheetDefinitions)
+  }
+  if (
+    consumers.length !== vitePressIconConsumers.size
+    || new Set(consumers.map((declaration) =>
+      `${normalizeSelectorSignature(declaration.parent.selector)}\0${normalizeDeclarationProperty(declaration.prop)}`)).size
+      !== vitePressIconConsumers.size
+    || !consumers.every(exactVitePressIconConsumer)
+    || vitePressIconDefinitionHash(contractDefinitions) !== options.vitePressIconDefinitionHash
+  ) {
+    return false
+  }
+  const safeDefinition = (declaration) => {
+    if (declaration.important) return false
+    const resources = extractCssValueResources(declaration.value, true)
+    return resources.length > 0
+      && resources.every((candidate) => isSafeVitePressIconResource(candidate, options))
+  }
+  if (!definitions.every(safeDefinition)) return false
+  return consumers
+    .filter((declaration) =>
+      normalizeSelectorSignature(declaration.parent.selector) === vitePressExternalIconSelector)
+    .every((declaration) => declaration.parent.nodes.some((candidate) =>
+      candidate.type === 'decl'
+      && normalizeDeclarationProperty(candidate.prop) === '--icon'
+      && safeDefinition(candidate)))
+}
+
 export function extractCssResourceCandidates(css, options = {}) {
   try {
     const root = postcss.parse(css)
     const resources = []
-    const projectClassTokens = new Set(options.projectClassTokens ?? [])
-    const customProperties = new Map()
-    root.walkDecls((declaration) => {
-      if (!declaration.prop.startsWith('--')) return
-      const values = customProperties.get(declaration.prop) ?? []
-      values.push(declaration.value)
-      customProperties.set(declaration.prop, values)
-    })
-    const resolveVariable = (node, resolvingVariables = new Set()) => {
-      const name = (node.nodes ?? []).find((candidate) =>
-        candidate.type !== 'space' && candidate.type !== 'comment' && candidate.type !== 'div')
-      if (name?.type !== 'word' || !name.value.startsWith('--')) return [null]
-      if (resolvingVariables.has(name.value)) return [null]
-      const definitions = customProperties.get(name.value)
-      if (!definitions || definitions.length === 0) return [null]
-      const next = new Set([...resolvingVariables, name.value])
-      return definitions.flatMap((value) =>
-        extractCssValueResources(value, true, resolveVariable, next))
+    const allowVitePressIconMasks = vitePressIconMaskPolicyIsValid(options)
+    const projectDocuments = options.projectDocuments
+      ?? (options.projectClassTokenSets ?? []).map((classTokens) => ({
+        classTokens: new Set(classTokens),
+        attributeValues: new Map([['class', new Set(classTokens)]]),
+      }))
+    if (projectDocuments.length === 0 && options.projectClassTokens) {
+      const classTokens = new Set(options.projectClassTokens)
+      projectDocuments.push({
+        classTokens,
+        attributeValues: new Map([['class', new Set(classTokens)]]),
+      })
     }
     root.walkDecls((declaration) => {
-      const dynamicResourceContext = cssResourceProperties.has(declaration.prop.toLowerCase())
+      const property = normalizeDeclarationProperty(declaration.prop)
+      if (property === null) {
+        resources.push(null)
+        return
+      }
+      const resourceProperties = options.resourceProperties ?? cssResourceProperties
+      const dynamicResourceContext = resourceProperties.has(property)
+        && !(allowVitePressIconMasks && exactVitePressIconConsumer(declaration))
         && (
           options.dynamicResources !== 'project'
-          || belongsToProjectRule(declaration, projectClassTokens)
+          || belongsToProjectRule(declaration, projectDocuments)
         )
       resources.push(...extractCssValueResources(
         declaration.value,
         dynamicResourceContext,
-        resolveVariable,
       ))
     })
     root.walkAtRules((atRule) => {
@@ -553,26 +857,72 @@ function browserResourceAttributesWithin(roots) {
   })
 }
 
+function cssDefinesVitePressIcon(css) {
+  try {
+    let definesIcon = false
+    postcss.parse(css).walkDecls((declaration) => {
+      if (normalizeDeclarationProperty(declaration.prop) === '--icon') definesIcon = true
+    })
+    return definesIcon
+  } catch {
+    return true
+  }
+}
+
+function embeddedCssResourceCandidates(css, svgContext = false) {
+  return [
+    ...extractCssResourceCandidates(css, {
+      resourceProperties: svgContext ? svgCssResourceProperties : cssResourceProperties,
+    }),
+    ...(cssDefinesVitePressIcon(css) ? [null] : []),
+  ]
+}
+
 function resourceCandidatesWithin(roots) {
   const images = imageCandidatesWithin(roots)
   const attributes = browserResourceAttributesWithin(roots)
+  const svgElements = elementsWithin(
+    roots,
+    (node) => node.namespaceURI === svgNamespace,
+    hiddenResourceHtmlElements,
+  )
+  const presentationAttributes = svgElements.flatMap((node) => (node.attrs ?? [])
+    .filter((candidate) => svgPresentationResourceAttributes.has(candidate.name))
+    .flatMap((candidate) => extractCssValueResources(candidate.value, true)))
+  const activeSvgResources = svgElements.flatMap((node) => (
+    disallowedSvgResourceElements.has(node.tagName.toLowerCase())
+    || (node.attrs ?? []).some((candidate) => candidate.name.toLowerCase() === 'xml:base')
+      ? [null]
+      : []
+  ))
   const inlineStyles = elementsWithin(
     roots,
     (node) => attribute(node, 'style') !== undefined,
     hiddenResourceHtmlElements,
-  ).flatMap((node) => extractCssResourceCandidates(
-    `publication-resource{${attribute(node, 'style')}}`,
-  ))
+  ).flatMap((node) => {
+    const css = `publication-resource{${attribute(node, 'style')}}`
+    return embeddedCssResourceCandidates(css, node.namespaceURI === svgNamespace)
+  })
   const styleBlocks = elementsWithin(
     roots,
     (node) => node.tagName === 'style',
     hiddenResourceHtmlElements,
-  ).flatMap((node) => extractCssResourceCandidates(visibleText(
+  ).flatMap((node) => embeddedCssResourceCandidates(visibleText(
     node,
     new Set(),
     hiddenResourceHtmlElements,
-  )))
-  return { images, resources: [...images, ...attributes, ...inlineStyles, ...styleBlocks] }
+  ), node.namespaceURI === svgNamespace))
+  return {
+    images,
+    resources: [
+      ...images,
+      ...attributes,
+      ...presentationAttributes,
+      ...activeSvgResources,
+      ...inlineStyles,
+      ...styleBlocks,
+    ],
+  }
 }
 
 function listFiles(root) {
@@ -680,6 +1030,11 @@ export function extractCourseHtmlContract(html) {
 
 export function extractProjectHtmlContract(html) {
   const document = parse(html, { scriptingEnabled: false })
+  const documentElements = elementsWithin(
+    document.childNodes,
+    () => true,
+    hiddenResourceHtmlElements,
+  )
   const vpDocs = elementsWithin(document.childNodes, (node) => hasClass(node, 'vp-doc'))
   const headings = elementsWithin(vpDocs, (node) => node.tagName === 'h2')
     .map((node) => visibleText(node, new Set(['header-anchor'])).replace(/\s+/gu, ' ').trim())
@@ -687,14 +1042,50 @@ export function extractProjectHtmlContract(html) {
   const metaSections = elementsWithin(vpDocs, (node) => hasClass(node, 'project-meta'))
   const licenseSections = elementsWithin(metaSections, (node) => node.tagName === 'details')
   const resources = resourceCandidatesWithin(vpDocs)
-  const classTokens = new Set(elementsWithin(vpDocs, () => true, hiddenResourceHtmlElements)
+  const documentDefinesVitePressIcon = documentElements.some((node) => {
+    const style = attribute(node, 'style')
+    if (style !== undefined
+      && cssDefinesVitePressIcon(`publication-resource{${style}}`)) return true
+    return node.tagName === 'style' && cssDefinesVitePressIcon(visibleText(
+      node,
+      new Set(),
+      hiddenResourceHtmlElements,
+    ))
+  })
+  const classTokens = new Set(documentElements
     .flatMap((node) => (attribute(node, 'class') ?? '').split(/\s+/u).filter(Boolean)))
+  const attributeValues = new Map()
+  for (const node of documentElements) {
+    for (const { name, value } of node.attrs ?? []) {
+      const values = attributeValues.get(name) ?? new Set()
+      values.add(value)
+      attributeValues.set(name, values)
+    }
+  }
+  const selectorElements = documentElements.map((node) => {
+    const elementAttributeValues = new Map()
+    for (const { name, value } of node.attrs ?? []) {
+      const values = elementAttributeValues.get(name) ?? new Set()
+      values.add(value)
+      elementAttributeValues.set(name, values)
+    }
+    return {
+      namespaceURI: node.namespaceURI,
+      tagName: node.tagName,
+      attributeValues: elementAttributeValues,
+    }
+  })
   return {
     text: normalizedVisibleText(vpDocs),
     headings,
     images: resources.images,
-    resources: resources.resources,
+    resources: [
+      ...resources.resources,
+      ...(documentDefinesVitePressIcon ? [null] : []),
+    ],
     classTokens,
+    attributeValues,
+    selectorElements,
     hrefs: elementsWithin(vpDocs, (node) =>
       node.tagName === 'a' && !hasClass(node, 'header-anchor'))
       .map((node) => attribute(node, 'href') ?? null),
