@@ -26,6 +26,7 @@ const htmlNamespace = 'http://www.w3.org/1999/xhtml'
 const svgNamespace = 'http://www.w3.org/2000/svg'
 const xlinkNamespace = 'http://www.w3.org/1999/xlink'
 const xmlNamespace = 'http://www.w3.org/XML/1998/namespace'
+const xmlnsNamespace = 'http://www.w3.org/2000/xmlns/'
 const fetchingLinkRels = new Set([
   'icon', 'manifest', 'mask-icon', 'modulepreload', 'prefetch', 'preload', 'stylesheet',
 ])
@@ -330,6 +331,27 @@ function navigationHref(node) {
   return hrefs.find((candidate) => !candidate.namespace && !candidate.prefix)?.value
     ?? hrefs.find((candidate) => candidate.namespace === xlinkNamespace)?.value
     ?? null
+}
+
+function attributeHasExpandedName(node, candidate, namespace, localName) {
+  if (candidate.namespace) {
+    return candidate.namespace === namespace && candidate.name === localName
+  }
+  const separator = candidate.name.indexOf(':')
+  const prefix = candidate.prefix ?? (separator < 0 ? '' : candidate.name.slice(0, separator))
+  const local = candidate.prefix || separator < 0
+    ? candidate.name
+    : candidate.name.slice(separator + 1)
+  if (local !== localName || prefix === '') return false
+  if (prefix === 'xml') return namespace === xmlNamespace
+
+  for (let ancestor = node; ancestor; ancestor = ancestor.parentNode) {
+    const declaration = (ancestor.attrs ?? []).find((attributeNode) =>
+      (attributeNode.namespace === xmlnsNamespace && attributeNode.name === prefix)
+      || attributeNode.name === `xmlns:${prefix}`)
+    if (declaration) return declaration.value === namespace
+  }
+  return false
 }
 
 function normalizeRenderedMarkdownHref(href) {
@@ -1874,11 +1896,24 @@ export function extractCourseHtmlContract(html) {
     negativeDocument.childNodes,
     () => true,
   )
-  const hasDocumentBase = elementsWithin(
+  const fullDocumentElements = elementsWithin(
     negativeDocument.childNodes,
-    (node) => node.namespaceURI === htmlNamespace && node.tagName === 'base',
+    () => true,
     new Set(),
-  ).length > 0
+  )
+  const hasForbiddenActiveElement = fullDocumentElements.some((node) => {
+    if (node.namespaceURI !== htmlNamespace) return false
+    if (['base', 'embed', 'iframe', 'object'].includes(node.tagName)) return true
+    return node.tagName === 'meta'
+      && (attribute(node, 'http-equiv') ?? '').trim().toLowerCase() === 'refresh'
+  })
+  const hasInlineEventHandler = fullDocumentElements.some((node) =>
+    (node.namespaceURI === htmlNamespace || node.namespaceURI === svgNamespace)
+    && (node.attrs ?? []).some((candidate) => candidate.name.toLowerCase().startsWith('on')))
+  const hasSvgXmlBase = fullDocumentElements.some((node) =>
+    node.namespaceURI === svgNamespace
+    && (node.attrs ?? []).some((candidate) =>
+      attributeHasExpandedName(node, candidate, xmlNamespace, 'base')))
   const navigationHrefs = documentElements.flatMap((node) => {
     if (node.tagName === 'a' || node.tagName === 'area') return [navigationHref(node)]
     if (node.tagName === 'form') return [attribute(node, 'action') ?? null]
@@ -1901,7 +1936,9 @@ export function extractCourseHtmlContract(html) {
   return {
     hrefs: coursePositiveElementsWithin(courseMaps, (node) => node.tagName === 'a')
       .map((node) => attribute(node, 'href') ?? null),
-    hasDocumentBase,
+    hasForbiddenActiveElement,
+    hasInlineEventHandler,
+    hasSvgXmlBase,
     navigationHrefs,
     interactionText,
     courseText: courseMaps.map(coursePositiveText).join(' '),

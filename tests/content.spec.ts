@@ -1555,6 +1555,70 @@ describe('project publication boundary', () => {
       .toContain('课程页包含未发布入口或写操作：/capstone/')
   })
 
+  it('rejects active full-document navigation surfaces without parsing script text', () => {
+    for (const markup of [
+      '<meta http-equiv="  ReFrEsH\t" content="0; url=/safe">',
+      '<iframe src="/safe"></iframe>',
+      '<object data="/safe"></object>',
+      '<embed src="/safe">',
+      '<button onClick="location.href=\'/safe\'">Open</button>',
+      '<svg><g ONLOAD="location.href=\'/safe\'"></g></svg>',
+      '<code><a onclick="location.href=\'/safe\'">example</a></code>',
+    ]) {
+      expect(validateCourseDist(fixtureCourseHtml(markup)), markup)
+        .toContain('课程页包含未发布入口或写操作：不安全导航')
+    }
+
+    expect(validateCourseDist(fixtureCourseHtml(`
+<script>const onclick = "location.href='/agent-engineering-for-beginners/labs/'"</script>
+<div data-onclick="documentation example"></div>
+`))).toEqual([])
+  })
+
+  it('rejects XML base attributes on any inline SVG ancestor', () => {
+    for (const svg of [
+      '<svg xml:base="/agent-engineering-for-beginners/labs/"><a href="run">Labs</a></svg>',
+      '<svg><g xml:base="/agent-engineering-for-beginners/capstone/"><a xlink:href="run">Capstone</a></g></svg>',
+      '<svg><defs xml:base="https://docs.example/"></defs></svg>',
+    ]) {
+      expect(validateCourseDist(fixtureCourseHtml(svg)), svg)
+        .toContain('课程页包含未发布入口或写操作：不安全导航')
+    }
+
+    expect(validateCourseDist(fixtureCourseHtml(`
+<svg base="https://docs.example/"><text>namespace control</text></svg>
+`))).toEqual([])
+  })
+
+  it('classifies internal navigation by canonical host and default port', () => {
+    const internal = fixtureCourseHtml(`
+<a href="http://mengen-ink.github.io/agent-engineering-for-beginners/labs/http">HTTP labs</a>
+<form action="http://MENGEN-INK.GITHUB.IO:80/agent-engineering-for-beginners/projects/unapproved"></form>
+<a href="//mengen-ink.github.io/agent-engineering-for-beginners/capstone/run">Protocol-relative capstone</a>
+<a href="https://mengen-ink.github.io.:443/agent-engineering-for-beginners/labs/dns">Canonical host labs</a>
+`)
+    expect(validateCourseDist(internal))
+      .toContain('课程页包含未发布入口或写操作：/labs/')
+    expect(validateCourseDist(internal))
+      .toContain('课程页包含未发布入口或写操作：/projects/')
+    expect(validateCourseDist(internal))
+      .toContain('课程页包含未发布入口或写操作：/capstone/')
+
+    expect(validateCourseDist(fixtureCourseHtml(`
+<a href="http://mengen-ink.github.io/agent-engineering-for-beginners/projects/aider">Approved HTTP project</a>
+<a href="https://docs.example/labs/guide">Different host</a>
+<a href="https://mengen-ink.github.io:444/agent-engineering-for-beginners/labs/guide">Nondefault port</a>
+`))).toEqual([])
+
+    for (const href of [
+      'https://user@mengen-ink.github.io/agent-engineering-for-beginners/projects/aider',
+      'https://mengen-ink.github.io@docs.example/agent-engineering-for-beginners/labs/guide',
+    ]) {
+      expect(validateCourseDist(fixtureCourseHtml(`<a href="${href}">Unsafe</a>`)), href)
+        .toContain('课程页包含未发布入口或写操作：不安全导航')
+    }
+  })
+
   it('ignores inert forbidden bait while accepting an otherwise legal full course page', () => {
     const bait = '<a href="/agent-engineering-for-beginners/labs/bait">标记已读</a>'
     const html = fixtureCourseHtml(`

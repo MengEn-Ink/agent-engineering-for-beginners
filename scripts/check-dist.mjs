@@ -55,6 +55,7 @@ const publishedCourseRoutes = [
 const forbiddenCourseMarkers = ['/labs/', '/capstone/', '标记已读', '加入书签']
 const siteBase = '/agent-engineering-for-beginners'
 const siteOrigin = 'https://mengen-ink.github.io'
+const siteHostname = new URL(siteOrigin).hostname
 const projectCatalog = loadProjectCatalog(new URL('../sources/project-index.yml', import.meta.url))
 const lockedVitePressVersion = readLockedVitePressVersion(
   readFileSync(new URL('../pnpm-lock.yaml', import.meta.url), 'utf8'),
@@ -112,7 +113,11 @@ export function validateCourseDist(html) {
   const forbiddenRoutes = new Set()
   const documentUrl = `${siteOrigin}${siteBase}/course/`
   const navigationBase = new URL(documentUrl)
-  if (contract.hasDocumentBase) {
+  if (
+    contract.hasForbiddenActiveElement
+    || contract.hasInlineEventHandler
+    || contract.hasSvgXmlBase
+  ) {
     forbiddenRoutes.add('unsafe-navigation')
   }
   const normalizedHrefs = contract.hrefs.map((href) => normalizeCleanCourseHref(href, siteBase))
@@ -142,7 +147,12 @@ export function validateCourseDist(html) {
         forbiddenRoutes.add('unsafe-navigation')
         continue
       }
-      if (url.origin !== siteOrigin) continue
+      if (url.username !== '' || url.password !== '') {
+        forbiddenRoutes.add('unsafe-navigation')
+        continue
+      }
+      const canonicalHostname = url.hostname.toLowerCase().replace(/\.$/u, '')
+      if (canonicalHostname !== siteHostname || url.port !== '') continue
       const pathname = url.pathname
       if (href.includes('\\')) {
         forbiddenRoutes.add('unsafe-navigation')
