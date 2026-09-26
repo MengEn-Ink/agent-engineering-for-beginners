@@ -29,22 +29,44 @@ function isValidDate(value) {
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value
 }
 
-function projectAssetFiles(root, projectRoot) {
-  if (!existsSync(root)) return { files: [], errors: [] }
+function isPathInside(root, path) {
+  const childPath = relative(root, path)
+  return childPath !== '..' && !childPath.startsWith(`..${sep}`) && !isAbsolute(childPath)
+}
+
+function projectAssetFiles(projectRoot) {
   const files = []
   const errors = []
-  const displayPath = (path) => relative(projectRoot, path).split(sep).join('/')
-  const rootStat = lstatSync(root)
-  if (rootStat.isSymbolicLink()) {
-    return {
-      files,
-      errors: [`Project asset path must not be a symbolic link: ${displayPath(root)}`],
+  const resolvedProjectRoot = resolve(projectRoot)
+  const realProjectRoot = realpathSync(resolvedProjectRoot)
+  const root = resolve(realProjectRoot, assetRoot)
+  const displayPath = (path) => relative(realProjectRoot, path).split(sep).join('/')
+  let current = realProjectRoot
+
+  for (const segment of assetRoot.split('/')) {
+    current = join(current, segment)
+    let stat
+    try {
+      stat = lstatSync(current)
+    } catch (error) {
+      if (error?.code === 'ENOENT') return { files, errors }
+      return { files, errors: [`Project asset path cannot be inspected: ${displayPath(current)}`] }
+    }
+    if (stat.isSymbolicLink()) {
+      return {
+        files,
+        errors: [`Project asset path must not be a symbolic link: ${displayPath(current)}`],
+      }
+    }
+    if (!stat.isDirectory()) {
+      return { files, errors: [`Project asset root must be a directory: ${displayPath(current)}`] }
     }
   }
-  if (!rootStat.isDirectory()) {
-    return { files, errors: [`Project asset root must be a directory: ${displayPath(root)}`] }
-  }
+
   const realRoot = realpathSync(root)
+  if (!isPathInside(realProjectRoot, realRoot)) {
+    return { files, errors: [`Project asset root resolves outside project root: ${displayPath(root)}`] }
+  }
 
   function visit(directory) {
     for (const entry of readdirSync(directory).sort()) {
@@ -56,14 +78,12 @@ function projectAssetFiles(root, projectRoot) {
         continue
       }
       const realPath = realpathSync(path)
-      const relativeRealPath = relative(realRoot, realPath)
-      if (relativeRealPath === '..' || relativeRealPath.startsWith(`..${sep}`)
-        || isAbsolute(relativeRealPath)) {
+      if (!isPathInside(realProjectRoot, realPath) || !isPathInside(realRoot, realPath)) {
         errors.push(`Project asset path resolves outside ${assetRoot}: ${localPath}`)
         continue
       }
       if (stat.isDirectory()) visit(path)
-      else files.push(path)
+      else files.push(localPath)
     }
   }
 
@@ -81,8 +101,23 @@ function pathScopeSpecificity(pattern) {
   return pattern === '**' ? 0 : pattern.replace('/**', '').length
 }
 
+function isWellFormedString(value) {
+  if (typeof value !== 'string') return false
+  for (let index = 0; index < value.length; index += 1) {
+    const codeUnit = value.charCodeAt(index)
+    if (codeUnit >= 0xD800 && codeUnit <= 0xDBFF) {
+      const next = value.charCodeAt(index + 1)
+      if (next < 0xDC00 || next > 0xDFFF) return false
+      index += 1
+    } else if (codeUnit >= 0xDC00 && codeUnit <= 0xDFFF) {
+      return false
+    }
+  }
+  return true
+}
+
 function isCanonicalRepoPath(path) {
-  if (typeof path !== 'string' || path === '' || path.includes('\0') || path.includes('\\')) return false
+  if (!isWellFormedString(path) || path === '' || path.includes('\0') || path.includes('\\')) return false
   if (path.startsWith('/') || /^[a-z]:/iu.test(path) || path.endsWith('/')) return false
   if (/%(?:00|25|2f|5c)/iu.test(path)) return false
   if (path.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')) return false
@@ -90,7 +125,11 @@ function isCanonicalRepoPath(path) {
 }
 
 function encodeRepoPath(path) {
-  return path.split('/').map((segment) => encodeURIComponent(segment)).join('/')
+  try {
+    return path.split('/').map((segment) => encodeURIComponent(segment)).join('/')
+  } catch {
+    return null
+  }
 }
 
 export function validateProvenanceFile(
@@ -120,9 +159,9 @@ export function validateProvenanceFile(
     }
   }
 
-  const assetTree = projectAssetFiles(resolve(root, assetRoot), resolve(root))
+  const assetTree = projectAssetFiles(root)
   errors.push(...assetTree.errors)
-  const actual = assetTree.files.map((file) => relative(root, file).split(sep).join('/'))
+  const actual = assetTree.files
   const counts = new Map()
   const subjects = Array.isArray(projectCatalog?.subjects) ? projectCatalog.subjects : []
   const pages = Array.isArray(projectCatalog?.pages) ? projectCatalog.pages : []
@@ -208,8 +247,11 @@ export function validateProvenanceFile(
     if (!sourceRefIsValid) {
       errors.push(`Third-party asset must use a 40-character source_ref: ${asset.local_file}`)
     }
-    const sourcePathIsCanonical = isCanonicalRepoPath(asset.source_path)
-    if (typeof asset.source_path === 'string' && asset.source_path.trim() !== '' && !sourcePathIsCanonical) {
+    const sourcePathIsWellFormed = isWellFormedString(asset.source_path)
+    const sourcePathIsCanonical = sourcePathIsWellFormed && isCanonicalRepoPath(asset.source_path)
+    if (typeof asset.source_path === 'string' && asset.source_path.trim() !== '' && !sourcePathIsWellFormed) {
+      errors.push(`Third-party asset source_path cannot be safely URL-encoded: ${asset.local_file}`)
+    } else if (typeof asset.source_path === 'string' && asset.source_path.trim() !== '' && !sourcePathIsCanonical) {
       errors.push(`Third-party asset has invalid source_path: ${asset.local_file}`)
     }
     let sourceUrl = null
@@ -236,8 +278,12 @@ export function validateProvenanceFile(
     if (subject && subject.pinned_commit !== asset.source_ref) {
       errors.push(`Third-party asset source_ref does not match subject pin: ${asset.local_file}`)
     }
-    const expectedPath = sourceIdentityIsValid
-      ? `/${asset.source_repo}/blob/${asset.source_ref}/${encodeRepoPath(asset.source_path)}`
+    const encodedSourcePath = sourceIdentityIsValid ? encodeRepoPath(asset.source_path) : null
+    if (sourceIdentityIsValid && encodedSourcePath === null) {
+      errors.push(`Third-party asset source_path cannot be safely URL-encoded: ${asset.local_file}`)
+    }
+    const expectedPath = sourceIdentityIsValid && encodedSourcePath !== null
+      ? `/${asset.source_repo}/blob/${asset.source_ref}/${encodedSourcePath}`
       : null
     const expectedUrl = expectedPath ? `https://github.com${expectedPath}` : null
     if (sourceIdentityIsValid

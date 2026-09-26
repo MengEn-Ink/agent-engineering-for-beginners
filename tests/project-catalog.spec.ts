@@ -326,6 +326,24 @@ describe('project asset provenance', () => {
     }
   })
 
+  it('rejects a symbolic-link ancestor before entering the project asset tree', () => {
+    const root = mkdtempSync(join(tmpdir(), 'project-assets-ancestor-'))
+    const outside = mkdtempSync(join(tmpdir(), 'project-assets-outside-'))
+    try {
+      mkdirSync(join(root, 'docs'), { recursive: true })
+      mkdirSync(join(root, 'assets'), { recursive: true })
+      mkdirSync(join(outside, 'project-assets'), { recursive: true })
+      writeFileSync(join(root, 'assets/provenance.yml'), 'schema_version: 1\nassets: []\n')
+      symlinkSync(outside, join(root, 'docs/public'))
+
+      expect(validateProvenanceFile(join(root, 'assets/provenance.yml'), root, provenanceCatalog))
+        .toContain('Project asset path must not be a symbolic link: docs/public')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+      rmSync(outside, { recursive: true, force: true })
+    }
+  })
+
   it('rejects forged host, repository, ref, source path, and license claims', () => {
     const root = mkdtempSync(join(tmpdir(), 'project-assets-'))
     try {
@@ -592,6 +610,44 @@ assets:
       expect(() => validateBook(process.cwd(), { provenancePath })).not.toThrow()
       expect(validateBook(process.cwd(), { provenancePath }))
         .toContain('Third-party asset docs/public/project-assets/copied.svg requires source_path')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('reports unsafe Unicode source paths without throwing from URL encoding', () => {
+    const root = mkdtempSync(join(tmpdir(), 'project-assets-'))
+    const provenancePath = join(root, 'assets/provenance.yml')
+    try {
+      for (const surrogate of ['D800', 'DC00']) {
+        writeProvenanceFixture(root, `
+schema_version: 1
+assets:
+  - local_file: docs/public/project-assets/copied.svg
+    origin: third-party
+    subject_id: aider
+    source_url: https://github.com/Aider-AI/aider/blob/${sha}/invalid.svg
+    source_repo: Aider-AI/aider
+    source_ref: ${sha}
+    source_path: "\\u${surrogate}"
+    license: Apache-2.0
+    license_basis: path
+    manual_license_review: false
+    manual_reviewed_by: null
+    manual_review_note: null
+    copyright_holder: Aider contributors
+    modified: false
+    used_by: [project-aider]
+    alt: Architecture diagram
+    verified_at: '2026-09-26'
+`)
+        expect(() => validateProvenanceFile(provenancePath, root, provenanceCatalog)).not.toThrow()
+        expect(validateProvenanceFile(provenancePath, root, provenanceCatalog))
+          .toContain('Third-party asset source_path cannot be safely URL-encoded: docs/public/project-assets/copied.svg')
+      }
+      expect(() => validateBook(process.cwd(), { provenancePath })).not.toThrow()
+      expect(validateBook(process.cwd(), { provenancePath }))
+        .toContain('Third-party asset source_path cannot be safely URL-encoded: docs/public/project-assets/copied.svg')
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
