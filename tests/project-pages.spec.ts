@@ -517,6 +517,13 @@ describe('project presentation primitives', () => {
     )
   })
 
+  it('wraps full fixed license URLs in the print fallback', () => {
+    const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
+    expect(style).toMatch(
+      /\.project-license-print\s*\{[^}]*overflow-wrap:\s*anywhere/su,
+    )
+  })
+
   it('enforces the scoped Vue and TypeScript check during production builds', () => {
     const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
     const tsconfig = JSON.parse(readFileSync('tsconfig.projects.json', 'utf8'))

@@ -2184,6 +2184,7 @@ summary {
 
 .project-license-print {
   display: none;
+  overflow-wrap: anywhere;
 }
 
 .project-meta summary {
