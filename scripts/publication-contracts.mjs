@@ -2,6 +2,8 @@ import { existsSync, lstatSync, readdirSync, statSync } from 'node:fs'
 import { join, posix, relative } from 'node:path'
 import parseSrcset from 'parse-srcset'
 import { parse, parseFragment } from 'parse5'
+import postcss from 'postcss'
+import valueParser from 'postcss-value-parser'
 
 const hiddenHtmlElements = new Set(['script', 'style', 'template', 'noscript'])
 const hiddenMarkdownHtmlElements = new Set([
@@ -11,8 +13,8 @@ const hiddenMarkdownHtmlElements = new Set([
   'svg',
   'publication-hidden',
 ])
-const hiddenImageHtmlElements = new Set(['script', 'style', 'template'])
-const hiddenMarkdownImageHtmlElements = new Set([...hiddenImageHtmlElements, 'code', 'pre'])
+const hiddenResourceHtmlElements = new Set(['script', 'template', 'code', 'pre'])
+const hiddenImageHtmlElements = new Set([...hiddenResourceHtmlElements, 'style'])
 const localImageBase = new URL('https://local.invalid/')
 
 function attribute(node, name) {
@@ -91,6 +93,84 @@ function imageCandidatesWithin(roots, hiddenElements = hiddenImageHtmlElements) 
       ...parseSrcsetCandidates(attribute(node, 'srcset') ?? ''),
     ]
   })
+}
+
+function cssFunctionValue(node) {
+  const significant = (node.nodes ?? []).filter((child) =>
+    child.type !== 'space' && child.type !== 'comment')
+  if (significant.length === 1 && ['string', 'word'].includes(significant[0].type)) {
+    return significant[0].value
+  }
+  return valueParser.stringify(node.nodes ?? []).trim()
+}
+
+function extractCssValueResources(value) {
+  const resources = []
+  valueParser(value).walk((node) => {
+    if (node.type === 'function' && node.value.toLowerCase() === 'url') {
+      resources.push(cssFunctionValue(node))
+      return false
+    }
+    return undefined
+  })
+  return resources
+}
+
+export function extractCssResourceCandidates(css) {
+  try {
+    const root = postcss.parse(css)
+    const resources = []
+    root.walkDecls((declaration) => {
+      resources.push(...extractCssValueResources(declaration.value))
+    })
+    root.walkAtRules(/^import$/iu, (atRule) => {
+      const parsed = valueParser(atRule.params)
+      const urls = []
+      parsed.walk((node) => {
+        if (node.type === 'function' && node.value.toLowerCase() === 'url') {
+          urls.push(cssFunctionValue(node))
+          return false
+        }
+        return undefined
+      })
+      if (urls.length > 0) {
+        resources.push(...urls)
+        return
+      }
+      const target = parsed.nodes.find((node) =>
+        node.type !== 'space' && node.type !== 'comment' && node.type !== 'div')
+      resources.push(target && ['string', 'word'].includes(target.type) ? target.value : null)
+    })
+    return resources
+  } catch {
+    return [null]
+  }
+}
+
+function resourceCandidatesWithin(roots) {
+  const images = imageCandidatesWithin(roots)
+  const svgUses = elementsWithin(
+    roots,
+    (node) => node.tagName === 'use',
+    hiddenResourceHtmlElements,
+  ).flatMap((node) => (node.attrs ?? [])
+    .filter((candidate) => candidate.name === 'href')
+    .map((candidate) => candidate.value))
+  const inlineStyles = elementsWithin(
+    roots,
+    (node) => attribute(node, 'style') !== undefined,
+    hiddenResourceHtmlElements,
+  ).flatMap((node) => extractCssValueResources(attribute(node, 'style')))
+  const styleBlocks = elementsWithin(
+    roots,
+    (node) => node.tagName === 'style',
+    hiddenResourceHtmlElements,
+  ).flatMap((node) => extractCssResourceCandidates(visibleText(
+    node,
+    new Set(),
+    hiddenResourceHtmlElements,
+  )))
+  return { images, resources: [...images, ...svgUses, ...inlineStyles, ...styleBlocks] }
 }
 
 function listFiles(root) {
@@ -204,10 +284,12 @@ export function extractProjectHtmlContract(html) {
   const sourceSections = elementsWithin(vpDocs, (node) => hasClass(node, 'project-source-links'))
   const metaSections = elementsWithin(vpDocs, (node) => hasClass(node, 'project-meta'))
   const licenseSections = elementsWithin(metaSections, (node) => node.tagName === 'details')
+  const resources = resourceCandidatesWithin(vpDocs)
   return {
     text: normalizedVisibleText(vpDocs),
     headings,
-    images: imageCandidatesWithin(vpDocs),
+    images: resources.images,
+    resources: resources.resources,
     hrefs: elementsWithin(vpDocs, (node) =>
       node.tagName === 'a' && !hasClass(node, 'header-anchor'))
       .map((node) => attribute(node, 'href') ?? null),
@@ -228,6 +310,7 @@ export function extractProjectMarkdownContract(text, renderer) {
   )
   const root = parseFragment(renderer.render(contentSource), { scriptingEnabled: false })
   const imageRoot = parseFragment(renderer.render(source), { scriptingEnabled: false })
+  const resources = resourceCandidatesWithin(imageRoot.childNodes)
   const headings = elementsWithin(
     root.childNodes,
     (node) => node.tagName === 'h2',
@@ -241,7 +324,8 @@ export function extractProjectMarkdownContract(text, renderer) {
   return {
     headings,
     links,
-    images: imageCandidatesWithin(imageRoot.childNodes, hiddenMarkdownImageHtmlElements),
+    images: resources.images,
+    resources: resources.resources,
     text: normalizedVisibleText(root.childNodes, hiddenMarkdownHtmlElements),
   }
 }

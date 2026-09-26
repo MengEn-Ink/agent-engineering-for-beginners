@@ -110,17 +110,21 @@ describe('project routes and catalog overview', () => {
 [fake](/chapters/01-ai-native#iq-01-a)
 npm install fake-package
 FAKE_API_KEY=secret
+<svg><use href="https://example.com/fenced-use.svg#icon"></use></svg>
+<div style="background:url(https://example.com/fenced-style.png)"></div>
 \`\`\`
 
 \`npm install inline-code\`
 <code><a href="/chapters/01-ai-native#iq-01-a">code link</a><img src="https://example.com/code.png">INLINE_API_KEY=secret</code>
 <code><code>nested</code><img src="https://example.com/nested-code.png">NESTED_API_KEY=secret</code>
+\`<div style="background:url(https://example.com/inline-code.png)"></div>\`
 
 <template>
 
 ## Template heading
 
 <a href="/chapters/02-workflow-agent#iq-02-a">template link</a>
+<div style="background:url(https://example.com/template.png)"></div>
 
 </template>
 
@@ -129,6 +133,7 @@ FAKE_API_KEY=secret
 ## Pre heading
 
 <a href="/chapters/03-react#iq-03-a">pre link</a>
+<style>.pre{background:url(https://example.com/pre.png)}</style>
 
 </pre>
 
@@ -137,6 +142,7 @@ FAKE_API_KEY=secret
 ## Code block heading
 
 <a href="/chapters/03-react#iq-03-b">code block link</a>
+<svg><use href="https://example.com/code-use.svg#icon"></use></svg>
 
 </code>
 
@@ -161,6 +167,7 @@ FAKE_API_KEY=secret
 ## Script heading
 
 <a href="/chapters/06-loop-graph#iq-06-a">script link</a>
+<div style="background:url(https://example.com/script.png)"></div>
 
 </script>
 
@@ -169,6 +176,7 @@ FAKE_API_KEY=secret
 ## Style heading
 
 <a href="/chapters/07-multi-agent#iq-07-a">style link</a>
+@import "https://example.com/nested-style.css";
 
 </style>
 
@@ -177,12 +185,15 @@ FAKE_API_KEY=secret
 ![remote](https://example.com/comment.png)
 <a href="/chapters/01-ai-native#iq-01-a">comment link</a>
 <picture><source srcset="https://example.com/comment-source.png"><img src="//example.com/comment-image.png"></picture>
+<svg><use href="https://example.com/comment-use.svg#icon"></use></svg>
+<div style="background:url(https://example.com/comment-style.png)"></div>
 -->
 `, markdown)
 
     expect(parsed.headings).toEqual(['Real heading'])
     expect(parsed.images).toEqual([])
     expect(parsed.links).toEqual([])
+    expect(parsed).toMatchObject({ resources: [] })
     expect(parsed.text).not.toMatch(/npm install|API_KEY/u)
   })
 
@@ -282,6 +293,52 @@ pip&nbsp;install package
     ]) {
       expect(isRemoteImageCandidate(candidate), candidate).toBe(false)
     }
+  })
+
+  it('collects real SVG and CSS resources without classifying ordinary anchors as resources', () => {
+    const backslashUrl = String.raw`https:\\evil.example\asset.svg`
+    const controlUrl = 'h\tt\ntps://evil.example/control.css'
+    const parsed = extractProjectMarkdownContract(`
+[ordinary external documentation](https://docs.example.com/guide)
+<svg><use href="https://evil.example/icons.svg#one"></use></svg>
+<svg><use xlink:href="//evil.example/icons.svg#two"></use></svg>
+<svg><use href="${backslashUrl}"></use></svg>
+<div style="background:url(${controlUrl});mask:url(/local-mask.svg)"></div>
+<style>
+@import "https://evil.example/theme.css";
+@import url(https://evil.example/theme-url.css);
+.remote { background: url(//evil.example/block.png) }
+.local { background: url(data:image/png;base64,AAAA); mask: url(blob:https://example.com/id) }
+</style>
+<noscript><div style="background:url(https://evil.example/nojs.png)"></div></noscript>
+`, markdown)
+
+    expect(parsed.links).toContain('https://docs.example.com/guide')
+    expect(parsed).toHaveProperty('resources')
+    expect(parsed.resources).not.toContain('https://docs.example.com/guide')
+    expect(parsed.resources).toEqual(expect.arrayContaining([
+      'https://evil.example/icons.svg#one',
+      '//evil.example/icons.svg#two',
+      backslashUrl,
+      controlUrl,
+      '/local-mask.svg',
+      'https://evil.example/theme.css',
+      'https://evil.example/theme-url.css',
+      '//evil.example/block.png',
+      'data:image/png;base64,AAAA',
+      'blob:https://example.com/id',
+      'https://evil.example/nojs.png',
+    ]))
+    expect(parsed.resources.filter(isRemoteImageCandidate)).toEqual(expect.arrayContaining([
+      'https://evil.example/icons.svg#one',
+      '//evil.example/icons.svg#two',
+      backslashUrl,
+      controlUrl,
+      'https://evil.example/theme.css',
+      'https://evil.example/theme-url.css',
+      '//evil.example/block.png',
+      'https://evil.example/nojs.png',
+    ]))
   })
 
   it('keeps project pages free of remote images for project asset provenance', () => {

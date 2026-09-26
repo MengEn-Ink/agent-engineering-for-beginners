@@ -1384,7 +1384,7 @@ describe('project publication boundary', () => {
     }
   })
 
-  it('ignores project contract bait in comments, scripts, styles, and templates', () => {
+  it('ignores project contract bait in comments, scripts, templates, and CSS comments', () => {
     const dist = createCompleteDistFixture()
     try {
       const file = join(dist, 'projects/aider.html')
@@ -1395,7 +1395,7 @@ describe('project publication boundary', () => {
         original
           .replace(
             '<div class="vp-doc">',
-            `<div class="vp-doc"><!-- ${bait} --><script>${bait}</script><style>${bait}</style><template>${bait}</template>`,
+            `<div class="vp-doc"><!-- ${bait} --><script>${bait}</script><template>${bait}</template><style>/* background:url(https://example.com/comment.png) */</style>`,
           )
           .replace('</main>', `</main>${bait}`),
       )
@@ -1436,11 +1436,58 @@ describe('project publication boundary', () => {
     }
   })
 
+  it('applies the remote resource gate to the project overview', () => {
+    const dist = createCompleteDistFixture()
+    try {
+      const file = join(dist, 'projects/index.html')
+      writeFileSync(
+        file,
+        readFileSync(file, 'utf8').replace(
+          '<div class="vp-doc">',
+          '<div class="vp-doc"><img src="https://evil.example/overview.png">',
+        ),
+      )
+      expect(validateDist(dist))
+        .toContain('项目页包含外链图片：projects/index.html')
+    } finally {
+      rmSync(dist, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects remote SVG and CSS resources in real project content', () => {
+    const remoteMarkup = [
+      '<svg><use href="https://evil.example/icons.svg#one"></use></svg>',
+      '<svg><use xlink:href="//evil.example/icons.svg#two"></use></svg>',
+      String.raw`<svg><use href="https:\\evil.example\icons.svg#three"></use></svg>`,
+      '<div style="background-image:url(//evil.example/inline.png)"></div>',
+      '<div style="mask:url(h&#x09;t&#x0A;tps://evil.example/control.svg)"></div>',
+      '<style>.project-overview{background:url(https://evil.example/block.png)}</style>',
+      '<style>@import "//evil.example/import.css";</style>',
+      '<style>@import url(https://evil.example/import-url.css);</style>',
+      '<noscript><style>.fallback{background:url(https://evil.example/nojs.png)}</style></noscript>',
+    ]
+
+    for (const markup of remoteMarkup) {
+      const dist = createCompleteDistFixture()
+      try {
+        const file = join(dist, 'projects/aider.html')
+        writeFileSync(
+          file,
+          readFileSync(file, 'utf8').replace('<div class="vp-doc">', `<div class="vp-doc">${markup}`),
+        )
+        expect(validateDist(dist), markup)
+          .toContain('项目页包含外链资源：projects/aider.html')
+      } finally {
+        rmSync(dist, { recursive: true, force: true })
+      }
+    }
+  })
+
   it('allows explicit local, data, and blob image candidates in project HTML', () => {
     const dist = createCompleteDistFixture()
     try {
       const file = join(dist, 'projects/aider.html')
-      const localMarkup = '<picture><source src="relative.png" srcset="/local.png 1x, data:image/png;base64,AAAA 2x, blob:https://example.com/id 3x"><img src="/fallback.png"></picture>'
+      const localMarkup = '<picture><source src="relative.png" srcset="/local.png 1x, data:image/png;base64,AAAA 2x, blob:https://example.com/id 3x"><img src="/fallback.png"></picture><svg><use href="/icons.svg#local"></use></svg><div style="background:url(data:image/png;base64,AAAA);mask:url(blob:https://example.com/id)"></div><style>@import "/local.css";.local{background:url(./asset.png)}</style>'
       writeFileSync(
         file,
         readFileSync(file, 'utf8').replace(
@@ -1449,6 +1496,33 @@ describe('project publication boundary', () => {
         ),
       )
       expect(validateDist(dist)).toEqual([])
+    } finally {
+      rmSync(dist, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects remote resources in built CSS and allows local, data, and blob URLs', () => {
+    const dist = createCompleteDistFixture()
+    try {
+      const cssPath = join(dist, 'assets/project.css')
+      mkdirSync(dirname(cssPath), { recursive: true })
+      writeFileSync(
+        cssPath,
+        '@import "/local.css";.local{background:url(./asset.png);mask:url(data:image/svg+xml,AAAA);cursor:url(blob:https://example.com/id),auto}',
+      )
+      expect(validateDist(dist)).toEqual([])
+
+      for (const css of [
+        '.remote{background:url(https://evil.example/a.png)}',
+        '@import "//evil.example/theme.css";',
+        '@import url(https://evil.example/theme-url.css);',
+        String.raw`.remote{background:url(https:\\evil.example\a.png)}`,
+        '.remote{background:url(h\tt\ntps://evil.example/control.png)}',
+      ]) {
+        writeFileSync(cssPath, css)
+        expect(validateDist(dist), css)
+          .toContain('构建产物 CSS 包含外链资源：assets/project.css')
+      }
     } finally {
       rmSync(dist, { recursive: true, force: true })
     }

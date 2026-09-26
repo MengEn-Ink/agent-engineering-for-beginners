@@ -19,6 +19,7 @@
     "parse5": "8.0.1",
     "postcss": "8.5.28",
     "postcss-selector-parser": "7.1.6",
+    "postcss-value-parser": "4.2.0",
     "typescript": "^5.9.3",
     "vitepress": "^1.6.4",
     "vitest": "^3.2.4",

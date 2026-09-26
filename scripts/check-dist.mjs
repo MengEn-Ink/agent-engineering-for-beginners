@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url'
 import { loadProjectCatalog } from './project-catalog.mjs'
 import {
   extractCourseHtmlContract,
+  extractCssResourceCandidates,
   extractProjectHtmlContract,
   indexDistFiles,
   isRemoteImageCandidate,
@@ -232,6 +233,20 @@ export function validateDist(distPath) {
     if (!exactHrefs(contract.hrefs, expectedProjectDocumentHrefs(file))) {
       errors.push(`项目页链接不符合公开契约：${file}`)
     }
+    if (contract.images.some(isRemoteImageCandidate)) {
+      errors.push(`项目页包含外链图片：${file}`)
+    }
+    if (contract.resources.some(isRemoteImageCandidate)) {
+      errors.push(`项目页包含外链资源：${file}`)
+    }
+  }
+
+  for (const [file, path] of indexed.files) {
+    if (!file.toLowerCase().endsWith('.css')) continue
+    const resources = extractCssResourceCandidates(readFileSync(path, 'utf8'))
+    if (resources.some(isRemoteImageCandidate)) {
+      errors.push(`构建产物 CSS 包含外链资源：${file}`)
+    }
   }
 
   for (const file of dissectionProjectFiles) {
@@ -245,9 +260,6 @@ export function validateDist(distPath) {
     }
     if (!projectHrefs.some((href) => /\/blob\/[0-9a-f]{40}\//u.test(href))) {
       errors.push(`项目页缺少固定 commit 源码链接：${file}`)
-    }
-    if (contract.images.some(isRemoteImageCandidate)) {
-      errors.push(`项目页包含外链图片：${file}`)
     }
     const expected = expectedProjectHrefs(file)
     if (
