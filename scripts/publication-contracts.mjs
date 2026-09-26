@@ -3,6 +3,7 @@ import { join, posix, relative } from 'node:path'
 import parseSrcset from 'parse-srcset'
 import { parse, parseFragment, Tokenizer } from 'parse5'
 import postcss from 'postcss'
+import selectorParser from 'postcss-selector-parser'
 import valueParser from 'postcss-value-parser'
 
 const hiddenHtmlElements = new Set(['script', 'style', 'template', 'noscript'])
@@ -48,6 +49,13 @@ const svgResourceHrefElements = new Set([
 ])
 const cssImageContainerFunctions = new Set(['cross-fade', '-webkit-cross-fade', 'image'])
 const cssUnresolvedFunctions = new Set(['attr', 'env', 'var'])
+const cssResourceFunctions = new Set([
+  ...cssImageContainerFunctions,
+  ...cssUnresolvedFunctions,
+  'image-set',
+  '-webkit-image-set',
+  'url',
+])
 const cssResourceProperties = new Set([
   'background-image',
   'border-image-source',
@@ -192,12 +200,79 @@ function decodeCssEscapes(value) {
         return null
       }
       decoded += String.fromCodePoint(codePoint)
-      if (/\s/u.test(value[index + 1] ?? '')) index += 1
+      if (value[index + 1] === '\r' && value[index + 2] === '\n') index += 2
+      else if (/[ \t\n\f\r]/u.test(value[index + 1] ?? '')) index += 1
       continue
     }
     decoded += value[index]
   }
   return decoded
+}
+
+function consumeCssName(value, start = 0) {
+  let position = start
+  while (position < value.length) {
+    if (/[-_a-z0-9]/iu.test(value[position]) || value.codePointAt(position) >= 0x80) {
+      position += 1
+      continue
+    }
+    if (value[position] !== '\\') break
+    position += 1
+    if (position >= value.length || /[\r\n\f]/u.test(value[position])) return null
+    if (/[0-9a-f]/iu.test(value[position])) {
+      let digits = 0
+      while (digits < 6 && /[0-9a-f]/iu.test(value[position] ?? '')) {
+        position += 1
+        digits += 1
+      }
+      if (value[position] === '\r' && value[position + 1] === '\n') position += 2
+      else if (/[ \t\n\f\r]/u.test(value[position] ?? '')) position += 1
+    } else {
+      position += 1
+    }
+  }
+  return { raw: value.slice(start, position), end: position }
+}
+
+function normalizeCssFunctionIdentifiers(value) {
+  let normalized = ''
+  let position = 0
+  while (position < value.length) {
+    if (value[position] === '/' && value[position + 1] === '*') {
+      const end = value.indexOf('*/', position + 2)
+      if (end < 0) return null
+      normalized += value.slice(position, end + 2)
+      position = end + 2
+      continue
+    }
+    if (value[position] === '"' || value[position] === "'") {
+      const quote = value[position]
+      const start = position
+      position += 1
+      while (position < value.length && value[position] !== quote) {
+        if (value[position] === '\\') position += 1
+        position += 1
+      }
+      if (position >= value.length) return null
+      position += 1
+      normalized += value.slice(start, position)
+      continue
+    }
+    if (/[-_a-z\\]/iu.test(value[position]) || value.codePointAt(position) >= 0x80) {
+      const name = consumeCssName(value, position)
+      if (!name) return null
+      const decoded = decodeCssEscapes(name.raw)
+      if (value[name.end] === '(' && decoded === null) return null
+      normalized += value[name.end] === '(' && cssResourceFunctions.has(decoded?.toLowerCase())
+        ? decoded
+        : name.raw
+      position = name.end
+      continue
+    }
+    normalized += value[position]
+    position += 1
+  }
+  return normalized
 }
 
 function cssFunctionValue(node) {
@@ -238,21 +313,9 @@ function imageSetResources(node) {
 
 function extractCssNodes(nodes, resourceContext = false) {
   const resources = []
-  for (let index = 0; index < nodes.length; index += 1) {
-    let node = nodes[index]
-    let rawFunctionName = node.type === 'function' ? node.value : null
-    if (
-      node.type === 'word'
-      && node.value.includes('\\')
-      && nodes[index + 1]?.type === 'space'
-      && nodes[index + 2]?.type === 'function'
-    ) {
-      rawFunctionName = `${node.value}${nodes[index + 1].value}${nodes[index + 2].value}`
-      node = nodes[index + 2]
-      index += 2
-    }
+  for (const node of nodes) {
     if (node.type !== 'function') continue
-    const functionName = decodeCssEscapes(rawFunctionName)?.toLowerCase()
+    const functionName = decodeCssEscapes(node.value)?.toLowerCase()
     if (functionName === null) {
       resources.push(null)
     } else if (functionName === 'url') {
@@ -273,43 +336,51 @@ function extractCssNodes(nodes, resourceContext = false) {
 
 function extractCssValueResources(value, resourceContext = false) {
   try {
-    return extractCssNodes(valueParser(value).nodes, resourceContext)
+    const normalized = normalizeCssFunctionIdentifiers(value)
+    return normalized === null
+      ? [null]
+      : extractCssNodes(valueParser(normalized).nodes, resourceContext)
   } catch {
     return [null]
   }
 }
 
 function consumeCssIdentifier(value) {
-  let position = 0
-  while (position < value.length) {
-    if (/[-_a-z0-9]/iu.test(value[position])) {
-      position += 1
-      continue
-    }
-    if (value[position] !== '\\') break
-    position += 1
-    if (position >= value.length) return null
-    if (/[0-9a-f]/iu.test(value[position])) {
-      let digits = 0
-      while (digits < 6 && /[0-9a-f]/iu.test(value[position] ?? '')) {
-        position += 1
-        digits += 1
-      }
-      if (value[position] === '\r' && value[position + 1] === '\n') position += 2
-      else if (/\s/u.test(value[position] ?? '')) position += 1
-    } else if (/\r|\n|\f/u.test(value[position])) {
-      return null
-    } else {
-      position += 1
-    }
-  }
-  return { raw: value.slice(0, position), rest: value.slice(position).trim() }
+  const name = consumeCssName(value)
+  return name && { raw: name.raw, rest: value.slice(name.end).trim() }
 }
 
 function belongsToProjectRule(declaration) {
   let container = declaration.parent
   while (container) {
-    if (container.type === 'rule' && /\.project-/u.test(container.selector)) return true
+    if (container.type === 'rule') {
+      try {
+        let projectScoped = false
+        selectorParser((selectors) => {
+          selectors.walkClasses((node) => {
+            if (node.value.startsWith('project-')) projectScoped = true
+          })
+          selectors.walkAttributes((node) => {
+            if (node.attribute.toLowerCase() !== 'class') return
+            if (!node.operator || node.value === undefined) {
+              projectScoped = true
+              return
+            }
+            const value = node.insensitive ? node.value.toLowerCase() : node.value
+            if (['=', '~=', '^=', '*='].includes(node.operator)) {
+              if (value.includes('project-') || 'project-'.startsWith(value)) {
+                projectScoped = true
+              }
+            } else {
+              projectScoped = true
+            }
+          })
+        }).processSync(container.selector)
+        if (projectScoped) return true
+      } catch {
+        return true
+      }
+    }
     container = container.parent
   }
   return false

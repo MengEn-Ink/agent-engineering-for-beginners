@@ -295,6 +295,7 @@ pip&nbsp;install package
     const escapedImport = String.raw`@im\70ort "https://evil.example/escaped-import.css";`
     const escapedImportTarget = String.raw`@import "https\3A \2F \2F evil.example/escaped-target.css" layer(project) supports(display: grid) screen;`
     const nestedEscapedUrl = String.raw`u\72l(https://evil.example/nested-escaped.png)`
+    const terminatedNestedFunction = String.raw`-webkit-cross\2d fade(url(https://evil.example/terminated-nested.png), url(/local-terminated.png), 50%)`
     const parsed = extractProjectMarkdownContract(`
 [ordinary external documentation](https://docs.example.com/guide)
 <svg><use href="https://evil.example/icons.svg#one"></use></svg>
@@ -316,6 +317,7 @@ ${escapedImportTarget}
 .image-set { background: image-set("/local.png" 1x, "https://evil.example/image-set.png" 2x) }
 .webkit { background: -webkit-image-set(url(/local.png) 1x, url(//evil.example/webkit.png) 2x) }
 .nested { background-image: -webkit-image-set(-webkit-cross-fade(url(https://evil.example/nested.png), url(/local-nested.png), 50%) 1x) }
+.nested-terminated { background-image: -webkit-image-set(${terminatedNestedFunction} 1x) }
 .deep { background-image: image-set(image(cross-fade(url(https://evil.example/deep.png), url(data:image/png;base64,DDDD), 50%)) 1x) }
 .nested-escaped { background-image: image-set(-webkit-cross-fade(${nestedEscapedUrl}, url(/local-escaped.png), 50%) 1x) }
 .unresolved { background-image: image-set(var(--remote) 1x); mask-image: env(remote-mask); cursor: attr(data-cursor url) }
@@ -354,6 +356,8 @@ ${escapedImportTarget}
       '//evil.example/webkit.png',
       'https://evil.example/nested.png',
       '/local-nested.png',
+      'https://evil.example/terminated-nested.png',
+      '/local-terminated.png',
       'https://evil.example/deep.png',
       'data:image/png;base64,DDDD',
       'https://evil.example/nested-escaped.png',
@@ -387,6 +391,7 @@ ${escapedImportTarget}
       'https://evil.example/image-set.png',
       '//evil.example/webkit.png',
       'https://evil.example/nested.png',
+      'https://evil.example/terminated-nested.png',
       'https://evil.example/deep.png',
       'https://evil.example/nested-escaped.png',
       null,
@@ -458,6 +463,77 @@ ${escapedImportTarget}
   transform: translateX(var(--offset));
 }
 `)).toEqual([])
+  })
+
+  it('reconstructs escaped CSS function identifiers without crossing separators', () => {
+    const crlfUrl = String.raw`u\72` + '\r\n' + 'l(https://evil.example/crlf.png)'
+    const formFeedUrl = String.raw`u\72` + '\f' + 'l(https://evil.example/form-feed.png)'
+    const remoteValues = [
+      [String.raw`\69 mage-set(url(https://evil.example/short-hex.png) 1x)`, 'https://evil.example/short-hex.png'],
+      [String.raw`image-set(-webkit-cross\2d fade(url(https://evil.example/two-digit.png),url(/local.png),50%) 1x)`, 'https://evil.example/two-digit.png'],
+      [String.raw`image-set(cross-fade(u\072 l(https://evil.example/three-digit.png),url(/local.png),50%) 1x)`, 'https://evil.example/three-digit.png'],
+      [String.raw`image-set(cross-fade(u\0072 l(https://evil.example/four-digit.png),url(/local.png),50%) 1x)`, 'https://evil.example/four-digit.png'],
+      [String.raw`image-set(cross-fade(u\00072 l(https://evil.example/five-digit.png),url(/local.png),50%) 1x)`, 'https://evil.example/five-digit.png'],
+      [String.raw`image-set(cross-fade(u\000072 l(https://evil.example/six-digit.png),url(/local.png),50%) 1x)`, 'https://evil.example/six-digit.png'],
+      [`image-set(cross-fade(${crlfUrl},url(/local.png),50%) 1x)`, 'https://evil.example/crlf.png'],
+      [`image-set(cross-fade(${formFeedUrl},url(/local.png),50%) 1x)`, 'https://evil.example/form-feed.png'],
+      [String.raw`image-set(cross-fade(u\rl(https://evil.example/non-hex.png),url(/local.png),50%) 1x)`, 'https://evil.example/non-hex.png'],
+    ] as const
+
+    for (const [value, expected] of remoteValues) {
+      const resources = extractCssResourceCandidates(`.project-test{background-image:${value}}`)
+      expect(resources, value).toContain(expected)
+      expect(resources.some(isRemoteImageCandidate), value).toBe(true)
+    }
+
+    for (const value of [
+      String.raw`u\72 /* gap */l(https://evil.example/comment-gap.png)`,
+      String.raw`u\72  l(https://evil.example/space-gap.png)`,
+      'calc(var(--non-resource) * 1px)',
+    ]) {
+      expect(extractCssResourceCandidates(`.safe{width:${value}}`), value).toEqual([])
+    }
+
+    const invalid = extractCssResourceCandidates(
+      String.raw`.project-test{background-image:u\0 l(https://evil.example/invalid.png)}`,
+    )
+    expect(invalid).toContain(null)
+    expect(invalid.some(isRemoteImageCandidate)).toBe(true)
+
+    expect(extractCssResourceCandidates(
+      '@import url(/local.css) layer(project) supports(display:grid) screen;',
+    )).toEqual(['/local.css'])
+  })
+
+  it('identifies project selectors from parsed class nodes only', () => {
+    for (const css of [
+      String.raw`.\70roject-remote{background-image:var(--remote)}`,
+      String.raw`.pro\6a ect-remote{mask-image:env(remote-mask)}`,
+      String.raw`:is(.safe,.\70roject-is){background-image:var(--remote)}`,
+      ':where(.project-where){background-image:env(remote-image)}',
+      ':not(.project-not){background-image:attr(data-image url)}',
+      '.shell:has(.project-child){background-image:var(--remote)}',
+      '.safe,.project-list{background-image:var(--remote)}',
+      '[class~="project-token"]{background-image:var(--remote)}',
+      '[class="project-exact"]{background-image:env(remote-image)}',
+      '[class]{background-image:attr(data-image url)}',
+      '.broken:not([class="project-x"{background-image:var(--remote)}',
+    ]) {
+      const resources = extractCssResourceCandidates(css, { dynamicResources: 'project' })
+      expect(resources, css).toContain(null)
+      expect(resources.some(isRemoteImageCandidate), css).toBe(true)
+    }
+
+    expect(extractCssResourceCandidates(
+      '[data-note=".project-"]{background-image:var(--decorative-local-value)}',
+      { dynamicResources: 'project' },
+    )).toEqual([])
+    for (const css of [
+      '[class^="vpi-"]{mask-image:var(--icon)}',
+      '.vp-doc [class*="language-"]{background-image:var(--vp-icon-copy)}',
+    ]) {
+      expect(extractCssResourceCandidates(css, { dynamicResources: 'project' }), css).toEqual([])
+    }
   })
 
   it('keeps project pages free of remote images for project asset provenance', () => {
