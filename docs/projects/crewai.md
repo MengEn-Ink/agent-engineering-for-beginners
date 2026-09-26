@@ -23,11 +23,11 @@ description: 固定同步、无 planning 的 sequential 主链，再分开阅读
 
 <ProjectCallChain project-id="project-crewai" />
 
-两个 default sequential track 是一条连续主链的分段。text ReAct、native tool 与 planning 是条件 track，不应串成每次执行都会经过的调用栈；每个 track 都控制在 12 个节点以内。
+两个 default sequential track 是一条连续主链的分段。Process enum 只用于 kickoff 内的分支判断，不是执行节点。text ReAct、native tool 与 planning 是条件 track，不应串成每次执行都会经过的调用栈；每个 track 都控制在 13 个节点以内。
 
 ## 唯一纵向调用链
 
-默认链为：`Crew.kickoff → prepare_kickoff → setup_agents → Agent.create_agent_executor → Process.sequential → Crew._run_sequential_process → Crew._execute_tasks → prepare_task_execution → Task.execute_sync → Task._execute_core → Agent.execute_task → experimental.AgentExecutor.invoke → AgentFinish.output → Agent._finalize_task_execution → Task._execute_core 构造并持有 TaskOutput → Crew._create_crew_output 构造 CrewOutput`。
+默认链为：`Crew.kickoff → begin_execution → prepare_kickoff → setup_agents → Agent.create_agent_executor → kickoff 判断 self.process == Process.sequential → Crew._run_sequential_process → Crew._execute_tasks → prepare_task_execution → Task.execute_sync → Task._execute_core → Agent.execute_task → experimental.AgentExecutor.invoke → AgentFinish.output → Agent._finalize_task_execution → Task._execute_core 构造并持有 TaskOutput → Crew._create_crew_output → end_execution`。其中 `Crew._create_crew_output 构造 CrewOutput`，随后 kickoff 的 `finally` 关闭 execution context。
 
 `prepare_kickoff → setup_agents → Agent.create_agent_executor` 发生在 process 分支选择之前。默认 executor 是 `experimental.AgentExecutor.invoke`；CrewAgentExecutor 已 deprecated，只是兼容实现，不能再画成默认主链。
 
@@ -37,7 +37,7 @@ description: 固定同步、无 planning 的 sequential 主链，再分开阅读
 
 ## 一次请求的数据流
 
-输入进入 Crew 后先完成 kickoff 准备和 agent executor 装配，再选择 `Process.sequential`。`Crew._execute_tasks` 在 `Task.async_execution=false` 下准备当前 task，`Task._execute_core` 委托 `Agent.execute_task`，随后进入 executor。`Agent.planning=false` 会绕过 planning/todos；executor 在 text ReAct 与 native tool 是二选一的条件分支，二者收敛到 `AgentFinish.output`，再由 Agent 完成 finalize。Task 对输出的所有权边界是：`Task._execute_core 构造并持有 TaskOutput`，`_export_output` 只负责结构化输出转换；最终 `Crew._create_crew_output 构造 CrewOutput`。
+输入进入 Crew 后先由 `begin_execution` 打开执行与 tracing context，再完成 kickoff 准备和 agent executor 装配，之后 kickoff 才判断 `self.process == Process.sequential`。`Crew._execute_tasks` 在 `Task.async_execution=false` 下准备当前 task，`Task._execute_core` 委托 `Agent.execute_task`，随后进入 executor。`Agent.planning=false` 会绕过 planning/todos；executor 在 text ReAct 与 native tool 是二选一的条件分支，二者收敛到 `AgentFinish.output`，再由 Agent 完成 finalize。Task 对输出的所有权边界是：`Task._execute_core 构造并持有 TaskOutput`，`_export_output` 只负责结构化输出转换；最终 `Crew._create_crew_output 构造 CrewOutput`，`end_execution` 再关闭上下文。
 
 text 分支是 `call_llm_and_parse → execute_tool_action → ToolUsage.use → ToolUsage._use → CrewStructuredTool.invoke`。native 分支是 `call_llm_native_tools → execute_native_tool → _execute_single_native_tool_call → _available_functions[...]`；它不经过 ToolUsage。两条分支都可能直接得到完成答案，不能强制画成先 text 后 native。
 
@@ -63,8 +63,8 @@ text 分支是 `call_llm_and_parse → execute_tool_action → ToolUsage.use →
 
 ## 升级复核
 
-检查 monorepo 路径、kickoff utilities、Process、Task、Agent core、默认 experimental executor、text/native 工具路径、StepExecutor 条件和两个 output owner。新模式先进入 Radar，不自动替换本页固定默认链。
+检查 monorepo 路径、execution context、kickoff utilities、Process、Task、Agent core、默认 experimental executor、text/native 工具路径、StepExecutor 条件和两个 output owner。新模式先进入 Radar，不自动替换本页固定默认链。
 
 ## 来源与归因
 
-调用链图为本书原创重绘，依据固定 commit 的 10 个 CrewAI 源文件和 MIT 许可证。页面不复用 CrewAI Logo、官网截图或营销对比图。
+调用链图为本书原创重绘，依据固定 commit 的 11 个 CrewAI 源文件和 MIT 许可证。页面不复用 CrewAI Logo、官网截图或营销对比图。

@@ -29,7 +29,7 @@ Dify 的画布不是执行者。编号主链只选择 blocking：Service API 经
 
 blocking 主链按源码顺序为：`WorkflowRunApi.post → AppGenerateService.generate → AppGenerateService._run_with_guardrails → AppGenerateService._dispatch_generate(AppMode.WORKFLOW, streaming=false) → WorkflowAppGenerator.generate → WorkflowAppGenerator._generate → WorkflowAppGenerator._generate_worker → WorkflowAppRunner.run → WorkflowBasedAppRunner._init_graph → Graph.init + DifyNodeFactory.create_node → DifyAgentNode.__init__（仅 agent_node_kind == dify_agent）→ WorkflowEntry(existing Graph) → GraphEngine.run → worker → Node.run → DifyAgentNode._run/_run_inner → create_run → stream_events → WorkflowAppRunner._handle_event → WorkflowAppQueueManager → WorkflowAppGenerateTaskPipeline → WorkflowResponseConverter 内部 typed response → WorkflowAppGenerateResponseConverter 最终 public payload`。
 
-WorkflowEntry 接收已经创建的 Graph，再配置并运行 GraphEngine；GraphEngine 并不负责创建节点。DifyAgentNode 也不直接输出 SSE，它把 agent backend 事件适配为图节点事件。
+WorkflowAppGenerator 创建 WorkflowAppRunner，并注入 execution repositories。WorkflowAppRunner 创建 persistence 等 GraphEngine layer，再把已经初始化的 Graph 和 layers 交给 WorkflowEntry。WorkflowEntry 接收已经创建的 Graph；WorkflowEntry 不构图，GraphEngine 也不负责创建节点。DifyAgentNode 不直接输出 SSE，它只把 agent backend 事件适配为图节点事件。
 
 ## 关键源码入口
 
@@ -37,9 +37,9 @@ WorkflowEntry 接收已经创建的 Graph，再配置并运行 GraphEngine；Gra
 
 ## 一次请求的数据流
 
-blocking 请求先完成应用校验、配额与并发 guardrail，再选择 `AppMode.WORKFLOW`。generator 创建 queue manager 和工作线程；runner 建变量池并初始化 Graph，`DifyNodeFactory.create_node` 依据节点类型与版本构造节点。只有配置为 agent v2 且 `agent_node_kind == dify_agent` 时才进入 DifyAgentNode，它通过 backend `create_run → stream_events` 产生节点事件。`WorkflowAppRunner._handle_event` 把 Graphon 事件转换成 app queue event，`WorkflowAppGenerateTaskPipeline` 消费并聚合；通用 `WorkflowResponseConverter` 只生成内部 typed response，最后由 `WorkflowAppGenerateResponseConverter` 映射 public payload。
+blocking 请求先完成应用校验、配额与并发 guardrail，再选择 `AppMode.WORKFLOW`。generator 创建 queue manager 和工作线程，并向 runner 注入 workflow 与 node execution repositories；runner 建变量池和现成 Graph，WorkflowAppRunner 创建 persistence、observability 等 layer 后交给 WorkflowEntry。`DifyNodeFactory.create_node` 依据节点类型与版本构造节点。只有配置为 agent v2 且 `agent_node_kind == dify_agent` 时才进入 DifyAgentNode，它通过 backend `create_run → stream_events` 产生节点事件。`WorkflowAppRunner._handle_event` 把 Graphon 事件转换成 app queue event，`WorkflowAppGenerateTaskPipeline` 消费并聚合；通用 `WorkflowResponseConverter` 只生成内部 typed response，最后由 `WorkflowAppGenerateResponseConverter` 映射 public payload。
 
-streaming 旁路先订阅 topic，再投递 Celery `_AppRunner`；worker 进入同一套 WorkflowAppGenerator/WorkflowAppRunner 执行，完成 public mapping 后写入 topic，请求进程再 `retrieve_events` 并转成 SSE。这里的 Celery `_AppRunner` 与执行工作流的 `WorkflowAppRunner` 是两类 Runner 不是同一个对象。
+streaming 旁路先订阅 topic，再投递 Celery `_AppRunner`：`workflow_based_app_execution_task → _AppRunner.run → WorkflowAppGenerator/WorkflowAppRunner → typed response → public mapping → _publish_streaming_response → topic`。其中 `_AppRunner.run` 重载 app、user、workflow 后进入同一套 Generator/Runner；请求进程同时沿 `retrieve_events → SSE` 交付。fixed commit 里 `_publish_streaming_response` 是模块级函数，不是 `_AppRunner._publish_streaming_response`。Celery `_AppRunner` 与执行工作流的 `WorkflowAppRunner` 是两类 Runner 不是同一个对象。
 
 ## 阅读练习
 
@@ -63,8 +63,8 @@ streaming 旁路先订阅 topic，再投递 Celery `_AppRunner`；worker 进入�
 
 ## 升级复核
 
-逐项复核 controller、AppGenerateService、WorkflowAppGenerator、两类 Runner、Graphon 版本、NodeFactory、agent node、WorkflowEntry、queue、task pipeline 与两级 response converter。Graphon 主版本、streaming transport 或根许可证变化都必须触发人工复核。
+逐项复核 controller、AppGenerateService、Celery workflow task、WorkflowAppGenerator、两类 Runner、Graphon 版本、NodeFactory、agent node、WorkflowEntry、queue、task pipeline 与两级 response converter。Graphon 主版本、streaming transport 或根许可证变化都必须触发人工复核。
 
 ## 来源与归因
 
-调用链图为本书原创重绘，依据固定 commit 的 12 个 Dify 源文件。页面不复用 Dify Logo、产品截图或受外观专利保护的视觉表达。
+调用链图为本书原创重绘，依据固定 commit 的 13 个 Dify 源文件。页面不复用 Dify Logo、产品截图或受外观专利保护的视觉表达。
