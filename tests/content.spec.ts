@@ -1526,6 +1526,8 @@ describe('project publication boundary', () => {
       '<link rel="stylesheet" href="d&#x09;a&#x0A;t&#x0D;a:text/css,%40import%20%22https%3A%2F%2Fevil.example%2Fcontrol.css%22%3B">',
       '<img src="d&#x09;a&#x0A;t&#x0D;a:image/svg+xml,%3Csvg%20xmlns=%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cimage%20href=%22https%3A%2F%2Fevil.example%2Fcontrol.png%22%2F%3E%3C%2Fsvg%3E">',
       '<link rel="preload" as="image" imagesrcset="d&#x09;a&#x0A;t&#x0D;a:image/svg+xml,%3Csvg%20xmlns=%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cimage%20href=%22https%3A%2F%2Fevil.example%2Fsrcset.png%22%2F%3E%3C%2Fsvg%3E 1x">',
+      '<link rel="stylesheet" href="data:text/css,.vp-doc%7Bbackground%3Aurl(HtTpS%3Aindex.html)%7D">',
+      '<img src="data:image/svg+xml,%3Csvg%20xmlns=%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cimage%20href=%22https%3Aindex.html%22%2F%3E%3C%2Fsvg%3E">',
       '<link rel="preload icon" href="//evil.example/preload.woff2">',
       '<video poster="https://evil.example/poster.png"></video>',
       '<object data="https://evil.example/object.svg"></object>',
@@ -1576,12 +1578,12 @@ describe('project publication boundary', () => {
     }
   })
 
-  it('allows explicit local, data, and blob image candidates in project HTML', () => {
+  it('allows explicit local and data image candidates in project HTML', () => {
     const dist = createCompleteDistFixture()
     try {
       writeFileSync(join(dist, 'theme.css'), '.safe{}')
       const file = join(dist, 'projects/aider.html')
-      const localMarkup = `<picture><source src="relative.png" srcset="/local.png 1x, data:image/png;base64,AAAA 2x, blob:https://example.com/id 3x"><img src="/fallback.png"></picture><svg><use href="/icons.svg#local"></use><feImage href="data:image/png;base64,AAAA"></feImage></svg><script src="/runtime.js"></script><link rel="stylesheet" href="/agent-engineering-for-beginners/theme.css"><link rel="canonical" href="https://docs.example.com/canonical"><video src="/video.mp4" poster="data:image/png;base64,AAAA"></video><audio src="blob:https://example.com/audio"></audio><track src="/subtitles.vtt"><input src="/input.png"><div style="background:url(data:image/png;base64,AAAA);mask:url(blob:https://example.com/id);content-image:image-set('/one.png' 1x, 'data:image/png;base64,BBBB' 2x);color:var(--brand);width:env(safe-area-inset-top);font-size:attr(data-size px)"></div><style>@import "/local.css";.local{background:url(./asset.png);content:image-set("blob:https://example.com/id" 1x);background-image:image-set(cross-fade(url(/nested.png),url(data:image/png;base64,CCCC),50%) 1x)}.dynamic{color:var(--brand);width:env(safe-area-inset-top);font-size:attr(data-size px)}</style>`
+      const localMarkup = `<picture><source src="relative.png" srcset="/local.png 1x, data:image/png;base64,AAAA 2x"><img src="/fallback.png"></picture><svg><use href="/icons.svg#local"></use><feImage href="data:image/png;base64,AAAA"></feImage></svg><script src="/runtime.js"></script><link rel="stylesheet" href="/agent-engineering-for-beginners/theme.css"><link rel="canonical" href="https://docs.example.com/canonical"><video src="/video.mp4" poster="data:image/png;base64,AAAA"></video><track src="/subtitles.vtt"><input src="/input.png"><div style="background:url(data:image/png;base64,AAAA);content-image:image-set('/one.png' 1x, 'data:image/png;base64,BBBB' 2x);color:var(--brand);width:env(safe-area-inset-top);font-size:attr(data-size px)"></div><style>@import "/local.css";.local{background:url(./asset.png);background-image:image-set(cross-fade(url(/nested.png),url(data:image/png;base64,CCCC),50%) 1x)}.dynamic{color:var(--brand);width:env(safe-area-inset-top);font-size:attr(data-size px)}</style>`
       writeFileSync(
         file,
         readFileSync(file, 'utf8').replace(
@@ -1595,14 +1597,14 @@ describe('project publication boundary', () => {
     }
   })
 
-  it('rejects remote resources in built CSS and allows local, data, and blob URLs', () => {
+  it('rejects remote resources in built CSS and allows local and data URLs', () => {
     const dist = createCompleteDistFixture()
     try {
       const cssPath = join(dist, 'assets/project.css')
       mkdirSync(dirname(cssPath), { recursive: true })
       writeFileSync(
         cssPath,
-        '@import "./local.css" layer(project) supports(display:grid) screen;@import "data:text/css,.safe{}" layer(data);.local{background:url(./asset.png);mask:url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cuse href=\'%23icon\'/%3E%3C/svg%3E");cursor:url(blob:https://example.com/id),auto}',
+        '@import "./local.css" layer(project) supports(display:grid) screen;@import "data:text/css,.safe{}" layer(data);.local{background:url(./asset.png);mask:url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cuse href=\'%23icon\'/%3E%3C/svg%3E")}',
       )
       expect(validateDist(dist)).toEqual([])
 

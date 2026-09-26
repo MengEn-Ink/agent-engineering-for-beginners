@@ -164,6 +164,7 @@ const vitePressIconConsumers = new Map([
 ])
 const vitePressIconConsumerHash = 'e6249fce861a48ee63402a01e2218f5f6f9dbde35a5def5a4dee6a1ac57af965'
 const validatedResourceCandidates = new WeakSet()
+const resourceTraversalAbort = Symbol('resourceTraversalAbort')
 let resourceOccurrenceId = 0
 
 function validatedCandidateRecord(value, options, sourcePath) {
@@ -435,32 +436,38 @@ function imageSetResources(node, resolveVariable, resolvingVariables) {
     if (child.type === 'div' && child.value === ',') groups.push([])
     else if (child.type !== 'space' && child.type !== 'comment') groups.at(-1).push(child)
   }
-  return groups.flatMap((group) => {
+  const resources = []
+  for (const group of groups) {
     const candidate = group[0]
     if (!candidate) return [null]
+    let extracted
     if (candidate.type === 'string' || candidate.type === 'word') {
-      return [decodeCssEscapes(candidate.value)]
+      extracted = [decodeCssEscapes(candidate.value)]
+    } else {
+      const functionName = candidate.type === 'function'
+        ? decodeCssEscapes(candidate.value)?.toLowerCase()
+        : null
+      if (functionName === 'url') extracted = [cssFunctionValue(candidate)]
+      else if (functionName === null) extracted = [null]
+      else if (functionName === 'var') {
+        extracted = resolveVariable?.(candidate, resolvingVariables, true) ?? [null]
+      } else if (cssUnresolvedFunctions.has(functionName)) extracted = [null]
+      else if (functionName === 'image') {
+        extracted = imageFunctionResources(candidate, resolveVariable, resolvingVariables)
+      } else {
+        extracted = extractCssNodes(
+          candidate.nodes ?? [],
+          cssImageContainerFunctions.has(functionName),
+          resolveVariable,
+          resolvingVariables,
+          cssImageContainerFunctions.has(functionName),
+        )
+      }
     }
-    const functionName = candidate.type === 'function'
-      ? decodeCssEscapes(candidate.value)?.toLowerCase()
-      : null
-    if (functionName === 'url') return [cssFunctionValue(candidate)]
-    if (functionName === null) return [null]
-    if (functionName === 'var') {
-      return resolveVariable?.(candidate, resolvingVariables, true) ?? [null]
-    }
-    if (cssUnresolvedFunctions.has(functionName)) return [null]
-    if (functionName === 'image') {
-      return imageFunctionResources(candidate, resolveVariable, resolvingVariables)
-    }
-    return extractCssNodes(
-      candidate.nodes ?? [],
-      cssImageContainerFunctions.has(functionName),
-      resolveVariable,
-      resolvingVariables,
-      cssImageContainerFunctions.has(functionName),
-    )
-  })
+    if (extracted.includes(resourceTraversalAbort)) return [resourceTraversalAbort]
+    resources.push(...extracted)
+  }
+  return resources
 }
 
 function imageFunctionResources(node, resolveVariable, resolvingVariables) {
@@ -489,13 +496,21 @@ function extractCssNodes(
     } else if (functionName === 'url') {
       resources.push(cssFunctionValue(node))
     } else if (functionName === 'image-set' || functionName === '-webkit-image-set') {
-      resources.push(...imageSetResources(node, resolveVariable, resolvingVariables))
+      const nested = imageSetResources(node, resolveVariable, resolvingVariables)
+      if (nested.includes(resourceTraversalAbort)) return [resourceTraversalAbort]
+      resources.push(...nested)
     } else if (functionName === 'image') {
-      resources.push(...imageFunctionResources(node, resolveVariable, resolvingVariables))
+      const nested = imageFunctionResources(node, resolveVariable, resolvingVariables)
+      if (nested.includes(resourceTraversalAbort)) return [resourceTraversalAbort]
+      resources.push(...nested)
     } else if (resourceContext && functionName === 'var') {
-      resources.push(...(
-        resolveVariable?.(node, resolvingVariables, variableStringsAreResources) ?? [null]
-      ))
+      const resolved = resolveVariable?.(
+        node,
+        resolvingVariables,
+        variableStringsAreResources,
+      ) ?? [null]
+      if (resolved.includes(resourceTraversalAbort)) return [resourceTraversalAbort]
+      resources.push(...resolved)
     } else if (resourceContext && cssUnresolvedFunctions.has(functionName)) {
       resources.push(null)
     } else {
@@ -726,20 +741,24 @@ function extractCustomPropertyNodes(
     } else if (functionName === 'url') {
       resources.push(cssFunctionValue(node))
     } else if (functionName === 'var') {
-      resources.push(...(
-        resolveVariable?.(node, resolvingVariables, stringsAreResources) ?? [null]
-      ))
+      const resolved = resolveVariable?.(node, resolvingVariables, stringsAreResources) ?? [null]
+      if (resolved.includes(resourceTraversalAbort)) return [resourceTraversalAbort]
+      resources.push(...resolved)
     } else if (functionName === 'env' || functionName === 'attr') {
       resources.push(null)
     } else if (functionName === 'image-set' || functionName === '-webkit-image-set') {
-      resources.push(...imageSetResources(node, resolveVariable, resolvingVariables))
+      const nested = imageSetResources(node, resolveVariable, resolvingVariables)
+      if (nested.includes(resourceTraversalAbort)) return [resourceTraversalAbort]
+      resources.push(...nested)
     } else {
-      resources.push(...extractCustomPropertyNodes(
+      const nested = extractCustomPropertyNodes(
         node.nodes ?? [],
         resolveVariable,
         resolvingVariables,
         stringsAreResources || cssImageContainerFunctions.has(functionName),
-      ))
+      )
+      if (nested.includes(resourceTraversalAbort)) return [resourceTraversalAbort]
+      resources.push(...nested)
     }
   }
   return resources
@@ -892,9 +911,10 @@ function parseResourceCandidate(candidate, base = localImageBase) {
   ) return null
   const value = candidate.trim()
   if (value === '') return null
+  const explicitScheme = value.match(/^([a-z][a-z0-9+.-]*):/iu)?.[1].toLowerCase() ?? null
   try {
-    const url = new URL(value, base)
-    return { value, canonical: url.href, url }
+    const url = explicitScheme === null ? new URL(value, base) : new URL(value)
+    return { value, canonical: url.href, explicitScheme, url }
   } catch {
     return null
   }
@@ -993,8 +1013,10 @@ function normalizeSafeResourceCandidate(
   const { url } = parsedCandidate
   const value = url.protocol === 'data:' ? parsedCandidate.canonical : parsedCandidate.value
   if (parsedCandidate.value.startsWith('#')) return parsedCandidate.value
-  if (url.protocol === 'blob:') return null
-  if (url.protocol === 'data:') {
+  if (parsedCandidate.explicitScheme !== null && parsedCandidate.explicitScheme !== 'data') {
+    return null
+  }
+  if (parsedCandidate.explicitScheme === 'data') {
     if (isSvgDataResource(value)) {
       const svg = decodeSvgDataResource(value)
       if (svg === null) return null
@@ -1129,9 +1151,22 @@ function createCustomPropertyResolver(css, options, sources = cssSourceRecords(c
     ? cache.definitions
     : collectCustomPropertyDefinitions(sources)
   if (cache) cache.definitions = definitions
-  const resolvedDefinitions = cache?.resolvedDefinitions ?? new Map()
-  if (cache) cache.resolvedDefinitions = resolvedDefinitions
+  const variableBudgets = new WeakMap()
+  const consumeVariableEdge = (resolvingVariables) => {
+    const budget = options.resourceBudget
+      ?? variableBudgets.get(resolvingVariables)
+      ?? { steps: 0, decodedBytes: 0, aborted: false }
+    variableBudgets.set(resolvingVariables, budget)
+    if (budget.aborted) return null
+    budget.variableEdges = (budget.variableEdges ?? 0) + 1
+    if (budget.variableEdges > 256) {
+      budget.aborted = true
+      return null
+    }
+    return budget
+  }
   const validate = (resources, candidateSourcePath) => resources.map((candidate) => {
+    if (candidate === resourceTraversalAbort) return resourceTraversalAbort
     if (candidate === null) return null
     if (isValidatedCandidateRecord(candidate)) return candidate
     const normalized = normalizeSafeResourceCandidate(
@@ -1146,15 +1181,17 @@ function createCustomPropertyResolver(css, options, sources = cssSourceRecords(c
       : validatedCandidateRecord(normalized, options, candidateSourcePath)
   })
   const resolveDefinitions = (name, resolvingVariables, stringsAreResources) => {
-    const cacheKey = `${stringsAreResources ? 'resource-string' : 'plain-string'}\0${name}`
-    if (resolvedDefinitions.has(cacheKey)) return resolvedDefinitions.get(cacheKey)
     if (definitions === null || resolvingVariables.has(name)) return [null]
     const possibleDefinitions = definitions.get(name) ?? []
     if (possibleDefinitions.length === 0) return [null]
     const nextResolving = new Set(resolvingVariables)
     nextResolving.add(name)
-    const resources = possibleDefinitions.flatMap((definition) => validate(
-      extractCustomPropertyValueResources(
+    const budget = variableBudgets.get(resolvingVariables) ?? options.resourceBudget
+    if (budget) variableBudgets.set(nextResolving, budget)
+    const resources = []
+    for (const definition of possibleDefinitions) {
+      if (consumeVariableEdge(nextResolving) === null) return [resourceTraversalAbort]
+      const extracted = extractCustomPropertyValueResources(
         definition.value,
         (nested, nestedResolving, nestedStringsAreResources) => resolveAt(
           nested,
@@ -1164,10 +1201,13 @@ function createCustomPropertyResolver(css, options, sources = cssSourceRecords(c
         ),
         nextResolving,
         stringsAreResources,
-      ),
-      definition.sourcePath,
-    ))
-    if (resources.length === 0) resolvedDefinitions.set(cacheKey, resources)
+      )
+      if (extracted.includes(resourceTraversalAbort)) return [resourceTraversalAbort]
+      const validated = validate(extracted, definition.sourcePath)
+      if (validated.includes(resourceTraversalAbort)) return [resourceTraversalAbort]
+      if (validated.includes(null)) return [null]
+      resources.push(...validated)
+    }
     return resources
   }
   const resolveAt = (
@@ -1177,10 +1217,13 @@ function createCustomPropertyResolver(css, options, sources = cssSourceRecords(c
     stringsAreResources = false,
   ) => {
     if (definitions === null) return [null]
+    if (consumeVariableEdge(resolvingVariables) === null) return [resourceTraversalAbort]
     const parsed = parseVarFunction(node)
     if (parsed === null || resolvingVariables.has(parsed.name)) return [null]
     const nextResolving = new Set(resolvingVariables)
     nextResolving.add(parsed.name)
+    const budget = variableBudgets.get(resolvingVariables) ?? options.resourceBudget
+    if (budget) variableBudgets.set(nextResolving, budget)
     const evaluateNodes = (nodes, candidateSourcePath) => validate(
       extractCustomPropertyNodes(
         nodes,
@@ -1197,7 +1240,11 @@ function createCustomPropertyResolver(css, options, sources = cssSourceRecords(c
     )
     const fallbackResources = parsed.fallbackNodes === null
       ? []
-      : evaluateNodes(parsed.fallbackNodes, sourcePath)
+      : consumeVariableEdge(nextResolving) === null
+        ? [resourceTraversalAbort]
+        : evaluateNodes(parsed.fallbackNodes, sourcePath)
+    if (fallbackResources.includes(resourceTraversalAbort)) return [resourceTraversalAbort]
+    if (fallbackResources.includes(null)) return [null]
     const possibleDefinitions = definitions.get(parsed.name) ?? []
     if (possibleDefinitions.length === 0) {
       return parsed.fallbackNodes === null ? [null] : fallbackResources
@@ -1207,6 +1254,8 @@ function createCustomPropertyResolver(css, options, sources = cssSourceRecords(c
       resolvingVariables,
       stringsAreResources,
     )
+    if (definitionResources.includes(resourceTraversalAbort)) return [resourceTraversalAbort]
+    if (definitionResources.includes(null)) return [null]
     return [...definitionResources, ...fallbackResources]
   }
   return {
@@ -1831,12 +1880,12 @@ export function isRemoteImageCandidate(candidate) {
   if (parsed === null) return true
   const { url } = parsed
   const value = url.protocol === 'data:' ? parsed.canonical : parsed.value
-  if (url.protocol === 'data:') {
+  if (parsed.explicitScheme === 'data') {
     return isSvgDataResource(value) || isCssDataResource(value)
       ? !isSafeResourceCandidate(value, {}, 0, null)
       : false
   }
-  if (url.protocol === 'blob:') return false
+  if (parsed.explicitScheme !== null) return true
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return true
   return url.origin !== localImageBase.origin
     || /^(?:https?:|\/\/)/iu.test(parsed.value)

@@ -272,6 +272,7 @@ pip&nbsp;install package
       '//evil.example/a.png',
       backslashUrl,
       controlUrl,
+      'blob:https://example.com/id',
       'http://[',
     ]) {
       expect(isRemoteImageCandidate(candidate), candidate).toBe(true)
@@ -281,7 +282,6 @@ pip&nbsp;install package
       './images/local.png',
       'images/local.png',
       'data:image/png;base64,AAAA',
-      'blob:https://example.com/id',
     ]) {
       expect(isRemoteImageCandidate(candidate), candidate).toBe(false)
     }
@@ -292,15 +292,20 @@ pip&nbsp;install package
       `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg">${body}</svg>`)}`
     const remote = svgData('<image href="https://evil.example/nested.png"/>')
     const remoteStyle = svgData('<style>.x{background:url(https://evil.example/style.png)}</style>')
+    const explicitScheme = svgData('<image href="https:index.html"/>')
+    const mixedCaseScheme = svgData('<style>.x{background:url(HtTpS:index.html)}</style>')
     const remoteBase64 = `data:IMAGE/SVG+XML;charset=UTF-8;base64,${Buffer.from(
       '<svg xmlns="http://www.w3.org/2000/svg"><image href="https://evil.example/base64.png"/></svg>',
     ).toString('base64')}`
     const safeFragment = svgData('<use href="#local-icon"/>')
     const safeLocal = svgData('<image href="/local.png"/>')
+    const safeRelative = svgData('<image href="images/local.png"/>')
 
     for (const candidate of [
       remote,
       remoteStyle,
+      explicitScheme,
+      mixedCaseScheme,
       remoteBase64,
       `d\ta\nt\ra:${remote.slice('data:'.length)}`,
       'data:image/svg+xml,%ZZ',
@@ -315,7 +320,7 @@ pip&nbsp;install package
       `<main class="vp-doc"><img src="${remote}"></main>`,
     ).resources.some(isRemoteImageCandidate)).toBe(true)
 
-    for (const candidate of [safeFragment, safeLocal, 'data:image/png;base64,AAAA']) {
+    for (const candidate of [safeFragment, safeLocal, safeRelative, 'data:image/png;base64,AAAA']) {
       expect(isRemoteImageCandidate(candidate), candidate).toBe(false)
     }
     const safeUppercase = `DATA:IMAGE/SVG+XML;charset=UTF-8,${encodeURIComponent(
@@ -324,6 +329,9 @@ pip&nbsp;install package
     expect(isRemoteImageCandidate(safeUppercase)).toBe(false)
     expect(extractCssResourceCandidates(
       String.raw`.project-card{background:url(d\9 a\A t\D a:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%3E%3Cimage%20href='https://evil.example/escaped.png'/%3E%3C/svg%3E)}`,
+    ).some(isRemoteImageCandidate)).toBe(true)
+    expect(extractCssResourceCandidates(
+      String.raw`.project-card{background:url(h\74tps:index.html)}`,
     ).some(isRemoteImageCandidate)).toBe(true)
 
     let nested = safeFragment
@@ -338,10 +346,11 @@ pip&nbsp;install package
       ? `data:text/css;charset=UTF-8;base64,${Buffer.from(css).toString('base64')}`
       : `data:TEXT/CSS;charset=utf-8,${encodeURIComponent(css)}`
     const remote = cssData('.x{background:url(https://evil.example/data-css.png)}')
+    const explicitScheme = cssData('.x{background:url(https:index.html)}')
     const remoteBase64 = cssData('@import "https://evil.example/data-import.css";', true)
     const safe = cssData('.x{background:url(#local-fragment)}')
 
-    for (const candidate of [remote, remoteBase64, 'data:text/css,%ZZ']) {
+    for (const candidate of [remote, explicitScheme, remoteBase64, 'data:text/css,%ZZ']) {
       expect(isRemoteImageCandidate(candidate), candidate).toBe(true)
     }
     expect(extractCssResourceCandidates(`@import url("${remote}");`)
@@ -792,7 +801,7 @@ ${escapedImportTarget}
       'data:image/png;base64,AAAA',
       'blob:https://example.com/id',
     ])
-    expect(local.some(isRemoteImageCandidate)).toBe(false)
+    expect(local.some(isRemoteImageCandidate)).toBe(true)
   })
 
   it('identifies project selectors from parsed class nodes only', () => {
@@ -968,6 +977,23 @@ ${escapedImportTarget}
       distFiles: new Set(['assets/a/safe.svg']),
       allCssSources: aliasSources,
     }).some(isRemoteImageCandidate)).toBe(true)
+
+    const binaryGraph = (depth: number) => [
+      ...Array.from({ length: depth }, (_, index) =>
+        `:root{--v${index}:var(--v${index + 1})}.duplicate{--v${index}:var(--v${index + 1})}`),
+      `:root{--v${depth}:red}`,
+      '.project-card{background:var(--v0)}',
+    ].join('')
+    expect(extractCssResourceCandidates(binaryGraph(4), {
+      ...projectOptions,
+      allCss: [binaryGraph(4)],
+    }).some(isRemoteImageCandidate)).toBe(false)
+    const graphStartedAt = performance.now()
+    expect(extractCssResourceCandidates(binaryGraph(20), {
+      ...projectOptions,
+      allCss: [binaryGraph(20)],
+    }).some(isRemoteImageCandidate)).toBe(true)
+    expect(performance.now() - graphStartedAt).toBeLessThan(1_000)
   })
 
   it('includes all project HTML style sources in the custom-property safety graph', () => {
