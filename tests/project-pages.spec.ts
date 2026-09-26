@@ -302,6 +302,7 @@ pip&nbsp;install package
       remote,
       remoteStyle,
       remoteBase64,
+      `d\ta\nt\ra:${remote.slice('data:'.length)}`,
       'data:image/svg+xml,%ZZ',
       'data:image/svg+xml,%3Csvg%3E',
       'data:image/svg+xml;base64,/w==',
@@ -317,6 +318,13 @@ pip&nbsp;install package
     for (const candidate of [safeFragment, safeLocal, 'data:image/png;base64,AAAA']) {
       expect(isRemoteImageCandidate(candidate), candidate).toBe(false)
     }
+    const safeUppercase = `DATA:IMAGE/SVG+XML;charset=UTF-8,${encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg"><path d="M 0 0"/></svg>',
+    )}`
+    expect(isRemoteImageCandidate(safeUppercase)).toBe(false)
+    expect(extractCssResourceCandidates(
+      String.raw`.project-card{background:url(d\9 a\A t\D a:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%3E%3Cimage%20href='https://evil.example/escaped.png'/%3E%3C/svg%3E)}`,
+    ).some(isRemoteImageCandidate)).toBe(true)
 
     let nested = safeFragment
     for (let depth = 0; depth < 4; depth += 1) {
@@ -342,6 +350,48 @@ pip&nbsp;install package
       `<main class="vp-doc"><link rel="stylesheet" href="${remote}"></main>`,
     ).resources.some(isRemoteImageCandidate)).toBe(true)
     expect(isRemoteImageCandidate(safe)).toBe(false)
+
+    const largeSafeSvg = `data:image/svg+xml;base64,${Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg"><!--${'x'.repeat(340_000)}--></svg>`,
+    ).toString('base64')}`
+    expect(isRemoteImageCandidate(cssData(
+      `.x{background:url("${largeSafeSvg}")}`,
+    ))).toBe(false)
+    expect(isRemoteImageCandidate(cssData(
+      `:root{--asset:url("${largeSafeSvg}")}.x{background:var(--asset)}`,
+    ))).toBe(false)
+    expect(isRemoteImageCandidate(cssData(
+      `.x{background:var(--missing,url("${largeSafeSvg}"))}`,
+    ))).toBe(false)
+    expect(isRemoteImageCandidate(cssData(
+      `:root{--asset:url("${largeSafeSvg}")}.x{background:var(--asset)}.y{background:var(--asset)}`,
+    ))).toBe(true)
+    expect(isRemoteImageCandidate({
+      value: safe,
+      normalized: true,
+      decoded: true,
+      charged: true,
+    } as unknown as string)).toBe(true)
+    const forgedRecord = new Proxy({}, {
+      get: (_target, property) => typeof property === 'symbol'
+        ? true
+        : property === 'value' ? '/safe.png' : undefined,
+    })
+    expect(extractCssResourceCandidates(
+      '.project-card{background:var(--asset)}',
+      {
+        dynamicResources: 'project',
+        projectClassTokenSets: [new Set(['project-card'])],
+        allCss: [':root{--asset:url(https://evil.example/remote.png)}'],
+        analysisCache: {
+          definitions: new Map([['--asset', [{
+            value: 'url(https://evil.example/remote.png)',
+            sourcePath: null,
+          }]]]),
+          resolvedDefinitions: new Map([['plain-string\0--asset', [forgedRecord]]]),
+        },
+      },
+    ).some(isRemoteImageCandidate)).toBe(true)
 
     let nested = safe
     for (let depth = 0; depth < 4; depth += 1) {
@@ -1220,6 +1270,7 @@ ${escapedImportTarget}
 
     const unsafeCases = [
       { css: vendorCss, version: '1.6.5' },
+      { css: vendorCss, version: null },
       { css: '.unrelated{color:red}', version: '1.6.4' },
       { css: vendorCss.replace(genericSelector, `${genericSelector}.changed`), version: '1.6.4' },
       {

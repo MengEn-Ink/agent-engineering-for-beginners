@@ -163,6 +163,30 @@ const vitePressIconConsumers = new Map([
   [`${vitePressExternalIconSelector}\0mask-image`, 'var(--icon)'],
 ])
 const vitePressIconConsumerHash = 'e6249fce861a48ee63402a01e2218f5f6f9dbde35a5def5a4dee6a1ac57af965'
+const validatedResourceCandidates = new WeakSet()
+let resourceOccurrenceId = 0
+
+function validatedCandidateRecord(value, options, sourcePath) {
+  const record = {
+    occurrenceId: resourceOccurrenceId += 1,
+    value,
+    normalized: true,
+    decoded: true,
+    charged: true,
+    sourceKind: options.sourceKind ?? 'css',
+    sourcePath,
+    base: sourcePath,
+    chain: [...(options.resourceVisitedPaths ?? [])],
+  }
+  validatedResourceCandidates.add(record)
+  return record
+}
+
+function isValidatedCandidateRecord(candidate) {
+  return typeof candidate === 'object'
+    && candidate !== null
+    && validatedResourceCandidates.has(candidate)
+}
 
 export function readLockedVitePressVersion(lockText) {
   try {
@@ -258,7 +282,12 @@ function hrefsWithin(roots, hiddenElements = hiddenHtmlElements) {
 }
 
 function parseSrcsetCandidates(srcset) {
-  if (typeof srcset !== 'string' || srcset.trim() === '') return [null]
+  if (
+    typeof srcset !== 'string'
+    || srcset.trim() === ''
+    || !srcset.isWellFormed()
+    || /[\u0000-\u001f\u007f]/u.test(srcset)
+  ) return [null]
   try {
     const candidates = parseSrcset(srcset).map((candidate) => candidate.url)
     return candidates.length > 0 && candidates.every((candidate) => candidate !== '')
@@ -467,7 +496,6 @@ function extractCssNodes(
       resources.push(...(
         resolveVariable?.(node, resolvingVariables, variableStringsAreResources) ?? [null]
       ))
-      resources.push(...extractCssNodes(node.nodes ?? [], false))
     } else if (resourceContext && cssUnresolvedFunctions.has(functionName)) {
       resources.push(null)
     } else {
@@ -841,22 +869,42 @@ function extractSvgXmlResourceCandidates(svg, options = {}) {
       allCss: undefined,
       allCssSources: nestedSources,
       analysisCache: {},
+      validateAllDiscoveredResources: true,
     }
-    resources.push(...nestedSources.flatMap((source) => embeddedCssResourceCandidates(
+    const embeddedResources = nestedSources.flatMap((source) => embeddedCssResourceCandidates(
       source.css,
       true,
       { ...nestedOptions, sourcePath: source.sourcePath },
-    )))
+    ))
+    if (embeddedResources.some((candidate) => candidate === null)) resources.push(null)
     return resources
   } catch {
     return null
   }
 }
 
+function parseResourceCandidate(candidate, base = localImageBase) {
+  if (
+    typeof candidate !== 'string'
+    || candidate === ''
+    || !candidate.isWellFormed()
+    || /[\u0000-\u001f\u007f]/u.test(candidate)
+  ) return null
+  const value = candidate.trim()
+  if (value === '') return null
+  try {
+    const url = new URL(value, base)
+    return { value, canonical: url.href, url }
+  } catch {
+    return null
+  }
+}
+
 function decodeUtf8DataResource(candidate, expectedMediaType) {
+  const colon = candidate.indexOf(':')
   const comma = candidate.indexOf(',')
-  if (comma < 0) return null
-  const metadata = candidate.slice(5, comma).split(';').map((part) => part.trim())
+  if (colon < 0 || comma < colon) return null
+  const metadata = candidate.slice(colon + 1, comma).split(';').map((part) => part.trim())
   if (metadata.shift()?.toLowerCase() !== expectedMediaType) return null
   let base64 = false
   let charset = null
@@ -891,21 +939,26 @@ function decodeSvgDataResource(candidate) {
 }
 
 function isSvgDataResource(candidate) {
+  const colon = candidate.indexOf(':')
   const comma = candidate.indexOf(',')
-  if (comma < 0) return false
-  return candidate.slice(5, comma).split(';', 1)[0].trim().toLowerCase() === 'image/svg+xml'
+  if (colon < 0 || comma < colon) return false
+  return candidate.slice(colon + 1, comma).split(';', 1)[0].trim().toLowerCase()
+    === 'image/svg+xml'
 }
 
 function isCssDataResource(candidate) {
+  const colon = candidate.indexOf(':')
   const comma = candidate.indexOf(',')
-  if (comma < 0) return false
-  return candidate.slice(5, comma).split(';', 1)[0].trim().toLowerCase() === 'text/css'
+  if (colon < 0 || comma < colon) return false
+  return candidate.slice(colon + 1, comma).split(';', 1)[0].trim().toLowerCase() === 'text/css'
 }
 
 function localResourcePath(candidate, sourcePath) {
   try {
     const base = new URL(sourcePath ?? '', localImageBase)
-    const url = new URL(candidate, base)
+    const parsed = parseResourceCandidate(candidate, base)
+    if (parsed === null) return null
+    const { url } = parsed
     if (url.origin !== localImageBase.origin || url.username !== '' || url.password !== '') {
       return null
     }
@@ -925,13 +978,23 @@ function normalizeSafeResourceCandidate(
   visitedPaths = new Set(),
 ) {
   if (depth > 2 || typeof candidate !== 'string') return null
+  let base
+  try {
+    base = new URL(sourcePath ?? '', localImageBase)
+  } catch {
+    return null
+  }
+  const parsedCandidate = parseResourceCandidate(candidate, base)
+  if (parsedCandidate === null) return null
   const resourceBudget = options.resourceBudget ?? { steps: 0, decodedBytes: 0 }
   resourceBudget.steps += 1
   if (resourceBudget.steps > 64) return null
   const traversalOptions = { ...options, resourceBudget }
-  const value = candidate.trim()
-  if (/^blob:/iu.test(value)) return null
-  if (/^data:/iu.test(value)) {
+  const { url } = parsedCandidate
+  const value = url.protocol === 'data:' ? parsedCandidate.canonical : parsedCandidate.value
+  if (parsedCandidate.value.startsWith('#')) return parsedCandidate.value
+  if (url.protocol === 'blob:') return null
+  if (url.protocol === 'data:') {
     if (isSvgDataResource(value)) {
       const svg = decodeSvgDataResource(value)
       if (svg === null) return null
@@ -974,21 +1037,16 @@ function normalizeSafeResourceCandidate(
         resourceDepth: depth + 1,
         resourceVisitedPaths: visitedPaths,
         skipVitePressPolicy: true,
+        validateAllDiscoveredResources: true,
       }
       const resources = extractCssResourceCandidates(css, nestedOptions)
-      if (!resources.every((nested) => normalizeSafeResourceCandidate(
-        nested,
-        nestedOptions,
-        depth + 1,
-        value,
-        visitedPaths,
-      ) !== null)) return null
+      if (resources.some((nested) => nested === null)) return null
       return value
     }
     return value
   }
-  if (isRemoteImageCandidate(value)) return null
-  if (value.startsWith('#')) return value
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null
+  if (url.origin !== localImageBase.origin) return null
   const relativePath = localResourcePath(value, sourcePath)
   if (relativePath === null) return null
   if (traversalOptions.distFiles && !traversalOptions.distFiles.has(relativePath)) return null
@@ -1022,8 +1080,18 @@ function isSafeResourceCandidate(candidate, options, depth = 0, sourcePath = nul
 }
 
 function validateDiscoveredResource(candidate, options, sourcePath) {
+  if (isValidatedCandidateRecord(candidate)) return candidate.value
   if (typeof candidate !== 'string') return null
   const value = candidate.trim()
+  if (options.validateAllDiscoveredResources) {
+    return normalizeSafeResourceCandidate(
+      value,
+      options,
+      options.resourceDepth ?? 0,
+      sourcePath,
+      options.resourceVisitedPaths ?? new Set(),
+    )
+  }
   if (isSvgDataResource(value)) {
     return normalizeSafeResourceCandidate(
       value,
@@ -1063,14 +1131,20 @@ function createCustomPropertyResolver(css, options, sources = cssSourceRecords(c
   if (cache) cache.definitions = definitions
   const resolvedDefinitions = cache?.resolvedDefinitions ?? new Map()
   if (cache) cache.resolvedDefinitions = resolvedDefinitions
-  const validate = (resources, candidateSourcePath) => resources.map((candidate) =>
-    normalizeSafeResourceCandidate(
+  const validate = (resources, candidateSourcePath) => resources.map((candidate) => {
+    if (candidate === null) return null
+    if (isValidatedCandidateRecord(candidate)) return candidate
+    const normalized = normalizeSafeResourceCandidate(
       candidate,
       options,
       options.resourceDepth ?? 0,
       candidateSourcePath,
       options.resourceVisitedPaths ?? new Set(),
-    ))
+    )
+    return normalized === null
+      ? null
+      : validatedCandidateRecord(normalized, options, candidateSourcePath)
+  })
   const resolveDefinitions = (name, resolvingVariables, stringsAreResources) => {
     const cacheKey = `${stringsAreResources ? 'resource-string' : 'plain-string'}\0${name}`
     if (resolvedDefinitions.has(cacheKey)) return resolvedDefinitions.get(cacheKey)
@@ -1093,7 +1167,7 @@ function createCustomPropertyResolver(css, options, sources = cssSourceRecords(c
       ),
       definition.sourcePath,
     ))
-    resolvedDefinitions.set(cacheKey, resources)
+    if (resources.length === 0) resolvedDefinitions.set(cacheKey, resources)
     return resources
   }
   const resolveAt = (
@@ -1206,8 +1280,8 @@ function vitePressIconMaskPolicyIsValid(options, sources, customProperties) {
       customProperties.forSource(sourcePath),
       new Set(['--icon']),
     )
-    return resources.every((candidate) =>
-      isSafeResourceCandidate(candidate, options, 0, sourcePath))
+    return resources.every((candidate) => isValidatedCandidateRecord(candidate)
+      || isSafeResourceCandidate(candidate, options, 0, sourcePath))
   }
   if (!definitions.every(safeDefinition)) return { present, valid: false }
   return {
@@ -1265,6 +1339,7 @@ export function extractCssResourceCandidates(css, options = {}) {
       if (property === '--icon') {
         resources.push(...customProperties.resolveName('--icon', options.sourcePath ?? null))
       }
+      if (property.startsWith('--')) return
       if (
         options.resourceDeclarations === 'project'
         && !belongsToProjectRule(declaration, projectDocuments)
@@ -1326,7 +1401,9 @@ function localStylesheetHrefIsValid(href, options) {
   if (!options.distFiles || !options.sourcePath) return true
   try {
     const basePath = `${options.siteBase ?? ''}/${options.sourcePath}`.replace(/\/+/gu, '/')
-    const url = new URL(href, new URL(basePath, localImageBase))
+    const parsed = parseResourceCandidate(href, new URL(basePath, localImageBase))
+    if (parsed === null) return false
+    const { url } = parsed
     if (url.protocol === 'data:') return true
     if (url.origin !== localImageBase.origin) return true
     const sitePrefix = `${options.siteBase ?? ''}/`.replace(/\/+/gu, '/')
@@ -1750,21 +1827,17 @@ export function validatePinnedGithubSourceHref(href, expectedHref) {
 }
 
 export function isRemoteImageCandidate(candidate) {
-  if (typeof candidate !== 'string' || candidate.trim() === '') return true
-  const value = candidate.trim()
-  const withoutAsciiControls = value.replace(/[\u0009\u000A\u000C\u000D]/gu, '')
-  try {
-    const url = new URL(value, localImageBase)
-    if (url.protocol === 'data:') {
-      return isSvgDataResource(value) || isCssDataResource(value)
-        ? !isSafeResourceCandidate(value, {}, 0, null)
-        : false
-    }
-    if (url.protocol === 'blob:') return false
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') return true
-    return url.origin !== localImageBase.origin
-      || /^(?:https?:|\/\/)/iu.test(withoutAsciiControls)
-  } catch {
-    return true
+  const parsed = parseResourceCandidate(candidate)
+  if (parsed === null) return true
+  const { url } = parsed
+  const value = url.protocol === 'data:' ? parsed.canonical : parsed.value
+  if (url.protocol === 'data:') {
+    return isSvgDataResource(value) || isCssDataResource(value)
+      ? !isSafeResourceCandidate(value, {}, 0, null)
+      : false
   }
+  if (url.protocol === 'blob:') return false
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return true
+  return url.origin !== localImageBase.origin
+    || /^(?:https?:|\/\/)/iu.test(parsed.value)
 }

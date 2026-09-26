@@ -259,7 +259,7 @@ export function validateDist(distPath, options = {}) {
     .filter(([file]) => file.toLowerCase().endsWith('.svg'))
     .map(([file, path]) => [file, readFileSync(path, 'utf8')]))
   const requireVitePressIconContract = options.requireVitePressIconContract
-    ?? lockedVitePressVersion === '1.6.4'
+    ?? true
   const cssOptions = {
     dynamicResources: 'project',
     projectClassTokens,
