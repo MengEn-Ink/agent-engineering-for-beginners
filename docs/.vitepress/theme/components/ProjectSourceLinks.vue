@@ -23,6 +23,7 @@ const rows = computed(() => getProjectPage(props.projectId).subjects.flatMap((su
       <strong>{{ row.symbols.join(' · ') }}</strong>
       <span>{{ row.responsibility }}</span>
       <small>{{ row.repo }} · 固定 commit</small>
+      <span class="project-source-print-url" aria-hidden="true">{{ row.href }}</span>
     </li>
   </ol>
 </template>

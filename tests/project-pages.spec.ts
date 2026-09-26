@@ -492,70 +492,153 @@ describe('project presentation primitives', () => {
     }
   })
 
-  it('uses only local theme tokens and includes mobile, focus, dark, and print rules', () => {
-    const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
-    expect(style).toContain('.project-meta')
-    expect(style).toContain('.project-call-chain')
-    expect(style).toContain('.project-overview')
-    expect(style).toContain('@media (max-width: 700px)')
-    expect(style).toContain('@media print')
-    expect(style).toContain(':focus-visible')
-    expect(style).not.toMatch(/project-[^{]+\{[^}]*#[0-9a-f]{6}/isu)
-  })
+  it('parses responsive project rules by media scope and effective cascade', async () => {
+    const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
+    expect(pkg.devDependencies.postcss).toBe('8.5.28')
 
-  it('constrains source-link rows to the mobile content width', () => {
-    const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
-    expect(style).toMatch(
-      /\.project-source-links\s*>\s*li\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/su,
+    const sourceComponent = readFileSync(
+      'docs/.vitepress/theme/components/ProjectSourceLinks.vue',
+      'utf8',
     )
-  })
+    expect(sourceComponent).toContain('class="project-source-print-url"')
+    expect(sourceComponent).toContain('aria-hidden="true"')
+    expect(sourceComponent).toContain('{{ row.href }}')
+    expect(readFileSync('docs/.vitepress/theme/components/ProjectMeta.vue', 'utf8'))
+      .toContain('class="project-license-print-url"')
 
-  it('constrains project metadata rows to the mobile content width', () => {
-    const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
-    expect(style).toMatch(
-      /\.project-meta\s*>\s*ul\s*>\s*li\s*\{(?=[^}]*min-width:\s*0)(?=[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\))[^}]*\}/su,
-    )
-  })
+    const { default: postcss } = await import('postcss')
+    const root = postcss.parse(readFileSync('docs/.vitepress/theme/style.css', 'utf8'))
+    const rules: any[] = []
+    root.walkRules((rule) => rules.push(rule))
 
-  it('constrains call-chain rows to the mobile content width', () => {
-    const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
-    expect(style).toMatch(
-      /\.project-call-chain\s+li\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/su,
+    const selectors = (rule: any) => postcss.list.comma(rule.selector).map((value) => value.trim())
+    const scope = (rule: any) => {
+      let parent = rule.parent
+      while (parent && parent !== root) {
+        if (parent.type === 'atrule' && parent.name === 'media') {
+          return parent.params.replace(/\s+/gu, '').toLowerCase()
+        }
+        parent = parent.parent
+      }
+      return 'root'
+    }
+    const findExactRule = (expectedSelectors: string[], expectedScope: string) => {
+      const expected = [...expectedSelectors].sort()
+      const matches = rules.filter((rule) =>
+        scope(rule) === expectedScope
+        && JSON.stringify([...selectors(rule)].sort()) === JSON.stringify(expected))
+      expect(matches, `${expectedScope}: ${expectedSelectors.join(', ')}`).toHaveLength(1)
+      return matches[0]
+    }
+    const declarations = (rule: any) => Object.fromEntries(
+      rule.nodes
+        .filter((node: any) => node.type === 'decl')
+        .map((node: any) => [node.prop, { value: node.value, important: Boolean(node.important) }]),
     )
-  })
+    const expectEffectiveRule = (
+      expectedSelectors: string[],
+      expectedScope: string,
+      expectedDeclarations: Record<string, { value: string, important?: boolean }>,
+    ) => {
+      const rule = findExactRule(expectedSelectors, expectedScope)
+      const actual = declarations(rule)
+      for (const [property, expected] of Object.entries(expectedDeclarations)) {
+        expect(actual[property], `${rule.selector} ${property}`).toEqual({
+          value: expected.value,
+          important: expected.important ?? false,
+        })
+      }
+      const laterRules = rules.slice(rules.indexOf(rule) + 1)
+      for (const selector of expectedSelectors) {
+        for (const property of Object.keys(expectedDeclarations)) {
+          const overrides = laterRules.filter((candidate) =>
+            scope(candidate) === expectedScope
+            && selectors(candidate).includes(selector)
+            && Boolean(declarations(candidate)[property]))
+          expect(overrides, `later ${expectedScope} override: ${selector} ${property}`).toEqual([])
+        }
+      }
+    }
 
-  it('targets only fixed license URL rows for aggressive print wrapping', () => {
-    const meta = readFileSync('docs/.vitepress/theme/components/ProjectMeta.vue', 'utf8')
-    const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
-    expect(meta).toContain('class="project-license-print-url"')
-    expect(style).toMatch(
-      /\.project-license-print-url\s*\{[^}]*overflow-wrap:\s*anywhere/su,
-    )
-    expect(style).not.toMatch(/\.project-license-print(?:-url|\s+p)\s*\{[^}]*word-break:/su)
-  })
+    expectEffectiveRule(['.project-meta > ul > li'], 'root', {
+      'grid-template-columns': { value: 'minmax(0, 1fr)' },
+      'min-width': { value: '0' },
+    })
+    expectEffectiveRule(['.project-meta > ul > li > *'], 'root', {
+      'min-width': { value: '0' },
+    })
+    expectEffectiveRule(['.project-source-links > li'], 'root', {
+      'grid-template-columns': { value: 'minmax(0, 1fr)' },
+    })
+    expectEffectiveRule(['.project-call-chain li'], 'root', {
+      'grid-template-columns': { value: 'minmax(0, 1fr)' },
+      'min-width': { value: '0' },
+    })
+    expectEffectiveRule(['.project-license-print-url'], 'root', {
+      'overflow-wrap': { value: 'anywhere' },
+    })
+    expectEffectiveRule(['.project-source-print-url'], 'root', {
+      display: { value: 'none' },
+    })
 
-  it('uses paginatable block flow for project lists when printing', () => {
-    const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
-    const print = style.slice(style.lastIndexOf('@media print'))
-    expect(print).toMatch(
-      /\.project-meta\s*>\s*ul,\s*\.project-source-links,\s*\.project-call-chain\s*\{[^}]*display:\s*block/su,
+    expectEffectiveRule(
+      ['.project-architecture-nodes', '.project-call-chain'],
+      '(max-width:700px)',
+      { 'grid-template-columns': { value: '1fr' } },
     )
-    expect(print).toMatch(
-      /\.project-meta\s*>\s*ul\s*>\s*li,\s*\.project-source-links\s*>\s*li,\s*\.project-call-chain\s+li\s*\{[^}]*display:\s*block[^}]*break-inside:\s*avoid/su,
+    expectEffectiveRule(
+      ['.project-meta', '.project-chain-section', '.project-overview section'],
+      '(max-width:700px)',
+      { padding: { value: '0.9rem' } },
     )
-  })
 
-  it('bounds printed source URLs without creating pagination overflow', () => {
-    const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
-    const print = style.slice(style.lastIndexOf('@media print'))
-    for (const selector of [
-      String.raw`\.project-source-links\s+a\[href\]`,
-      String.raw`\.project-source-links\s+a\[href\]::after`,
-    ]) {
-      expect(print).toMatch(new RegExp(
-        `${selector}\\s*\\{(?=[^}]*display:\\s*block\\s*!important)(?=[^}]*max-width:\\s*100%\\s*!important)(?=[^}]*overflow-wrap:\\s*anywhere\\s*!important)(?=[^}]*white-space:\\s*normal\\s*!important)[^}]*\\}`,
-        'su',
-      ))
+    expectEffectiveRule(
+      ['.project-meta > ul', '.project-source-links', '.project-call-chain'],
+      'print',
+      { display: { value: 'block' } },
+    )
+    expectEffectiveRule(
+      ['.project-meta > ul > li', '.project-source-links > li', '.project-call-chain li'],
+      'print',
+      { display: { value: 'block' }, 'break-inside': { value: 'avoid' } },
+    )
+    expectEffectiveRule(
+      ['.project-meta > ul > li > *', '.project-source-links > li > *', '.project-call-chain li > *'],
+      'print',
+      { display: { value: 'block' } },
+    )
+    expectEffectiveRule(['.project-source-print-url'], 'print', {
+      display: { value: 'block', important: true },
+      'max-width': { value: '100%', important: true },
+      'overflow-wrap': { value: 'anywhere', important: true },
+      'white-space': { value: 'normal', important: true },
+    })
+
+    const allowedProjectWrapping = new Set([
+      '.project-meta code',
+      '.project-call-chain code',
+      '.project-source-links code',
+      '.project-license-print-url',
+      '.project-source-print-url',
+    ])
+    for (const rule of rules) {
+      const actual = declarations(rule)
+      if (actual['overflow-wrap']?.value === 'anywhere') {
+        for (const selector of selectors(rule).filter((value) => value.startsWith('.project'))) {
+          expect(allowedProjectWrapping.has(selector), `broad project wrap: ${selector}`).toBe(true)
+        }
+      }
+      if (selectors(rule).includes('.project-license-print p')) {
+        expect(actual['word-break']?.value).not.toBe('break-all')
+      }
+      if (selectors(rule).some((selector) => selector.includes('.project-source-links') && selector.includes('::after'))) {
+        expect(actual.content?.value ?? '').not.toMatch(/attr\(href\)/u)
+      }
+      if (selectors(rule).some((selector) => selector.startsWith('.project'))) {
+        for (const declaration of Object.values(actual) as Array<{ value: string }>) {
+          expect(declaration.value).not.toMatch(/#[0-9a-f]{6}\b/iu)
+        }
+      }
     }
   })
 

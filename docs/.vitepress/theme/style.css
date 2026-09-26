@@ -2199,6 +2199,10 @@ summary {
   overflow-wrap: anywhere;
 }
 
+.project-source-print-url {
+  display: none;
+}
+
 .project-meta summary {
   min-height: 44px;
   touch-action: manipulation;
@@ -2303,18 +2307,10 @@ summary {
     grid-template-columns: 1fr;
   }
 
-  .project-source-links a[href] {
+  .project-source-print-url {
     display: block !important;
     max-width: 100% !important;
     overflow-wrap: anywhere !important;
     white-space: normal !important;
-  }
-
-  .project-source-links a[href]::after {
-    display: block !important;
-    max-width: 100% !important;
-    overflow-wrap: anywhere !important;
-    white-space: normal !important;
-    content: " (" attr(href) ")";
   }
 }
