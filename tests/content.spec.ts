@@ -167,6 +167,19 @@ function createCompleteDistFixture() {
   return dist
 }
 
+function fixtureCourseMapHtml() {
+  const stages = ['基础认知', '核心机制', '生产工程', '应用模式', '项目拆解', '综合实战']
+  const links = publishedCourseItems.map(({ itemId }) => {
+    const route = getContentItem(itemId).route
+    return `<a href="/agent-engineering-for-beginners${route}">${itemId}</a>`
+  })
+  return `<nav class="course-map">${stages.join('')}本地进度将在页面加载后显示${links.join('')}</nav>`
+}
+
+function fixtureCourseHtml(extra = '') {
+  return `<div class="Layout">${fixtureCourseMapHtml()}${extra}</div>`
+}
+
 function contentCharacterCount(markdown: string) {
   return markdown
     .replace(/^---[\s\S]*?---\s*/u, '')
@@ -1193,9 +1206,15 @@ describe('progressive project publication boundary', () => {
   it('allows every approved project output with POSIX and Windows separators', () => {
     for (const output of approvedProjectOutputs) {
       expect(validatePublishedRouteBoundary([output])).toEqual([])
-      expect(validatePublishedRouteBoundary([output.replaceAll('/', '\\')])).toEqual([])
+      expect(validatePublishedRouteBoundary(
+        [output.replaceAll('/', '\\')],
+        { sourceKind: 'windows-filesystem' },
+      )).toEqual([])
     }
-    expect(validatePublishedRouteBoundary(['projects\\aider.html'])).toEqual([])
+    expect(validatePublishedRouteBoundary(
+      ['projects\\aider.html'],
+      { sourceKind: 'windows-filesystem' },
+    )).toEqual([])
     expect(validatePublishedRouteBoundary(['./projects/aider.html'])).toEqual([])
   })
 
@@ -1249,6 +1268,18 @@ describe('progressive project publication boundary', () => {
       expect.stringContaining('C:\\projects\\aider.html'),
       expect.stringContaining('projects/\0aider.html'),
     ]))
+    expect(validatePublishedRouteBoundary(
+      [
+        'C:projects\\aider.html',
+        '\\\\server\\share\\projects\\aider.html',
+        '\\\\?\\C:\\projects\\aider.html',
+      ],
+      { sourceKind: 'windows-filesystem' },
+    )).toEqual(expect.arrayContaining([
+      expect.stringContaining('C:projects\\aider.html'),
+      expect.stringContaining('\\\\server\\share\\projects\\aider.html'),
+      expect.stringContaining('\\\\?\\C:\\projects\\aider.html'),
+    ]))
   })
 })
 
@@ -1278,19 +1309,24 @@ describe('project publication boundary', () => {
     }
   })
 
-  it('canonicalizes Windows-style approved outputs before every dist check', () => {
+  it('rejects backslash filenames read from the POSIX filesystem', () => {
     const dist = createCompleteDistFixture()
     try {
       for (const relative of expectedProjectOutputs) {
         renameSync(join(dist, relative), join(dist, relative.replaceAll('/', '\\')))
       }
-      expect(validateDist(dist)).toEqual([])
+      expect(validateDist(dist))
+        .toContainEqual(expect.stringContaining('构建产物包含非法文件路径'))
+      expect(validateProductionDist(dist, {
+        requireVitePressIconContract: false,
+        filesystemSourceKind: 'windows-filesystem',
+      })).toEqual([])
     } finally {
       rmSync(dist, { recursive: true, force: true })
     }
   })
 
-  it('rejects output paths that collide after POSIX normalization', () => {
+  it('does not normalize literal backslash filenames into POSIX collisions', () => {
     const dist = createCompleteDistFixture()
     try {
       copyFileSync(
@@ -1298,7 +1334,7 @@ describe('project publication boundary', () => {
         join(dist, 'projects\\aider.html'),
       )
       expect(validateDist(dist))
-        .toContain('构建产物路径规范化后重复：projects/aider.html')
+        .toContain('构建产物包含非法文件路径：projects\\aider.html')
     } finally {
       rmSync(dist, { recursive: true, force: true })
     }
@@ -1352,10 +1388,181 @@ describe('project publication boundary', () => {
       return `<a href="/agent-engineering-for-beginners${route}">${itemId}</a>`
     })
     const bait = `<nav class="course-map">${stages.join('')}本地进度将在页面加载后显示${links.join('')}</nav>`
-    const html = `<!-- ${bait} --><script>${bait}</script><nav class="course-map">真实课程地图</nav>`
+    const html = `<!-- ${bait} --><script>${bait}</script><style>${bait}</style><template>${bait}</template><code>${bait}</code><nav class="course-map">真实课程地图</nav>`
 
     expect(validateCourseDist(html)).toContain('课程页必须包含 26 个唯一的公开课程链接')
     expect(validateCourseDist(html)).toContain('课程页缺少 SSR 中性进度文案')
+  })
+
+  it('rejects forbidden course links outside the course map and vp-doc', () => {
+    const html = fixtureCourseHtml(`
+<main class="vp-doc"><a href="/agent-engineering-for-beginners/labs/hidden-label">阅读</a></main>
+<aside><form action="/agent-engineering-for-beginners/capstone/run"></form></aside>
+<noscript><a href="/agent-engineering-for-beginners/labs/no-js">No JS</a></noscript>
+<svg>
+  <a xlink:href="/agent-engineering-for-beginners/projects/aider" href="/agent-engineering-for-beginners/labs/svg"><text>标记已读</text></a>
+  <a xlink:href="/agent-engineering-for-beginners/capstone/svg">Capstone</a>
+  <foreignObject><button aria-label="标记已读"></button></foreignObject>
+</svg>
+`)
+    expect(validateCourseDist(html)).toContain('课程页包含未发布入口或写操作：/labs/')
+    expect(validateCourseDist(html)).toContain('课程页包含未发布入口或写操作：/capstone/')
+    expect(validateCourseDist(html)).toContain('课程页包含未发布入口或写操作：标记已读')
+  })
+
+  it('enforces the project directory and leaf 200/404 route matrix', () => {
+    for (const [marker, href] of [
+      ['/labs/', '/agent-engineering-for-beginners/labs'],
+      ['/labs/', '/agent-engineering-for-beginners/labs/'],
+      ['/labs/', '/agent-engineering-for-beginners/labs.html?preview=1'],
+      ['/labs/', '/agent-engineering-for-beginners/labs%2Findex.html'],
+      ['/labs/', '/agent-engineering-for-beginners/labs%252Findex.html'],
+      ['/labs/', '/agent-engineering-for-beginners/%6cabs/index.html'],
+      ['/labs/', '/agent-engineering-for-beginners/labs/%'],
+      ['/labs/', '/agent-engineering-for-beginners/labs%'],
+      ['/capstone/', '/agent-engineering-for-beginners/capstone/index.html#run'],
+      ['/capstone/', '/agent-engineering-for-beginners/capstone%5Cindex.html'],
+      ['/capstone/', '/agent-engineering-for-beginners/capstone%ZZ'],
+      ['/projects/', '/agent-engineering-for-beginners/projects.html'],
+      ['/projects/', '/agent-engineering-for-beginners/projects%2Faider'],
+      ['/projects/', '/agent-engineering-for-beginners/projects%2faider'],
+      ['/projects/', '/agent-engineering-for-beginners/projects%252Faider'],
+      ['/projects/', '/agent-engineering-for-beginners/projects%5Caider'],
+      ['/projects/', '/agent-engineering-for-beginners/projects\\aider'],
+      ['/projects/', '/agent-engineering-for-beginners/%70rojects/aider'],
+      ['/projects/', '/agent-engineering-for-beginners/projects%2F'],
+      ['/projects/', '/agent-engineering-for-beginners/projects%2Findex.html'],
+      ['/projects/', '/agent-engineering-for-beginners/projects/aider%2F'],
+      ['/projects/', '/agent-engineering-for-beginners/projects/aider%2Ehtml'],
+    ]) {
+      expect(validateCourseDist(fixtureCourseHtml(
+        `<button formaction="${href}">Open</button>`,
+      )), href).toContain(`课程页包含未发布入口或写操作：${marker}`)
+    }
+
+    for (const route of ['/projects', '/projects/', '/projects/index.html']) {
+      expect(validateCourseDist(fixtureCourseHtml(
+        `<a href="/agent-engineering-for-beginners${route}">Overview</a>`,
+      )), route).toEqual([])
+    }
+
+    for (const output of expectedProjectOutputs.slice(1)) {
+      const cleanRoute = `/${output.slice(0, -'.html'.length)}`
+      for (const route of [cleanRoute, `/${output}`]) {
+        expect(validateCourseDist(fixtureCourseHtml(
+          `<a href="/agent-engineering-for-beginners${route}">Project</a>`,
+        )), route).toEqual([])
+      }
+      expect(validateCourseDist(fixtureCourseHtml(
+        `<a href="/agent-engineering-for-beginners${cleanRoute}/">404 leaf</a>`,
+      )), cleanRoute).toContain('课程页包含未发布入口或写操作：/projects/')
+    }
+  })
+
+  it('does not relocate positive course evidence out of a head noscript', () => {
+    const html = `<!doctype html><html><head><noscript>${fixtureCourseMapHtml()}</noscript></head><body><nav class="course-map">真实课程地图</nav></body></html>`
+
+    expect(validateCourseDist(html)).toContain('课程页必须包含 26 个唯一的公开课程链接')
+    expect(validateCourseDist(html)).toContain('课程页缺少 SSR 中性进度文案')
+  })
+
+  it('parses noscript course links as real no-JavaScript DOM', () => {
+    const html = fixtureCourseHtml(`
+<noscript><a href="&#x2F;agent-engineering-for-beginners&#x2F;labs&#x2F;no-js">No JS</a></noscript>
+`)
+    expect(validateCourseDist(html)).toContain('课程页包含未发布入口或写操作：/labs/')
+  })
+
+  it('rejects hidden outer interactions and unapproved project links', () => {
+    const html = fixtureCourseHtml(`
+<aside hidden>
+  <a href="/agent-engineering-for-beginners/projects/unapproved">阅读</a>
+  <button aria-label="标记已读"></button>
+</aside>
+`)
+    expect(validateCourseDist(html)).toContain('课程页包含未发布入口或写操作：/projects/')
+    expect(validateCourseDist(html)).toContain('课程页包含未发布入口或写操作：标记已读')
+  })
+
+  it('scans HTML-namespace defs and symbol while ignoring ordinary external paths', () => {
+    const forbidden = fixtureCourseHtml(`
+<defs><a href="/agent-engineering-for-beginners/labs/html-defs">Labs</a></defs>
+<symbol><button aria-label="标记已读"></button></symbol>
+`)
+    expect(validateCourseDist(forbidden)).toContain('课程页包含未发布入口或写操作：/labs/')
+    expect(validateCourseDist(forbidden)).toContain('课程页包含未发布入口或写操作：标记已读')
+
+    const sameOrigin = fixtureCourseHtml(`
+<a href="https://mengen-ink.github.io/agent-engineering-for-beginners/labs/guide">Same-origin labs</a>
+<form action="//mengen-ink.github.io/agent-engineering-for-beginners/capstone/run"></form>
+`)
+    expect(validateCourseDist(sameOrigin))
+      .toContain('课程页包含未发布入口或写操作：/labs/')
+    expect(validateCourseDist(sameOrigin))
+      .toContain('课程页包含未发布入口或写操作：/capstone/')
+
+    const external = fixtureCourseHtml(`
+<a href="https://docs.example/labs/guide">External labs docs</a>
+<a href="https://evil.example/projects/aider">External path lookalike</a>
+`)
+    expect(validateCourseDist(external)).toEqual([])
+
+    const dangerous = fixtureCourseHtml('<a href="javascript:alert(1)">Unsafe</a>')
+    expect(validateCourseDist(dangerous))
+      .toContain('课程页包含未发布入口或写操作：不安全导航')
+
+    const malformed = fixtureCourseHtml('<a href="http://[">Malformed</a>')
+    expect(validateCourseDist(malformed))
+      .toContain('课程页包含未发布入口或写操作：不安全导航')
+  })
+
+  it('rejects HTML document bases and scans image-map areas', () => {
+    const based = `<!doctype html><html><head><base href="${siteConfig.base}labs/"></head><body>${fixtureCourseHtml('<a href="run">Labs</a>')}</body></html>`
+    expect(validateCourseDist(based))
+      .toContain('课程页包含未发布入口或写操作：不安全导航')
+
+    const externalBase = `<!doctype html><html><head><base href="https://docs.example/labs/"></head><body>${fixtureCourseHtml('<a href="guide">External labs docs</a>')}</body></html>`
+    expect(validateCourseDist(externalBase))
+      .toContain('课程页包含未发布入口或写操作：不安全导航')
+
+    const hiddenBareBase = fixtureCourseHtml('<div hidden><base></div>')
+    expect(validateCourseDist(hiddenBareBase))
+      .toContain('课程页包含未发布入口或写操作：不安全导航')
+
+    const exampleBase = fixtureCourseHtml('<pre><base></pre>')
+    expect(validateCourseDist(exampleBase))
+      .toContain('课程页包含未发布入口或写操作：不安全导航')
+
+    const foreignBase = fixtureCourseHtml(`
+<svg><base href="https://docs.example/"></base></svg>
+<a href="/agent-engineering-for-beginners/labs/run">Labs</a>
+`)
+    expect(validateCourseDist(foreignBase))
+      .toContain('课程页包含未发布入口或写操作：/labs/')
+
+    const mathMlBase = fixtureCourseHtml(`
+<math><base href="https://docs.example/"></base></math>
+<a href="/agent-engineering-for-beginners/labs/run">Labs</a>
+`)
+    expect(validateCourseDist(mathMlBase))
+      .toContain('课程页包含未发布入口或写操作：/labs/')
+
+    const imageMap = fixtureCourseHtml(`
+<img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==" usemap="#course-routes">
+<map name="course-routes"><area href="/agent-engineering-for-beginners/capstone/run" alt="Capstone"></map>
+`)
+    expect(validateCourseDist(imageMap))
+      .toContain('课程页包含未发布入口或写操作：/capstone/')
+  })
+
+  it('ignores inert forbidden bait while accepting an otherwise legal full course page', () => {
+    const bait = '<a href="/agent-engineering-for-beginners/labs/bait">标记已读</a>'
+    const html = fixtureCourseHtml(`
+<!-- ${bait} --><script>${bait}</script><style>${bait}</style>
+<template>${bait}</template><code>${bait}</code>
+<svg><defs>${bait}</defs><symbol>${bait}</symbol></svg>
+`)
+    expect(validateCourseDist(html)).toEqual([])
   })
 
   it('accepts only clean root-relative exact course URLs', () => {

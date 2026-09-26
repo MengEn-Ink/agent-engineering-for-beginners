@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { existsSync, lstatSync, readdirSync, statSync } from 'node:fs'
-import { join, posix, relative } from 'node:path'
+import { join, posix, relative, win32 } from 'node:path'
 import parseSrcset from 'parse-srcset'
 import { parse, parseFragment, Tokenizer } from 'parse5'
 import postcss from 'postcss'
@@ -15,6 +15,9 @@ const hiddenMarkdownHtmlElements = new Set([
   'code',
   'pre',
   'svg',
+])
+const hiddenCoursePositiveElements = new Set([
+  'code', 'noscript', 'pre', 'script', 'style', 'svg', 'template',
 ])
 const hiddenResourceHtmlElements = new Set(['template'])
 const hiddenImageHtmlElements = new Set([...hiddenResourceHtmlElements, 'style'])
@@ -271,6 +274,62 @@ function normalizedVisibleText(nodes, hiddenElements = hiddenHtmlElements) {
     .join(' ')
     .replace(/\p{White_Space}+/gu, ' ')
     .trim()
+}
+
+function coursePositiveNodeIsHidden(node) {
+  return hiddenCoursePositiveElements.has(node.tagName)
+    || attribute(node, 'hidden') !== undefined
+    || attribute(node, 'inert') !== undefined
+    || (attribute(node, 'aria-hidden') ?? '').toLowerCase() === 'true'
+}
+
+function coursePositiveElementsWithin(nodes, predicate, hidden = false) {
+  const matches = []
+  for (const node of nodes ?? []) {
+    const nextHidden = hidden || coursePositiveNodeIsHidden(node)
+    if (!nextHidden && node.tagName && predicate(node)) matches.push(node)
+    if (!nextHidden) {
+      matches.push(...coursePositiveElementsWithin(node.childNodes, predicate, false))
+    }
+  }
+  return matches
+}
+
+function coursePositiveText(node) {
+  if (coursePositiveNodeIsHidden(node)) return ''
+  if (node.nodeName === '#text') return node.value ?? ''
+  return (node.childNodes ?? []).map(coursePositiveText).join(' ')
+}
+
+function courseNegativeNodeIsHidden(node) {
+  return ['code', 'pre', 'script', 'style', 'template'].includes(node.tagName)
+    || (node.namespaceURI === svgNamespace && ['defs', 'symbol'].includes(node.tagName))
+}
+
+function courseNegativeElementsWithin(nodes, predicate, hidden = false) {
+  const matches = []
+  for (const node of nodes ?? []) {
+    const nextHidden = hidden || courseNegativeNodeIsHidden(node)
+    if (!nextHidden && node.tagName && predicate(node)) matches.push(node)
+    if (!nextHidden) {
+      matches.push(...courseNegativeElementsWithin(node.childNodes, predicate, false))
+    }
+  }
+  return matches
+}
+
+function courseNegativeText(node) {
+  if (courseNegativeNodeIsHidden(node)) return ''
+  if (node.nodeName === '#text') return node.value ?? ''
+  return (node.childNodes ?? []).map(courseNegativeText).join(' ')
+}
+
+function navigationHref(node) {
+  if (node.namespaceURI !== svgNamespace) return attribute(node, 'href') ?? null
+  const hrefs = (node.attrs ?? []).filter((candidate) => candidate.name === 'href')
+  return hrefs.find((candidate) => !candidate.namespace && !candidate.prefix)?.value
+    ?? hrefs.find((candidate) => candidate.namespace === xlinkNamespace)?.value
+    ?? null
 }
 
 function normalizeRenderedMarkdownHref(href) {
@@ -1727,21 +1786,27 @@ function listFiles(root) {
   return { files, errors }
 }
 
-export function normalizePublishedOutputPath(file) {
+export function normalizePublishedOutputPath(file, options = {}) {
+  const sourceKind = options.sourceKind ?? 'posix-filesystem'
   if (
     file.includes('\0')
     || file.startsWith('/')
-    || file.startsWith('\\')
     || /^[A-Za-z]:/u.test(file)
+    || (sourceKind !== 'windows-filesystem' && file.includes('\\'))
+    || (sourceKind === 'windows-filesystem'
+      ? win32.isAbsolute(file)
+      : file.startsWith('\\'))
   ) {
     return null
   }
 
-  const normalized = posix.normalize(file.replace(/\\/gu, '/'))
+  const normalized = sourceKind === 'windows-filesystem'
+    ? win32.normalize(file).replace(/\\/gu, '/')
+    : posix.normalize(file)
   return normalized === '..' || normalized.startsWith('../') ? null : normalized
 }
 
-export function indexDistFiles(root) {
+export function indexDistFiles(root, options = {}) {
   const files = new Map()
   const rawFiles = []
   const errors = []
@@ -1755,8 +1820,13 @@ export function indexDistFiles(root) {
   for (const absolute of listed.files) {
     const raw = relative(root, absolute)
     rawFiles.push(raw)
-    const normalized = normalizePublishedOutputPath(raw)
-    if (normalized === null) continue
+    const sourceKind = options.sourceKind
+      ?? (process.platform === 'win32' ? 'windows-filesystem' : 'posix-filesystem')
+    const normalized = normalizePublishedOutputPath(raw, { sourceKind })
+    if (normalized === null) {
+      errors.push(`构建产物包含非法文件路径：${raw}`)
+      continue
+    }
     if (files.has(normalized)) {
       errors.push(`构建产物路径规范化后重复：${normalized}`)
       continue
@@ -1794,14 +1864,50 @@ export function normalizeCleanCourseHref(href, siteBase) {
 }
 
 export function extractCourseHtmlContract(html) {
-  const document = parse(html)
-  const courseMaps = elementsWithin(document.childNodes, (node) => hasClass(node, 'course-map'))
-  const vpDocs = elementsWithin(document.childNodes, (node) => hasClass(node, 'vp-doc'))
-  const pageRoots = vpDocs.length > 0 ? vpDocs : courseMaps
+  const positiveDocument = parse(html, { scriptingEnabled: true })
+  const negativeDocument = parse(html, { scriptingEnabled: false })
+  const courseMaps = coursePositiveElementsWithin(
+    positiveDocument.childNodes,
+    (node) => hasClass(node, 'course-map'),
+  )
+  const documentElements = courseNegativeElementsWithin(
+    negativeDocument.childNodes,
+    () => true,
+  )
+  const hasDocumentBase = elementsWithin(
+    negativeDocument.childNodes,
+    (node) => node.namespaceURI === htmlNamespace && node.tagName === 'base',
+    new Set(),
+  ).length > 0
+  const navigationHrefs = documentElements.flatMap((node) => {
+    if (node.tagName === 'a' || node.tagName === 'area') return [navigationHref(node)]
+    if (node.tagName === 'form') return [attribute(node, 'action') ?? null]
+    if (node.tagName === 'button' || node.tagName === 'input') {
+      const formAction = attribute(node, 'formaction')
+      return formAction === undefined ? [] : [formAction]
+    }
+    return []
+  })
+  const interactionText = documentElements
+    .filter((node) => ['a', 'area', 'button', 'form', 'input'].includes(node.tagName)
+      || ['button', 'link'].includes((attribute(node, 'role') ?? '').toLowerCase()))
+    .flatMap((node) => [
+      courseNegativeText(node),
+      attribute(node, 'aria-label') ?? '',
+      attribute(node, 'title') ?? '',
+      attribute(node, 'value') ?? '',
+    ])
+    .join(' ')
   return {
-    hrefs: hrefsWithin(courseMaps),
-    courseText: courseMaps.map((node) => visibleText(node)).join(' '),
-    pageText: pageRoots.map((node) => visibleText(node)).join(' '),
+    hrefs: coursePositiveElementsWithin(courseMaps, (node) => node.tagName === 'a')
+      .map((node) => attribute(node, 'href') ?? null),
+    hasDocumentBase,
+    navigationHrefs,
+    interactionText,
+    courseText: courseMaps.map(coursePositiveText).join(' '),
+    pageText: negativeDocument.childNodes.map(courseNegativeText).join(' ')
+      .replace(/\p{White_Space}+/gu, ' ')
+      .trim(),
   }
 }
 

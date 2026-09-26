@@ -54,6 +54,7 @@ const publishedCourseRoutes = [
 
 const forbiddenCourseMarkers = ['/labs/', '/capstone/', '标记已读', '加入书签']
 const siteBase = '/agent-engineering-for-beginners'
+const siteOrigin = 'https://mengen-ink.github.io'
 const projectCatalog = loadProjectCatalog(new URL('../sources/project-index.yml', import.meta.url))
 const lockedVitePressVersion = readLockedVitePressVersion(
   readFileSync(new URL('../pnpm-lock.yaml', import.meta.url), 'utf8'),
@@ -70,6 +71,10 @@ export const approvedProjectFiles = new Set([
   'projects/crewai.html',
   'projects/history-autogpt-flowise.html',
 ])
+const approvedProjectRoutes = new Set([...approvedProjectFiles].flatMap((file) =>
+  file === 'projects/index.html'
+    ? ['/projects', '/projects/', '/projects/index.html']
+    : [`/${file.slice(0, -'.html'.length)}`, `/${file}`]))
 
 const coreProjectFiles = new Set([
   'projects/mcp-python-sdk.html',
@@ -89,9 +94,9 @@ const coreProjectHeadings = [
   '高频面试点', '升级复核', '来源与归因',
 ]
 
-export function validatePublishedRouteBoundary(relativeFiles) {
+export function validatePublishedRouteBoundary(relativeFiles, options = {}) {
   const forbidden = relativeFiles.filter((file) => {
-    const normalized = normalizePublishedOutputPath(file)
+    const normalized = normalizePublishedOutputPath(file, options)
     return normalized === null
       || /^(?:labs|capstone|superpowers)(?:\.html|\/)/iu.test(normalized)
       || (/^projects(?:\.html|\/)/iu.test(normalized) && !approvedProjectFiles.has(normalized))
@@ -104,6 +109,12 @@ export function validatePublishedRouteBoundary(relativeFiles) {
 export function validateCourseDist(html) {
   const errors = []
   const contract = extractCourseHtmlContract(html)
+  const forbiddenRoutes = new Set()
+  const documentUrl = `${siteOrigin}${siteBase}/course/`
+  const navigationBase = new URL(documentUrl)
+  if (contract.hasDocumentBase) {
+    forbiddenRoutes.add('unsafe-navigation')
+  }
   const normalizedHrefs = contract.hrefs.map((href) => normalizeCleanCourseHref(href, siteBase))
   const hasEveryRouteOnce = publishedCourseRoutes.every((route) =>
     normalizedHrefs.filter((href) => href === route).length === 1,
@@ -123,8 +134,77 @@ export function validateCourseDist(html) {
   for (const stage of courseStages) {
     if (!contract.courseText.includes(stage)) errors.push(`课程页缺少阶段：${stage}`)
   }
+  for (const href of contract.navigationHrefs) {
+    if (typeof href !== 'string') continue
+    try {
+      const url = new URL(href, navigationBase)
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+        forbiddenRoutes.add('unsafe-navigation')
+        continue
+      }
+      if (url.origin !== siteOrigin) continue
+      const pathname = url.pathname
+      if (href.includes('\\')) {
+        forbiddenRoutes.add('unsafe-navigation')
+        const normalizedRoute = pathname.startsWith(`${siteBase}/`)
+          ? pathname.slice(siteBase.length)
+          : pathname
+        if (/^\/labs(?:\/|\.html(?:\/|$)|$)/iu.test(normalizedRoute)) {
+          forbiddenRoutes.add('/labs/')
+        }
+        if (/^\/capstone(?:\/|\.html(?:\/|$)|$)/iu.test(normalizedRoute)) {
+          forbiddenRoutes.add('/capstone/')
+        }
+        if (/^\/projects(?:\/|\.html(?:\/|$)|$)/iu.test(normalizedRoute)) {
+          forbiddenRoutes.add('/projects/')
+        }
+      }
+      const pathnames = [pathname]
+      let canonicalPathname = pathname
+      for (let depth = 0; depth < 2 && canonicalPathname.includes('%'); depth += 1) {
+        try {
+          const decoded = decodeURIComponent(canonicalPathname)
+          if (decoded === canonicalPathname) break
+          pathnames.push(decoded)
+          canonicalPathname = decoded
+        } catch {
+          forbiddenRoutes.add('unsafe-navigation')
+          const malformedPrefix = canonicalPathname.slice(0, canonicalPathname.indexOf('%'))
+          if (malformedPrefix !== canonicalPathname) pathnames.push(malformedPrefix)
+          break
+        }
+      }
+      if (canonicalPathname.includes('%')) forbiddenRoutes.add('unsafe-navigation')
+      for (const [index, candidate] of pathnames.entries()) {
+        const normalizedCandidate = candidate.replace(/\\/gu, '/')
+        const route = normalizedCandidate.startsWith(`${siteBase}/`)
+          ? normalizedCandidate.slice(siteBase.length)
+          : normalizedCandidate
+        if (/^\/labs(?:\/|\.html(?:\/|$)|$)/iu.test(route)) forbiddenRoutes.add('/labs/')
+        if (/^\/capstone(?:\/|\.html(?:\/|$)|$)/iu.test(route)) {
+          forbiddenRoutes.add('/capstone/')
+        }
+        if (
+          /^\/projects(?:\/|\.html(?:\/|$)|$)/iu.test(route)
+          && (index > 0 || !approvedProjectRoutes.has(route))
+        ) forbiddenRoutes.add('/projects/')
+      }
+    } catch {
+      forbiddenRoutes.add('unsafe-navigation')
+    }
+  }
   for (const marker of forbiddenCourseMarkers) {
-    if (contract.pageText.includes(marker)) errors.push(`课程页包含未发布入口或写操作：${marker}`)
+    if (
+      forbiddenRoutes.has(marker)
+      || contract.pageText.includes(marker)
+      || contract.interactionText.includes(marker)
+    ) errors.push(`课程页包含未发布入口或写操作：${marker}`)
+  }
+  if (forbiddenRoutes.has('/projects/')) {
+    errors.push('课程页包含未发布入口或写操作：/projects/')
+  }
+  if (forbiddenRoutes.has('unsafe-navigation')) {
+    errors.push('课程页包含未发布入口或写操作：不安全导航')
   }
 
   return errors
@@ -201,13 +281,18 @@ export function validateDist(distPath, options = {}) {
   if (!existsSync(distPath)) return [`构建产物不存在：${distPath}`]
 
   const errors = []
-  const indexed = indexDistFiles(distPath)
+  const filesystemSourceKind = options.filesystemSourceKind
+    ?? (process.platform === 'win32' ? 'windows-filesystem' : 'posix-filesystem')
+  const indexed = indexDistFiles(distPath, { sourceKind: filesystemSourceKind })
   const relativeFiles = [...indexed.files.keys()]
   errors.push(...indexed.errors)
   const leaked = relativeFiles.filter((file) =>
     file.split(/[\\/]/).some((segment) => segment.toLowerCase() === 'superpowers'))
   if (leaked.length > 0) errors.push(`构建产物泄露 superpowers 页面：${leaked.join(', ')}`)
-  errors.push(...validatePublishedRouteBoundary(indexed.rawFiles))
+  errors.push(...validatePublishedRouteBoundary(
+    indexed.rawFiles,
+    { sourceKind: filesystemSourceKind },
+  ))
   for (const file of approvedProjectFiles) {
     if (!relativeFiles.includes(file)) errors.push(`构建产物缺少项目页面：${file}`)
   }
