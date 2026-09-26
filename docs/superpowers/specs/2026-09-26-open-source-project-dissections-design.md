@@ -610,6 +610,7 @@ dist HTML ── parse5 ── publication-contracts.mjs ── check-dist.mjs
 - `/course/` SSR 恰好包含 26 个唯一课程链接；每个目标 HTML 存在。
 - dist 路径按真实 filesystem 来源解释并保持大小写敏感；POSIX 字面反斜杠文件名不得冒充目录分隔符，只有显式 Windows filesystem 输入才使用 `path.win32` 转换。转换前拒绝 drive-relative/absolute、UNC/device、NUL、逃逸路径、规范化碰撞、符号链接和悬空符号链接。只允许本设计 8 个 `/projects` 页面，拒绝额外 `/projects/**` 与全部 `/labs/**`、`/capstone/**`、`/superpowers/**`。
 - 课程页必须有且仅有 26 个规范的根相对 anchor；每个项目页的全部 anchor 必须与 catalog 推导出的页面、仓库、watch、许可证、源码和面试题集合完全相等，不接受缺失、重复、额外、query、fragment、userinfo、非标准端口或移动分支变体。
+- 课程页正向结构与负向禁发检查使用独立 DOM：正向只接受普通主文档中的 26 项；负向覆盖完整 no-JavaScript DOM，并拒绝 HTML `base`、`meta refresh`、`iframe/object/embed`、任意 HTML/SVG inline `on*`、SVG `xml:base` 以及指向 Lab、Capstone 或未批准项目页的交互入口。同站 HTTP/HTTPS 默认端口与协议相对链接都按站内路由检查，外部资料链接不误报。
 - 项目总览的 `/projects`、`/projects/`、`/projects/index.html` 均为 200；七个项目叶页的 clean URL 与 `.html` 为 200，叶页尾斜杠为 404；全部旧 URL 按其既有目录页或叶页静态形态保持兼容。
 - process docs 与项目研究草稿不进入 dist。
 
