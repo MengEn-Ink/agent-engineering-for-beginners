@@ -1495,6 +1495,8 @@ describe('project publication boundary', () => {
       String.raw`<div style="background-image:-webkit-image-set(-webkit-cross\2d fade(url(https://evil.example/terminated-nested.png),url(/local.png),50%) 1x)"></div>`,
       '<div style="background-image:image-set(image(cross-fade(url(https://evil.example/deep.png),url(/local.png),50%)) 1x)"></div>',
       String.raw`<div style="background-image:image-set(-webkit-cross-fade(u\72l(https://evil.example/nested-escaped.png),url(/local.png),50%) 1x)"></div>`,
+      '<div style="background-image:image(\'https://evil.example/image-function.png\', red)"></div>',
+      String.raw`<div style="background-image:image('https\3A \2F \2F evil.example/image-escaped.png', transparent)"></div>`,
       '<div style="background-image:image-set(var(--remote) 1x)"></div>',
       '<div style="background-image:env(remote-image)"></div>',
       '<div style="background-image:attr(data-image url)"></div>',
@@ -1552,6 +1554,9 @@ describe('project publication boundary', () => {
       expect(validateDist(dist)).toEqual([])
 
       for (const css of [
+        '[class$="-source-links"]{background-image:var(--remote)}',
+        String.raw`[class$="\2d source-links"]{background-image:env(remote-image)}`,
+        '*{background-image:attr(data-image url)}',
         '.remote{background:url(https://evil.example/a.png)}',
         '@import "//evil.example/theme.css";',
         '@import url(https://evil.example/theme-url.css);',
@@ -1565,6 +1570,8 @@ describe('project publication boundary', () => {
         String.raw`.remote{background-image:-webkit-image-set(-webkit-cross\2d fade(url(https://evil.example/terminated-nested.png),url(/local.png),50%) 1x)}`,
         '.remote{background-image:image-set(image(cross-fade(url(https://evil.example/deep.png),url(/local.png),50%)) 1x)}',
         String.raw`.remote{background-image:image-set(-webkit-cross-fade(u\72l(https://evil.example/nested-escaped.png),url(/local.png),50%) 1x)}`,
+        '.remote{background-image:image("https://evil.example/image-function.png",red)}',
+        String.raw`.remote{background-image:image("https\3A \2F \2F evil.example/image-escaped.png",transparent)}`,
         '.project-remote{background-image:image-set(var(--remote) 1x)}',
         '.project-remote{background-image:env(remote-image)}',
         '.project-remote{background-image:attr(data-image url)}',
@@ -1577,6 +1584,12 @@ describe('project publication boundary', () => {
         expect(validateDist(dist), css)
           .toContain('构建产物 CSS 包含外链资源：assets/project.css')
       }
+
+      writeFileSync(
+        cssPath,
+        '[class$="-definitely-missing"]{background-image:var(--safe)}',
+      )
+      expect(validateDist(dist)).toEqual([])
     } finally {
       rmSync(dist, { recursive: true, force: true })
     }

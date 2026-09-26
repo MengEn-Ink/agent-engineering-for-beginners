@@ -225,11 +225,13 @@ export function validateDist(distPath) {
   }
 
   const projectContracts = new Map()
+  const projectClassTokens = new Set()
   for (const file of approvedProjectFiles) {
     const projectPath = indexed.files.get(file)
     if (projectPath === undefined) continue
     const contract = extractProjectHtmlContract(readFileSync(projectPath, 'utf8'))
     projectContracts.set(file, contract)
+    for (const className of contract.classTokens) projectClassTokens.add(className)
     if (!exactHrefs(contract.hrefs, expectedProjectDocumentHrefs(file))) {
       errors.push(`项目页链接不符合公开契约：${file}`)
     }
@@ -245,6 +247,7 @@ export function validateDist(distPath) {
     if (!file.toLowerCase().endsWith('.css')) continue
     const resources = extractCssResourceCandidates(readFileSync(path, 'utf8'), {
       dynamicResources: 'project',
+      projectClassTokens,
     })
     if (resources.some(isRemoteImageCandidate)) {
       errors.push(`构建产物 CSS 包含外链资源：${file}`)

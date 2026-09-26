@@ -14,6 +14,7 @@ import {
 } from '../scripts/project-catalog.mjs'
 import {
   extractCssResourceCandidates,
+  extractProjectHtmlContract,
   extractProjectMarkdownContract,
   isRemoteImageCandidate,
 } from '../scripts/publication-contracts.mjs'
@@ -320,6 +321,8 @@ ${escapedImportTarget}
 .nested-terminated { background-image: -webkit-image-set(${terminatedNestedFunction} 1x) }
 .deep { background-image: image-set(image(cross-fade(url(https://evil.example/deep.png), url(data:image/png;base64,DDDD), 50%)) 1x) }
 .nested-escaped { background-image: image-set(-webkit-cross-fade(${nestedEscapedUrl}, url(/local-escaped.png), 50%) 1x) }
+.image-function { background-image: image("https://evil.example/image-function.png", red) }
+.nested-image-function { background-image: image-set(image("https://evil.example/nested-image-function.png", blue) 1x) }
 .unresolved { background-image: image-set(var(--remote) 1x); mask-image: env(remote-mask); cursor: attr(data-cursor url) }
 .local { background: url(data:image/png;base64,AAAA); mask: url(blob:https://example.com/id) }
 </style>
@@ -362,6 +365,8 @@ ${escapedImportTarget}
       'data:image/png;base64,DDDD',
       'https://evil.example/nested-escaped.png',
       '/local-escaped.png',
+      'https://evil.example/image-function.png',
+      'https://evil.example/nested-image-function.png',
       null,
       null,
       null,
@@ -394,6 +399,8 @@ ${escapedImportTarget}
       'https://evil.example/terminated-nested.png',
       'https://evil.example/deep.png',
       'https://evil.example/nested-escaped.png',
+      'https://evil.example/image-function.png',
+      'https://evil.example/nested-image-function.png',
       null,
       'https://evil.example/nojs.png',
     ]))
@@ -505,12 +512,51 @@ ${escapedImportTarget}
     )).toEqual(['/local.css'])
   })
 
+  it('extracts image function string sources without treating fallbacks as resources', () => {
+    const remote = extractCssResourceCandidates(`
+.project-image {
+  background-image: image("https://evil.example/direct.png", red);
+  mask-image: image(image("https://evil.example/nested.png", blue), black);
+  border-image-source: image("https\\3A \\2F \\2F evil.example/escaped.png", transparent);
+}
+`)
+    expect(remote).toEqual(expect.arrayContaining([
+      'https://evil.example/direct.png',
+      'https://evil.example/nested.png',
+      'https://evil.example/escaped.png',
+    ]))
+    expect(remote).not.toEqual(expect.arrayContaining(['red', 'blue', 'black', 'transparent']))
+    expect(remote.some(isRemoteImageCandidate)).toBe(true)
+
+    const local = extractCssResourceCandidates(`
+.project-image {
+  background-image: image("/local.png#crop", red);
+  mask-image: image("#local-fragment", transparent);
+  border-image-source: image("data:image/png;base64,AAAA", blue);
+  list-style-image: image("blob:https://example.com/id", black);
+}
+`)
+    expect(local).toEqual([
+      '/local.png#crop',
+      '#local-fragment',
+      'data:image/png;base64,AAAA',
+      'blob:https://example.com/id',
+    ])
+    expect(local.some(isRemoteImageCandidate)).toBe(false)
+  })
+
   it('identifies project selectors from parsed class nodes only', () => {
-    const knownProjectRules = '.project-card{color:inherit}.project-panel{color:inherit}'
+    const projectClassTokens = new Set([
+      'project-card', 'project-panel', 'project-call-chain', 'project-exact', 'project-token',
+      'project-x',
+    ])
     for (const selector of ['[class="project-exact"]', '[class~="project-token"]']) {
       const resources = extractCssResourceCandidates(
         `${selector}{background-image:var(--remote)}`,
-        { dynamicResources: 'project' },
+        {
+          dynamicResources: 'project',
+          projectClassTokens,
+        },
       )
       expect(resources, selector).toContain(null)
     }
@@ -525,18 +571,29 @@ ${escapedImportTarget}
       '[class="project-card"]',
       '[class~="project-panel"]',
       '[class^="project-"]',
+      '[class^="project-x"]',
       '[class$="-card"]',
+      '[class$="-CARD" i]',
+      '[class$="-card" s]',
+      '[class$="project-x"]',
       '[class*="ject-"]',
+      '[class*="project-x"]',
       '[class|="project"]',
       String.raw`[class~="\70roject-card"]`,
       String.raw`[cl\61ss*="ject\2d "]`,
+      String.raw`[class^="\70roject-x"]`,
+      String.raw`[class$="project\2d x"]`,
+      String.raw`[class*="pro\6a ect-x"]`,
       '[class]',
+      ':root{background-image:var(--remote)}',
+      '*{mask-image:env(remote-mask)}',
       '.broken:not([class="project-card"',
     ]) {
-      const css = selector.includes('{')
-        ? `${knownProjectRules}${selector}`
-        : `${knownProjectRules}${selector}{background-image:var(--remote)}`
-      const resources = extractCssResourceCandidates(css, { dynamicResources: 'project' })
+      const css = selector.includes('{') ? selector : `${selector}{background-image:var(--remote)}`
+      const resources = extractCssResourceCandidates(css, {
+        dynamicResources: 'project',
+        projectClassTokens,
+      })
       expect(resources, selector).toContain(null)
       expect(resources.some(isRemoteImageCandidate), selector).toBe(true)
     }
@@ -546,16 +603,46 @@ ${escapedImportTarget}
       '[class~="pro"]',
       '[class^="ject-"]',
       '[class$="totally-unrelated"]',
+      '[class$="-CARD" s]',
       '[class*="unrelated"]',
       '[class|="pro"]',
       '[data-note=".project-card"]',
       '[class^="vpi-"]',
       '.vp-doc [class*="language-"]',
     ]) {
-      const css = `${knownProjectRules}${selector}{background-image:var(--safe)}`
-      expect(extractCssResourceCandidates(css, { dynamicResources: 'project' }), selector)
+      const css = `${selector}{background-image:var(--safe)}`
+      expect(extractCssResourceCandidates(css, {
+        dynamicResources: 'project',
+        projectClassTokens,
+      }), selector)
         .toEqual([])
     }
+
+    const resolvedLocal = extractCssResourceCandidates(
+      ':root{--safe-project-image:url(/local.png)}[class$="-card"]{background-image:var(--safe-project-image)}',
+      { dynamicResources: 'project', projectClassTokens },
+    )
+    expect(resolvedLocal).toContain('/local.png')
+    expect(resolvedLocal.some(isRemoteImageCandidate)).toBe(false)
+  })
+
+  it('extracts the authoritative project class tokens from rendered HTML', () => {
+    const contract = extractProjectHtmlContract(`
+<main><div class="vp-doc project-page project-x">
+  <section class="project-call-chain extra-class"></section>
+  <!-- <div class="project-comment-bait"></div> -->
+  <script>const bait = '<div class="project-script-bait"></div>'</script>
+</div></main>
+`)
+
+    expect(contract).toHaveProperty('classTokens')
+    expect([...contract.classTokens]).toEqual([
+      'vp-doc',
+      'project-page',
+      'project-x',
+      'project-call-chain',
+      'extra-class',
+    ])
   })
 
   it('keeps project pages free of remote images for project asset provenance', () => {

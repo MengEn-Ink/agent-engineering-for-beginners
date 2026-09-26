@@ -287,7 +287,7 @@ function cssFunctionValue(node) {
   return decodeCssEscapes(value)
 }
 
-function imageSetResources(node) {
+function imageSetResources(node, resolveVariable, resolvingVariables) {
   const groups = [[]]
   for (const child of node.nodes ?? []) {
     if (child.type === 'div' && child.value === ',') groups.push([])
@@ -303,15 +303,34 @@ function imageSetResources(node) {
       ? decodeCssEscapes(candidate.value)?.toLowerCase()
       : null
     if (functionName === 'url') return [cssFunctionValue(candidate)]
-    if (functionName === null || cssUnresolvedFunctions.has(functionName)) return [null]
+    if (functionName === null) return [null]
+    if (functionName === 'var') {
+      return resolveVariable?.(candidate, resolvingVariables) ?? [null]
+    }
+    if (cssUnresolvedFunctions.has(functionName)) return [null]
+    if (functionName === 'image') {
+      return imageFunctionResources(candidate, resolveVariable, resolvingVariables)
+    }
     return extractCssNodes(
       candidate.nodes ?? [],
       cssImageContainerFunctions.has(functionName),
+      resolveVariable,
+      resolvingVariables,
     )
   })
 }
 
-function extractCssNodes(nodes, resourceContext = false) {
+function imageFunctionResources(node, resolveVariable, resolvingVariables) {
+  const strings = (node.nodes ?? [])
+    .filter((candidate) => candidate.type === 'string')
+    .map((candidate) => decodeCssEscapes(candidate.value))
+  return [
+    ...strings,
+    ...extractCssNodes(node.nodes ?? [], true, resolveVariable, resolvingVariables),
+  ]
+}
+
+function extractCssNodes(nodes, resourceContext = false, resolveVariable, resolvingVariables) {
   const resources = []
   for (const node of nodes) {
     if (node.type !== 'function') continue
@@ -321,25 +340,41 @@ function extractCssNodes(nodes, resourceContext = false) {
     } else if (functionName === 'url') {
       resources.push(cssFunctionValue(node))
     } else if (functionName === 'image-set' || functionName === '-webkit-image-set') {
-      resources.push(...imageSetResources(node))
+      resources.push(...imageSetResources(node, resolveVariable, resolvingVariables))
+    } else if (functionName === 'image') {
+      resources.push(...imageFunctionResources(node, resolveVariable, resolvingVariables))
+    } else if (resourceContext && functionName === 'var') {
+      resources.push(...(resolveVariable?.(node, resolvingVariables) ?? [null]))
     } else if (resourceContext && cssUnresolvedFunctions.has(functionName)) {
       resources.push(null)
     } else {
       resources.push(...extractCssNodes(
         node.nodes ?? [],
         resourceContext && cssImageContainerFunctions.has(functionName),
+        resolveVariable,
+        resolvingVariables,
       ))
     }
   }
   return resources
 }
 
-function extractCssValueResources(value, resourceContext = false) {
+function extractCssValueResources(
+  value,
+  resourceContext = false,
+  resolveVariable,
+  resolvingVariables = new Set(),
+) {
   try {
     const normalized = normalizeCssFunctionIdentifiers(value)
     return normalized === null
       ? [null]
-      : extractCssNodes(valueParser(normalized).nodes, resourceContext)
+      : extractCssNodes(
+          valueParser(normalized).nodes,
+          resourceContext,
+          resolveVariable,
+          resolvingVariables,
+        )
   } catch {
     return [null]
   }
@@ -348,22 +383,6 @@ function extractCssValueResources(value, resourceContext = false) {
 function consumeCssIdentifier(value) {
   const name = consumeCssName(value)
   return name && { raw: name.raw, rest: value.slice(name.end).trim() }
-}
-
-function collectProjectClassTokens(root) {
-  const tokens = new Set()
-  root.walkRules((rule) => {
-    try {
-      selectorParser((selectors) => {
-        selectors.walkClasses((node) => {
-          if (node.value.startsWith('project-')) tokens.add(node.value)
-        })
-      }).processSync(rule.selector)
-    } catch {
-      // The declaration-level pass treats an unparseable selector as project-scoped.
-    }
-  })
-  return tokens
 }
 
 function classAttributeCanMatchProject(node, projectClassTokens) {
@@ -393,21 +412,43 @@ function classAttributeCanMatchProject(node, projectClassTokens) {
   return true
 }
 
+function insideNegation(node) {
+  let parent = node.parent
+  while (parent && parent.type !== 'selector') {
+    if (parent.type === 'pseudo' && parent.value.toLowerCase() === ':not') return true
+    parent = parent.parent
+  }
+  return false
+}
+
 function belongsToProjectRule(declaration, projectClassTokens) {
   let container = declaration.parent
   while (container) {
     if (container.type === 'rule') {
       try {
         let projectScoped = false
+        let hasPositiveClassConstraint = false
         selectorParser((selectors) => {
-          selectors.walkClasses((node) => {
-            if (node.value.startsWith('project-')) projectScoped = true
-          })
-          selectors.walkAttributes((node) => {
-            if (classAttributeCanMatchProject(node, projectClassTokens)) projectScoped = true
+          selectors.each((selector) => {
+            let branchMatched = false
+            let branchConstrained = false
+            selector.walkClasses((node) => {
+              if (insideNegation(node)) return
+              branchConstrained = true
+              if (node.value.startsWith('project-') || projectClassTokens.has(node.value)) {
+                branchMatched = true
+              }
+            })
+            selector.walkAttributes((node) => {
+              if (insideNegation(node)) return
+              branchConstrained = true
+              if (classAttributeCanMatchProject(node, projectClassTokens)) branchMatched = true
+            })
+            if (branchMatched || !branchConstrained) projectScoped = true
+            if (branchConstrained) hasPositiveClassConstraint = true
           })
         }).processSync(container.selector)
-        if (projectScoped) return true
+        if (projectScoped || !hasPositiveClassConstraint) return true
       } catch {
         return true
       }
@@ -421,7 +462,25 @@ export function extractCssResourceCandidates(css, options = {}) {
   try {
     const root = postcss.parse(css)
     const resources = []
-    const projectClassTokens = collectProjectClassTokens(root)
+    const projectClassTokens = new Set(options.projectClassTokens ?? [])
+    const customProperties = new Map()
+    root.walkDecls((declaration) => {
+      if (!declaration.prop.startsWith('--')) return
+      const values = customProperties.get(declaration.prop) ?? []
+      values.push(declaration.value)
+      customProperties.set(declaration.prop, values)
+    })
+    const resolveVariable = (node, resolvingVariables = new Set()) => {
+      const name = (node.nodes ?? []).find((candidate) =>
+        candidate.type !== 'space' && candidate.type !== 'comment' && candidate.type !== 'div')
+      if (name?.type !== 'word' || !name.value.startsWith('--')) return [null]
+      if (resolvingVariables.has(name.value)) return [null]
+      const definitions = customProperties.get(name.value)
+      if (!definitions || definitions.length === 0) return [null]
+      const next = new Set([...resolvingVariables, name.value])
+      return definitions.flatMap((value) =>
+        extractCssValueResources(value, true, resolveVariable, next))
+    }
     root.walkDecls((declaration) => {
       const dynamicResourceContext = cssResourceProperties.has(declaration.prop.toLowerCase())
         && (
@@ -431,6 +490,7 @@ export function extractCssResourceCandidates(css, options = {}) {
       resources.push(...extractCssValueResources(
         declaration.value,
         dynamicResourceContext,
+        resolveVariable,
       ))
     })
     root.walkAtRules((atRule) => {
@@ -627,11 +687,14 @@ export function extractProjectHtmlContract(html) {
   const metaSections = elementsWithin(vpDocs, (node) => hasClass(node, 'project-meta'))
   const licenseSections = elementsWithin(metaSections, (node) => node.tagName === 'details')
   const resources = resourceCandidatesWithin(vpDocs)
+  const classTokens = new Set(elementsWithin(vpDocs, () => true, hiddenResourceHtmlElements)
+    .flatMap((node) => (attribute(node, 'class') ?? '').split(/\s+/u).filter(Boolean)))
   return {
     text: normalizedVisibleText(vpDocs),
     headings,
     images: resources.images,
     resources: resources.resources,
+    classTokens,
     hrefs: elementsWithin(vpDocs, (node) =>
       node.tagName === 'a' && !hasClass(node, 'header-anchor'))
       .map((node) => attribute(node, 'href') ?? null),
