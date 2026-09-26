@@ -55,6 +55,24 @@ export const approvedProjectFiles = new Set([
   'projects/history-autogpt-flowise.html',
 ])
 
+const coreProjectFiles = new Set([
+  'projects/mcp-python-sdk.html',
+  'projects/aider.html',
+  'projects/openhands.html',
+  'projects/agent-benchmarks.html',
+  'projects/dify.html',
+  'projects/crewai.html',
+])
+const dissectionProjectFiles = new Set([
+  ...coreProjectFiles,
+  'projects/history-autogpt-flowise.html',
+])
+const coreProjectHeadings = [
+  '30 秒结论', '为什么选', '版本与边界', '原创建筑图', '唯一纵向调用链',
+  '关键源码入口', '一次请求的数据流', '阅读练习', '失败边界', '生产边界',
+  '高频面试点', '升级复核', '来源与归因',
+]
+
 function normalizePublishedOutputPath(file) {
   if (
     file.includes('\0')
@@ -140,6 +158,9 @@ export function validateDist(distPath) {
   const leaked = relativeFiles.filter((file) => file.split(/[\\/]/).includes('superpowers'))
   if (leaked.length > 0) errors.push(`构建产物泄露 superpowers 页面：${leaked.join(', ')}`)
   errors.push(...validatePublishedRouteBoundary(relativeFiles))
+  for (const file of approvedProjectFiles) {
+    if (!relativeFiles.includes(file)) errors.push(`构建产物缺少项目页面：${file}`)
+  }
   if (!relativeFiles.includes('index.html')) errors.push('构建产物缺少 index.html')
 
   const coursePath = join(distPath, 'course', 'index.html')
@@ -155,6 +176,27 @@ export function validateDist(distPath) {
       : `${route.slice(1)}.html`
     if (!relativeFiles.includes(relativeTarget)) {
       errors.push(`构建产物缺少公开课程目标：${relativeTarget}`)
+    }
+  }
+
+  for (const file of dissectionProjectFiles) {
+    if (!relativeFiles.includes(file)) continue
+    const projectHtml = readFileSync(join(distPath, file), 'utf8')
+    if (!projectHtml.includes('固定版本')) errors.push(`项目页缺少固定版本：${file}`)
+    if (!projectHtml.includes('关键源码入口')) errors.push(`项目页缺少源码入口：${file}`)
+    if (/blob\/(?:main|master)\//u.test(projectHtml)) {
+      errors.push(`项目页包含移动分支源码链接：${file}`)
+    }
+    if (!/github\.com\/[^/]+\/[^/]+\/blob\/[0-9a-f]{40}\//u.test(projectHtml)) {
+      errors.push(`项目页缺少固定 commit 源码链接：${file}`)
+    }
+    if (/<img\b[^>]*src=["']https?:\/\//iu.test(projectHtml)) {
+      errors.push(`项目页包含外链图片：${file}`)
+    }
+    if (coreProjectFiles.has(file)) {
+      for (const heading of coreProjectHeadings) {
+        if (!projectHtml.includes(heading)) errors.push(`核心项目页缺少章节 ${heading}：${file}`)
+      }
     }
   }
 

@@ -8,13 +8,17 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parse } from 'yaml'
 import siteConfig from '../docs/.vitepress/config.mts'
 import { getContentItem } from '../docs/.vitepress/theme/data/contentRegistry'
 import { publishedCourseItems } from '../docs/.vitepress/theme/data/courseMap'
-import { validatePublishedRouteBoundary } from '../scripts/check-dist.mjs'
+import {
+  validateCourseDist,
+  validateDist,
+  validatePublishedRouteBoundary,
+} from '../scripts/check-dist.mjs'
 
 const expandedChapterFiles = [
   'docs/chapters/01-ai-native.md',
@@ -42,6 +46,58 @@ const frontierFiles = [
   'docs/frontier/durable-execution.md',
   'docs/frontier/agent-security-evaluation.md',
 ]
+
+const expectedProjectOutputs = [
+  'projects/index.html',
+  'projects/mcp-python-sdk.html',
+  'projects/aider.html',
+  'projects/openhands.html',
+  'projects/agent-benchmarks.html',
+  'projects/dify.html',
+  'projects/crewai.html',
+  'projects/history-autogpt-flowise.html',
+]
+const fixtureCoreProjectFiles = new Set(expectedProjectOutputs.slice(1, 7))
+const fixtureProjectHeadings = [
+  '30 秒结论', '为什么选', '版本与边界', '原创建筑图', '唯一纵向调用链',
+  '关键源码入口', '一次请求的数据流', '阅读练习', '失败边界', '生产边界',
+  '高频面试点', '升级复核', '来源与归因',
+]
+
+function createCompleteDistFixture() {
+  const dist = mkdtempSync(join(tmpdir(), 'agent-book-project-dist-'))
+  const stages = ['基础认知', '核心机制', '生产工程', '应用模式', '项目拆解', '综合实战']
+  const links = publishedCourseItems.map(({ itemId }) => {
+    const route = getContentItem(itemId).route
+    return `<a href="/agent-engineering-for-beginners${route}">${itemId}</a>`
+  })
+  writeFileSync(join(dist, 'index.html'), '<h1>public book</h1>')
+  mkdirSync(join(dist, 'course'), { recursive: true })
+  writeFileSync(
+    join(dist, 'course/index.html'),
+    `<nav class="course-map">${stages.join('')}本地进度将在页面加载后显示${links.join('')}</nav>`,
+  )
+  for (const { itemId } of publishedCourseItems) {
+    const route = getContentItem(itemId).route
+    const target = route.endsWith('/')
+      ? join(dist, route, 'index.html')
+      : join(dist, `${route}.html`)
+    mkdirSync(dirname(target), { recursive: true })
+    writeFileSync(target, `<h1>${itemId}</h1>`)
+  }
+  for (const relative of expectedProjectOutputs) {
+    const target = join(dist, relative)
+    mkdirSync(dirname(target), { recursive: true })
+    const isOverview = relative === 'projects/index.html'
+    const coreHeadings = fixtureCoreProjectFiles.has(relative)
+      ? fixtureProjectHeadings.map((heading) => `<h2>${heading}</h2>`).join('')
+      : ''
+    writeFileSync(target, isOverview
+      ? '<main class="project-overview">开源项目拆解</main>'
+      : `<main>固定版本 关键源码入口 ${coreHeadings}<a href="https://github.com/example/project/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/src/index.ts">source</a></main>`)
+  }
+  return dist
+}
 
 function contentCharacterCount(markdown: string) {
   return markdown
@@ -1077,6 +1133,69 @@ describe('progressive project publication boundary', () => {
       expect.stringContaining('C:\\projects\\aider.html'),
       expect.stringContaining('projects/\0aider.html'),
     ]))
+  })
+})
+
+describe('project publication boundary', () => {
+  it('requires every approved project output', () => {
+    for (const missing of expectedProjectOutputs) {
+      const dist = createCompleteDistFixture()
+      try {
+        rmSync(join(dist, missing))
+        expect(validateDist(dist), missing)
+          .toContain(`构建产物缺少项目页面：${missing}`)
+      } finally {
+        rmSync(dist, { recursive: true, force: true })
+      }
+    }
+  })
+
+  it('rejects extra project, lab, and capstone pages', () => {
+    const dist = createCompleteDistFixture()
+    try {
+      for (const relative of ['projects/unreviewed.html', 'labs/index.html', 'capstone/index.html']) {
+        mkdirSync(dirname(join(dist, relative)), { recursive: true })
+        writeFileSync(join(dist, relative), '<html></html>')
+      }
+      expect(validateDist(dist)).toEqual(expect.arrayContaining([
+        expect.stringContaining('projects/unreviewed.html'),
+        expect.stringContaining('labs/index.html'),
+        expect.stringContaining('capstone/index.html'),
+      ]))
+    } finally {
+      rmSync(dist, { recursive: true, force: true })
+    }
+  })
+
+  it('requires 26 exact course links and accepts only the eight approved project pages', () => {
+    const dist = createCompleteDistFixture()
+    try {
+      expect(validateDist(dist)).toEqual([])
+      const html = readFileSync(join(dist, 'course/index.html'), 'utf8')
+      expect(validateCourseDist(html)).toEqual([])
+    } finally {
+      rmSync(dist, { recursive: true, force: true })
+    }
+  })
+
+  it('enforces immutable, local, and complete static project output', () => {
+    const dist = createCompleteDistFixture()
+    try {
+      writeFileSync(
+        join(dist, 'projects/aider.html'),
+        '<main><a href="https://github.com/example/project/blob/main/src/index.ts">source</a><img src="https://example.com/remote.png"></main>',
+      )
+      expect(validateDist(dist)).toEqual(expect.arrayContaining([
+        '项目页缺少固定版本：projects/aider.html',
+        '项目页缺少源码入口：projects/aider.html',
+        '项目页包含移动分支源码链接：projects/aider.html',
+        '项目页缺少固定 commit 源码链接：projects/aider.html',
+        '项目页包含外链图片：projects/aider.html',
+        '核心项目页缺少章节 30 秒结论：projects/aider.html',
+      ]))
+    } finally {
+      rmSync(dist, { recursive: true, force: true })
+    }
   })
 })
 

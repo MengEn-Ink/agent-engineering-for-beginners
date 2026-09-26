@@ -49,6 +49,43 @@ function expectCoreProjectPage(path: string, projectId: string) {
 }
 
 describe('project routes and catalog overview', () => {
+  it('enforces the project page contract for every reading-only page', () => {
+    const coreIds = projectRouteRecords.slice(1, 7).map(([id]) => id)
+    for (const [id, route] of projectRouteRecords) {
+      const file = `docs${route.endsWith('/') ? `${route}index` : route}.md`
+      const text = readFileSync(file, 'utf8')
+      expect(text, file).not.toMatch(/npm install|pip install|docker run|API_KEY/u)
+      expect(text, file).not.toMatch(/!\[[^\]]*\]\(https?:\/\//u)
+      if (coreIds.includes(id)) {
+        const h2s = Array.from(text.matchAll(/^## (.+)$/gmu), (match) => match[1])
+        expect(h2s, file).toEqual(requiredProjectHeadings)
+        expect(new Set(h2s).size, `${file}: duplicate H2`).toBe(requiredProjectHeadings.length)
+        expect(text).toContain(`<ProjectMeta project-id="${id}" />`)
+        expect(text).toContain(`<ProjectCallChain project-id="${id}" />`)
+        expect(text).toContain(`<ProjectSourceLinks project-id="${id}" />`)
+      }
+    }
+
+    const questionIds = new Set(interviewQuestions.map((question) => question.id))
+    for (const page of projectCatalog.pages) {
+      for (const id of page.interview_question_ids) {
+        expect(questionIds.has(id), `${page.page_item_id}:${id}`).toBe(true)
+      }
+      const route = getContentItem(page.page_item_id).route
+      const file = `docs${route.endsWith('/') ? `${route}index` : route}.md`
+      const text = readFileSync(file, 'utf8')
+      const actualLinks = Array.from(
+        text.matchAll(/\]\((\/chapters\/[^)#]+#iq-[^)]+)\)/gu),
+        (match) => match[1],
+      )
+      const expectedLinks = page.interview_question_ids.map((id) => {
+        const question = interviewQuestions.find((candidate) => candidate.id === id)!
+        return `${question.path}#${id}`
+      })
+      expect(actualLinks, page.page_item_id).toEqual(expectedLinks)
+    }
+  })
+
   it('keeps project pages free of remote images for project asset provenance', () => {
     for (const path of projectRouteRecords.map(([, route]) =>
       `docs${route.endsWith('/') ? `${route}index` : route}.md`)) {
