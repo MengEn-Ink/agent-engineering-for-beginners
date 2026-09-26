@@ -1,9 +1,17 @@
-import { existsSync, readdirSync, statSync } from 'node:fs'
+import { existsSync, lstatSync, readdirSync, statSync } from 'node:fs'
 import { join, posix, relative } from 'node:path'
 import { parse, parseFragment } from 'parse5'
 
 const hiddenHtmlElements = new Set(['script', 'style', 'template', 'noscript'])
-const hiddenMarkdownHtmlElements = new Set([...hiddenHtmlElements, 'code', 'pre'])
+const hiddenMarkdownHtmlElements = new Set([
+  ...hiddenHtmlElements,
+  'code',
+  'pre',
+  'svg',
+  'publication-hidden',
+])
+const hiddenImageHtmlElements = new Set(['script', 'style', 'template'])
+const hiddenMarkdownImageHtmlElements = new Set([...hiddenImageHtmlElements, 'code', 'pre'])
 
 function attribute(node, name) {
   return node.attrs?.find((candidate) => candidate.name === name)?.value
@@ -39,23 +47,96 @@ function visibleText(node, ignoredClasses = new Set(), hiddenElements = hiddenHt
     .join(' ')
 }
 
+function normalizedVisibleText(nodes, hiddenElements = hiddenHtmlElements) {
+  return nodes.map((node) => visibleText(node, new Set(['header-anchor']), hiddenElements))
+    .join(' ')
+    .replace(/\p{White_Space}+/gu, ' ')
+    .trim()
+}
+
+function normalizeRenderedMarkdownHref(href) {
+  return typeof href === 'string' && href.startsWith('/')
+    ? href.replace(/\.html(?=#|$)/u, '')
+    : href
+}
+
 function hrefsWithin(roots, hiddenElements = hiddenHtmlElements) {
   return elementsWithin(roots, (node) => node.tagName === 'a', hiddenElements)
     .map((node) => attribute(node, 'href') ?? null)
 }
 
-function srcsWithin(roots, hiddenElements = hiddenHtmlElements) {
-  return elementsWithin(roots, (node) => node.tagName === 'img', hiddenElements)
-    .map((node) => attribute(node, 'src'))
-    .filter((src) => src !== undefined)
+function parseSrcsetCandidates(srcset) {
+  const candidates = []
+  let position = 0
+  while (position < srcset.length) {
+    while (position < srcset.length && /[\s,]/u.test(srcset[position])) position += 1
+    if (position >= srcset.length) break
+
+    const isDataUrl = srcset.slice(position, position + 5).toLowerCase() === 'data:'
+    const start = position
+    while (
+      position < srcset.length
+      && !/\s/u.test(srcset[position])
+      && (isDataUrl || srcset[position] !== ',')
+    ) {
+      position += 1
+    }
+    const candidate = srcset.slice(start, position).replace(/,+$/u, '')
+    if (candidate !== '') candidates.push(candidate)
+
+    let parentheses = 0
+    while (position < srcset.length) {
+      const character = srcset[position]
+      position += 1
+      if (character === '(') parentheses += 1
+      else if (character === ')') parentheses = Math.max(0, parentheses - 1)
+      else if (character === ',' && parentheses === 0) break
+    }
+  }
+  return candidates
+}
+
+function imageCandidatesWithin(roots, hiddenElements = hiddenImageHtmlElements) {
+  return elementsWithin(
+    roots,
+    (node) => ['img', 'source', 'image'].includes(node.tagName),
+    hiddenElements,
+  ).flatMap((node) => {
+    if (node.tagName === 'image') {
+      return (node.attrs ?? [])
+        .filter((candidate) => candidate.name === 'href')
+        .map((candidate) => candidate.value)
+    }
+    return [
+      ...(attribute(node, 'src') === undefined ? [] : [attribute(node, 'src')]),
+      ...parseSrcsetCandidates(attribute(node, 'srcset') ?? ''),
+    ]
+  })
 }
 
 function listFiles(root) {
-  if (!existsSync(root)) return []
-  return readdirSync(root).flatMap((entry) => {
+  if (!existsSync(root)) return { files: [], errors: [] }
+  const files = []
+  const errors = []
+  for (const entry of readdirSync(root)) {
     const path = join(root, entry)
-    return statSync(path).isDirectory() ? listFiles(path) : [path]
-  })
+    const metadata = lstatSync(path)
+    if (metadata.isSymbolicLink()) {
+      try {
+        statSync(path)
+        errors.push({ path, kind: 'symlink' })
+      } catch {
+        errors.push({ path, kind: 'unreadable' })
+      }
+    } else if (metadata.isDirectory()) {
+      const nested = listFiles(path)
+      files.push(...nested.files)
+      errors.push(...nested.errors)
+    } else {
+      files.push(path)
+    }
+  }
+  return { files, errors }
 }
 
 export function normalizePublishedOutputPath(file) {
@@ -76,7 +157,14 @@ export function indexDistFiles(root) {
   const files = new Map()
   const rawFiles = []
   const errors = []
-  for (const absolute of listFiles(root)) {
+  const listed = listFiles(root)
+  for (const issue of listed.errors) {
+    const raw = relative(root, issue.path)
+    errors.push(issue.kind === 'unreadable'
+      ? `构建产物包含无法读取的文件：${raw}`
+      : `构建产物包含符号链接：${raw}`)
+  }
+  for (const absolute of listed.files) {
     const raw = relative(root, absolute)
     rawFiles.push(raw)
     const normalized = normalizePublishedOutputPath(raw)
@@ -130,7 +218,7 @@ export function extractCourseHtmlContract(html) {
 }
 
 export function extractProjectHtmlContract(html) {
-  const document = parse(html)
+  const document = parse(html, { scriptingEnabled: false })
   const vpDocs = elementsWithin(document.childNodes, (node) => hasClass(node, 'vp-doc'))
   const headings = elementsWithin(vpDocs, (node) => node.tagName === 'h2')
     .map((node) => visibleText(node, new Set(['header-anchor'])).replace(/\s+/gu, ' ').trim())
@@ -138,75 +226,45 @@ export function extractProjectHtmlContract(html) {
   const metaSections = elementsWithin(vpDocs, (node) => hasClass(node, 'project-meta'))
   const licenseSections = elementsWithin(metaSections, (node) => node.tagName === 'details')
   return {
-    text: vpDocs.map((node) => visibleText(node)).join(' '),
+    text: normalizedVisibleText(vpDocs),
     headings,
-    images: srcsWithin(vpDocs),
+    images: imageCandidatesWithin(vpDocs),
+    hrefs: elementsWithin(vpDocs, (node) =>
+      node.tagName === 'a' && !hasClass(node, 'header-anchor'))
+      .map((node) => attribute(node, 'href') ?? null),
     sourceHrefs: hrefsWithin(sourceSections),
     licenseHrefs: hrefsWithin(licenseSections),
   }
 }
 
-function extractRawHtmlContract(html) {
-  const root = parseFragment(html)
-  return {
-    links: hrefsWithin(root.childNodes, hiddenMarkdownHtmlElements),
-    images: srcsWithin(root.childNodes, hiddenMarkdownHtmlElements),
-    text: visibleText(root, new Set(), hiddenMarkdownHtmlElements),
-  }
-}
-
 export function extractProjectMarkdownContract(text, renderer) {
   const source = text.replace(/^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/u, '')
-  const tokens = renderer.parse(source, {})
-  const headings = []
-  const links = []
-  const images = []
-  const textParts = []
-
-  for (const [index, token] of tokens.entries()) {
-    if (token.type === 'heading_open' && token.tag === 'h2' && tokens[index + 1]?.type === 'inline') {
-      headings.push(tokens[index + 1].content)
-    }
-    if (token.type === 'html_block') {
-      const raw = extractRawHtmlContract(token.content)
-      links.push(...raw.links)
-      images.push(...raw.images)
-      textParts.push(raw.text)
-    }
-    if (token.type !== 'inline') continue
-    let hiddenInlineDepth = 0
-    for (const child of token.children ?? []) {
-      if (child.type === 'html_inline') {
-        const closingTag = child.content.match(/^<\/([a-z][\w-]*)\s*>$/iu)?.[1]?.toLowerCase()
-        if (closingTag && hiddenMarkdownHtmlElements.has(closingTag)) {
-          hiddenInlineDepth = Math.max(0, hiddenInlineDepth - 1)
-          continue
-        }
-        const openingTag = child.content.match(/^<([a-z][\w-]*)(?:\s|>|\/)/iu)?.[1]?.toLowerCase()
-        if (openingTag && hiddenMarkdownHtmlElements.has(openingTag)) {
-          if (!/\/>\s*$/u.test(child.content)) hiddenInlineDepth += 1
-          continue
-        }
-        if (hiddenInlineDepth > 0) continue
-        const raw = extractRawHtmlContract(child.content)
-        links.push(...raw.links)
-        images.push(...raw.images)
-        textParts.push(raw.text)
-      } else if (hiddenInlineDepth > 0) {
-        continue
-      } else if (child.type === 'link_open') {
-        const href = child.attrGet('href')
-        if (href !== null && child.attrGet('class') !== 'header-anchor') links.push(href)
-      } else if (child.type === 'image') {
-        const src = child.attrGet('src')
-        if (src !== null) images.push(src)
-      } else if (child.type === 'text') {
-        textParts.push(child.content)
-      }
-    }
+  const contentSource = source.replace(
+    /<(\/?)\s*(template|code|pre|svg|script|style|noscript)\b[^>]*>/giu,
+    (match, closing) => closing === '/'
+      ? '</publication-hidden>'
+      : /\/\s*>$/u.test(match)
+        ? '<publication-hidden></publication-hidden>'
+        : '<publication-hidden>',
+  )
+  const root = parseFragment(renderer.render(contentSource), { scriptingEnabled: false })
+  const imageRoot = parseFragment(renderer.render(source), { scriptingEnabled: false })
+  const headings = elementsWithin(
+    root.childNodes,
+    (node) => node.tagName === 'h2',
+    hiddenMarkdownHtmlElements,
+  ).map((node) => normalizedVisibleText([node], hiddenMarkdownHtmlElements))
+  const links = elementsWithin(
+    root.childNodes,
+    (node) => node.tagName === 'a' && !hasClass(node, 'header-anchor'),
+    hiddenMarkdownHtmlElements,
+  ).map((node) => normalizeRenderedMarkdownHref(attribute(node, 'href') ?? null))
+  return {
+    headings,
+    links,
+    images: imageCandidatesWithin(imageRoot.childNodes, hiddenMarkdownImageHtmlElements),
+    text: normalizedVisibleText(root.childNodes, hiddenMarkdownHtmlElements),
   }
-
-  return { headings, links, images, text: textParts.join(' ') }
 }
 
 export function validatePinnedGithubSourceHref(href, expectedHref) {
@@ -223,4 +281,8 @@ export function validatePinnedGithubSourceHref(href, expectedHref) {
   } catch {
     return false
   }
+}
+
+export function isRemoteImageCandidate(candidate) {
+  return typeof candidate === 'string' && /^(?:https?:)?\/\//iu.test(candidate.trim())
 }

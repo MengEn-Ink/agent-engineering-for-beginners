@@ -40,6 +40,7 @@ const projectRouteRecords = [
 ] as const
 
 const markdown = await createMarkdownRenderer(resolve('docs'))
+const remoteImagePattern = /^(?:https?:)?\/\//iu
 
 function expectCoreProjectPage(path: string, projectId: string) {
   const text = readFileSync(path, 'utf8')
@@ -52,7 +53,7 @@ function expectCoreProjectPage(path: string, projectId: string) {
     /npm install|pip install|docker run|OPENAI_API_KEY|ANTHROPIC_API_KEY/u,
   )
   expect(contract.images, path).not.toEqual(expect.arrayContaining([
-    expect.stringMatching(/^https?:\/\//u),
+    expect.stringMatching(remoteImagePattern),
   ]))
 }
 
@@ -65,7 +66,7 @@ describe('project routes and catalog overview', () => {
       const parsed = extractProjectMarkdownContract(text, markdown)
       expect(parsed.text, file).not.toMatch(/npm install|pip install|docker run|API_KEY/u)
       expect(parsed.images, file).not.toEqual(expect.arrayContaining([
-        expect.stringMatching(/^https?:\/\//u),
+        expect.stringMatching(remoteImagePattern),
       ]))
       if (coreIds.includes(id)) {
         expect(parsed.headings, file).toEqual(requiredProjectHeadings)
@@ -105,6 +106,7 @@ describe('project routes and catalog overview', () => {
 \`\`\`md
 ## Fake heading
 ![remote](https://example.com/fake.png)
+![protocol relative](//example.com/fake-protocol-relative.png)
 [fake](/chapters/01-ai-native#iq-01-a)
 npm install fake-package
 FAKE_API_KEY=secret
@@ -114,10 +116,67 @@ FAKE_API_KEY=secret
 <code><a href="/chapters/01-ai-native#iq-01-a">code link</a><img src="https://example.com/code.png">INLINE_API_KEY=secret</code>
 <code><code>nested</code><img src="https://example.com/nested-code.png">NESTED_API_KEY=secret</code>
 
+<template>
+
+## Template heading
+
+<a href="/chapters/02-workflow-agent#iq-02-a">template link</a>
+
+</template>
+
+<pre>
+
+## Pre heading
+
+<a href="/chapters/03-react#iq-03-a">pre link</a>
+
+</pre>
+
+<code>
+
+## Code block heading
+
+<a href="/chapters/03-react#iq-03-b">code block link</a>
+
+</code>
+
+<svg>
+
+## SVG heading
+
+<a href="/chapters/04-tools-mcp#iq-04-a">svg link</a>
+
+</svg>
+
+<noscript>
+
+## Noscript heading
+
+<a href="/chapters/05-state-memory#iq-05-a">noscript link</a>
+
+</noscript>
+
+<script>
+
+## Script heading
+
+<a href="/chapters/06-loop-graph#iq-06-a">script link</a>
+
+</script>
+
+<style>
+
+## Style heading
+
+<a href="/chapters/07-multi-agent#iq-07-a">style link</a>
+
+</style>
+
 <!--
 ## Comment heading
 ![remote](https://example.com/comment.png)
 <a href="/chapters/01-ai-native#iq-01-a">comment link</a>
+<picture><source srcset="https://example.com/comment-source.png"><img src="//example.com/comment-image.png"></picture>
 -->
 `, markdown)
 
@@ -125,6 +184,18 @@ FAKE_API_KEY=secret
     expect(parsed.images).toEqual([])
     expect(parsed.links).toEqual([])
     expect(parsed.text).not.toMatch(/npm install|API_KEY/u)
+  })
+
+  it('normalizes browser-visible text across Markdown and HTML formatting', () => {
+    const parsed = extractProjectMarkdownContract(`
+npm **install** package
+
+npm <em>install</em>
+
+pip&nbsp;install package
+`, markdown)
+
+    expect(parsed.text).toContain('npm install package npm install pip install package')
   })
 
   it('collects real Markdown and inline HTML links and images in source order', () => {
@@ -147,12 +218,43 @@ FAKE_API_KEY=secret
     ])
   })
 
+  it('collects remote image candidates from Markdown, srcset, picture, and noscript', () => {
+    const parsed = extractProjectMarkdownContract(`
+![protocol relative](//example.com/markdown.png)
+<img src="//example.com/html.png">
+<img src="/local.png" srcset="/local-2x.png 2x, https://example.com/srcset.png 3x">
+<picture><source srcset="data:image/png;base64,AAAA 1x, //example.com/picture.png 2x"><img src="/local-picture.png"></picture>
+<picture><source src="https://example.com/source-src.png"><img src="/local-source-fallback.png"></picture>
+<noscript><img src="https://example.com/noscript.png"></noscript>
+<svg><image href="//example.com/svg-href.png"></image></svg>
+<svg><image xlink:href="https://example.com/svg-xlink.png"></image></svg>
+`, markdown)
+
+    expect(parsed.images.filter((candidate) => remoteImagePattern.test(candidate))).toEqual([
+      '//example.com/markdown.png',
+      '//example.com/html.png',
+      'https://example.com/srcset.png',
+      '//example.com/picture.png',
+      'https://example.com/source-src.png',
+      'https://example.com/noscript.png',
+      '//example.com/svg-href.png',
+      'https://example.com/svg-xlink.png',
+    ])
+    expect(parsed.images).toEqual(expect.arrayContaining([
+      '/local.png',
+      '/local-2x.png',
+      'data:image/png;base64,AAAA',
+      '/local-picture.png',
+      '/local-source-fallback.png',
+    ]))
+  })
+
   it('keeps project pages free of remote images for project asset provenance', () => {
     for (const path of projectRouteRecords.map(([, route]) =>
       `docs${route.endsWith('/') ? `${route}index` : route}.md`)) {
       const contract = extractProjectMarkdownContract(readFileSync(path, 'utf8'), markdown)
       expect(contract.images, path).not.toEqual(expect.arrayContaining([
-        expect.stringMatching(/^https?:\/\//u),
+        expect.stringMatching(remoteImagePattern),
       ]))
     }
   })

@@ -7,6 +7,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -16,6 +17,7 @@ import { parse } from 'yaml'
 import siteConfig from '../docs/.vitepress/config.mts'
 import { getContentItem } from '../docs/.vitepress/theme/data/contentRegistry'
 import { publishedCourseItems } from '../docs/.vitepress/theme/data/courseMap'
+import { interviewQuestions } from '../docs/.vitepress/theme/data/interviewQuestions'
 import {
   validateCourseDist,
   validateDist,
@@ -61,11 +63,13 @@ const expectedProjectOutputs = [
 ]
 const fixtureCoreProjectFiles = new Set(expectedProjectOutputs.slice(1, 7))
 const fixtureProjectCatalog = parse(readFileSync('sources/project-index.yml', 'utf8')) as {
-  pages: Array<{ page_item_id: string; subjects: string[] }>
+  pages: Array<{ page_item_id: string; subjects: string[]; interview_question_ids: string[] }>
   subjects: Array<{
     id: string
     canonical_repo: string
+    canonical_url: string
     pinned_commit: string
+    watch_url: string
     entrypoints: Array<{ path: string }>
     license_sources: Array<{ path: string }>
   }>
@@ -91,7 +95,33 @@ function fixtureProjectSections(relative: string) {
     `<a href="${fixtureProjectSourceUrl(subject, entry.path)}">${entry.path}</a>`))
   const licenseAnchors = subjects.flatMap((subject) => subject.license_sources.map((source) =>
     `<a href="${fixtureProjectSourceUrl(subject, source.path)}">${source.path}</a>`))
-  return `<aside class="project-meta"><details>${licenseAnchors.join('')}</details></aside><ol class="project-source-links">${sourceAnchors.join('')}</ol>`
+  const metadataAnchors = subjects.flatMap((subject) => [
+    `<a href="${subject.canonical_url}">${subject.canonical_repo}</a>`,
+    `<a href="${subject.watch_url}">watch</a>`,
+  ])
+  const interviewAnchors = page.interview_question_ids.map((id) => {
+    const question = interviewQuestions.find((candidate) => candidate.id === id)!
+    return `<a href="/agent-engineering-for-beginners${question.path}#${id}">${id}</a>`
+  })
+  return `<aside class="project-meta">${metadataAnchors.join('')}<details>${licenseAnchors.join('')}</details></aside><ol class="project-source-links">${sourceAnchors.join('')}</ol>${interviewAnchors.join('')}`
+}
+
+function fixtureProjectOverview() {
+  const pageLinks = fixtureProjectCatalog.pages.slice(1).map((page) => {
+    const slug = page.page_item_id.slice('project-'.length)
+    return `<a href="/agent-engineering-for-beginners/projects/${slug}">${page.page_item_id}</a>`
+  })
+  const watchLinks = fixtureProjectCatalog.subjects
+    .filter((subject) => !fixtureProjectCatalog.pages.slice(1)
+      .some((page) => page.subjects.includes(subject.id)))
+    .map((subject) => `<a href="${subject.canonical_url}">${subject.id}</a>`)
+  const fixedLinks = [
+    '/agent-engineering-for-beginners/frontier/agent-security-evaluation',
+    '/agent-engineering-for-beginners/chapters/09-safety-recovery',
+    '/agent-engineering-for-beginners/radar/',
+    '/agent-engineering-for-beginners/case-study/delivery-agent',
+  ].map((href) => `<a href="${href}">${href}</a>`)
+  return `<section class="project-overview">开源项目拆解${pageLinks.join('')}${watchLinks.join('')}${fixedLinks.join('')}</section>`
 }
 
 function createCompleteDistFixture() {
@@ -123,7 +153,7 @@ function createCompleteDistFixture() {
       ? fixtureProjectHeadings.map((heading) => `<h2>${heading}</h2>`).join('')
       : ''
     writeFileSync(target, isOverview
-      ? '<main><div class="vp-doc"><section class="project-overview">开源项目拆解</section></div></main>'
+      ? `<main><div class="vp-doc">${fixtureProjectOverview()}</div></main>`
       : `<main><div class="vp-doc">固定版本 关键源码入口 ${coreHeadings}${fixtureProjectSections(relative)}</div></main>`)
   }
   return dist
@@ -1137,6 +1167,12 @@ describe('progressive project publication boundary', () => {
       'projects.html',
       'labs/index.html',
       'capstone/index.html',
+      'Labs/index.html',
+      'Capstone/index.html',
+      'Superpowers/plan.html',
+      'Projects/unreviewed.html',
+      'Projects/aider.html',
+      'projects/Aider.html',
     ])).toEqual(expect.arrayContaining([
       expect.stringContaining('projects/unreviewed.html'),
       expect.stringContaining('projects/private/notes.html'),
@@ -1148,6 +1184,12 @@ describe('progressive project publication boundary', () => {
       expect.stringContaining('projects.html'),
       expect.stringContaining('labs/index.html'),
       expect.stringContaining('capstone/index.html'),
+      expect.stringContaining('Labs/index.html'),
+      expect.stringContaining('Capstone/index.html'),
+      expect.stringContaining('Superpowers/plan.html'),
+      expect.stringContaining('Projects/unreviewed.html'),
+      expect.stringContaining('Projects/aider.html'),
+      expect.stringContaining('projects/Aider.html'),
     ]))
   })
 
@@ -1167,6 +1209,20 @@ describe('progressive project publication boundary', () => {
 })
 
 describe('project publication boundary', () => {
+  it('returns a structured error for dangling dist symlinks', () => {
+    const dist = createCompleteDistFixture()
+    try {
+      symlinkSync('missing-target.html', join(dist, 'dangling.html'))
+      let errors: string[] | undefined
+      expect(() => {
+        errors = validateDist(dist)
+      }).not.toThrow()
+      expect(errors).toContain('构建产物包含无法读取的文件：dangling.html')
+    } finally {
+      rmSync(dist, { recursive: true, force: true })
+    }
+  })
+
   it('canonicalizes Windows-style approved outputs before every dist check', () => {
     const dist = createCompleteDistFixture()
     try {
@@ -1292,7 +1348,7 @@ describe('project publication boundary', () => {
     }
   })
 
-  it('ignores project contract bait in comments, scripts, and styles', () => {
+  it('ignores project contract bait in comments, scripts, styles, and templates', () => {
     const dist = createCompleteDistFixture()
     try {
       const file = join(dist, 'projects/aider.html')
@@ -1303,13 +1359,40 @@ describe('project publication boundary', () => {
         original
           .replace(
             '<div class="vp-doc">',
-            `<div class="vp-doc"><!-- ${bait} --><script>${bait}</script><style>${bait}</style><template>${bait}</template><noscript>${bait}</noscript>`,
+            `<div class="vp-doc"><!-- ${bait} --><script>${bait}</script><style>${bait}</style><template>${bait}</template>`,
           )
           .replace('</main>', `</main>${bait}`),
       )
       expect(validateDist(dist)).toEqual([])
     } finally {
       rmSync(dist, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects every remote image candidate in structured project HTML', () => {
+    const remoteMarkup = [
+      '<img src="//example.com/protocol-relative.png">',
+      '<img src="/local.png" srcset="/local-2x.png 2x, https://example.com/srcset.png 3x">',
+      '<picture><source srcset="data:image/png;base64,AAAA 1x, //example.com/picture.png 2x"><img src="/local-picture.png"></picture>',
+      '<picture><source src="https://example.com/source-src.png"><img src="/local-source-fallback.png"></picture>',
+      '<noscript><img src="https://example.com/noscript.png"></noscript>',
+      '<svg><image href="//example.com/svg-href.png"></image></svg>',
+      '<svg><image xlink:href="https://example.com/svg-xlink.png"></image></svg>',
+    ]
+
+    for (const markup of remoteMarkup) {
+      const dist = createCompleteDistFixture()
+      try {
+        const file = join(dist, 'projects/aider.html')
+        writeFileSync(
+          file,
+          readFileSync(file, 'utf8').replace('<div class="vp-doc">', `<div class="vp-doc">${markup}`),
+        )
+        expect(validateDist(dist), markup)
+          .toContain('项目页包含外链图片：projects/aider.html')
+      } finally {
+        rmSync(dist, { recursive: true, force: true })
+      }
     }
   })
 
@@ -1381,6 +1464,31 @@ describe('project publication boundary', () => {
         .toContain('项目页源码与许可链接不符合 catalog：projects/aider.html')
     } finally {
       rmSync(dist, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects unexpected internal or external anchors anywhere in the project document', () => {
+    const aider = fixtureProjectCatalog.subjects.find((subject) => subject.id === 'aider')!
+    const unexpectedHrefs = [
+      'https://evil.example/project',
+      `https://evil.example/?next=${encodeURIComponent(fixtureProjectSourceUrl(aider, aider.entrypoints[0].path))}`,
+      `https://github.com/Aider-AI/aider/blob/main/${aider.entrypoints[0].path}`,
+      '/agent-engineering-for-beginners/chapters/01-ai-native#iq-01-a',
+    ]
+
+    for (const href of unexpectedHrefs) {
+      const dist = createCompleteDistFixture()
+      try {
+        const file = join(dist, 'projects/aider.html')
+        writeFileSync(
+          file,
+          readFileSync(file, 'utf8').replace('</div></main>', `<a href="${href}">unexpected</a></div></main>`),
+        )
+        expect(validateDist(dist), href)
+          .toContain('项目页链接不符合公开契约：projects/aider.html')
+      } finally {
+        rmSync(dist, { recursive: true, force: true })
+      }
     }
   })
 })

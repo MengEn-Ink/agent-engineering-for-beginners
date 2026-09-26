@@ -6,6 +6,7 @@ import {
   extractCourseHtmlContract,
   extractProjectHtmlContract,
   indexDistFiles,
+  isRemoteImageCandidate,
   normalizeCleanCourseHref,
   normalizePublishedOutputPath,
   validatePinnedGithubSourceHref,
@@ -86,8 +87,8 @@ export function validatePublishedRouteBoundary(relativeFiles) {
   const forbidden = relativeFiles.filter((file) => {
     const normalized = normalizePublishedOutputPath(file)
     return normalized === null
-      || /^(?:labs|capstone)(?:\.html|\/)/u.test(normalized)
-      || (/^projects(?:\.html|\/)/u.test(normalized) && !approvedProjectFiles.has(normalized))
+      || /^(?:labs|capstone|superpowers)(?:\.html|\/)/iu.test(normalized)
+      || (/^projects(?:\.html|\/)/iu.test(normalized) && !approvedProjectFiles.has(normalized))
   })
   return forbidden.length === 0
     ? []
@@ -135,11 +136,46 @@ function expectedProjectHrefs(file) {
   const subjects = page.subjects.map((subjectId) =>
     projectCatalog.subjects.find((candidate) => candidate.id === subjectId))
   return {
+    page,
+    subjects,
     sources: subjects.flatMap((subject) => subject.entrypoints.map((entry) =>
       projectSourceUrl(subject, entry.path))),
     licenses: subjects.flatMap((subject) => subject.license_sources.map((source) =>
       projectSourceUrl(subject, source.path))),
   }
+}
+
+function expectedProjectDocumentHrefs(file) {
+  if (file === 'projects/index.html') {
+    const page = projectCatalog.pages.find((candidate) => candidate.page_item_id === 'projects-index')
+    const projectLinks = projectCatalog.pages.slice(1).map((candidate) =>
+      `${siteBase}/projects/${candidate.page_item_id.slice('project-'.length)}`)
+    const watchLinks = page.subjects
+      .map((subjectId) => projectCatalog.subjects.find((candidate) => candidate.id === subjectId))
+      .filter((subject) => subject.catalog_tier === 'watch-only')
+      .map((subject) => subject.canonical_url)
+    return [
+      ...projectLinks,
+      ...watchLinks,
+      `${siteBase}/frontier/agent-security-evaluation`,
+      `${siteBase}/chapters/09-safety-recovery`,
+      `${siteBase}/radar/`,
+      `${siteBase}/case-study/delivery-agent`,
+    ]
+  }
+
+  const expected = expectedProjectHrefs(file)
+  const metadata = expected.subjects.flatMap((subject) => [
+    subject.canonical_url,
+    subject.watch_url,
+  ])
+  const interview = expected.page.interview_question_ids.map((id) => {
+    const chapter = id.match(/^iq-(\d{2})-[a-z]$/u)?.[1]
+    const route = publishedCourseRoutes.find((candidate) =>
+      candidate.startsWith(`/chapters/${chapter}-`))
+    return `${siteBase}${route}#${id}`
+  })
+  return [...metadata, ...expected.licenses, ...expected.sources, ...interview]
 }
 
 function exactPinnedHrefs(actual, expected) {
@@ -149,6 +185,12 @@ function exactPinnedHrefs(actual, expected) {
       validatePinnedGithubSourceHref(href, candidate)))
 }
 
+function exactHrefs(actual, expected) {
+  return actual.length === expected.length
+    && new Set(actual).size === actual.length
+    && actual.every((href) => expected.includes(href))
+}
+
 export function validateDist(distPath) {
   if (!existsSync(distPath)) return [`构建产物不存在：${distPath}`]
 
@@ -156,7 +198,8 @@ export function validateDist(distPath) {
   const indexed = indexDistFiles(distPath)
   const relativeFiles = [...indexed.files.keys()]
   errors.push(...indexed.errors)
-  const leaked = relativeFiles.filter((file) => file.split(/[\\/]/).includes('superpowers'))
+  const leaked = relativeFiles.filter((file) =>
+    file.split(/[\\/]/).some((segment) => segment.toLowerCase() === 'superpowers'))
   if (leaked.length > 0) errors.push(`构建产物泄露 superpowers 页面：${leaked.join(', ')}`)
   errors.push(...validatePublishedRouteBoundary(indexed.rawFiles))
   for (const file of approvedProjectFiles) {
@@ -180,10 +223,20 @@ export function validateDist(distPath) {
     }
   }
 
-  for (const file of dissectionProjectFiles) {
+  const projectContracts = new Map()
+  for (const file of approvedProjectFiles) {
     const projectPath = indexed.files.get(file)
     if (projectPath === undefined) continue
     const contract = extractProjectHtmlContract(readFileSync(projectPath, 'utf8'))
+    projectContracts.set(file, contract)
+    if (!exactHrefs(contract.hrefs, expectedProjectDocumentHrefs(file))) {
+      errors.push(`项目页链接不符合公开契约：${file}`)
+    }
+  }
+
+  for (const file of dissectionProjectFiles) {
+    const contract = projectContracts.get(file)
+    if (contract === undefined) continue
     if (!contract.text.includes('固定版本')) errors.push(`项目页缺少固定版本：${file}`)
     if (!contract.text.includes('关键源码入口')) errors.push(`项目页缺少源码入口：${file}`)
     const projectHrefs = [...contract.sourceHrefs, ...contract.licenseHrefs]
@@ -193,7 +246,7 @@ export function validateDist(distPath) {
     if (!projectHrefs.some((href) => /\/blob\/[0-9a-f]{40}\//u.test(href))) {
       errors.push(`项目页缺少固定 commit 源码链接：${file}`)
     }
-    if (contract.images.some((src) => /^https?:\/\//iu.test(src))) {
+    if (contract.images.some(isRemoteImageCandidate)) {
       errors.push(`项目页包含外链图片：${file}`)
     }
     const expected = expectedProjectHrefs(file)
