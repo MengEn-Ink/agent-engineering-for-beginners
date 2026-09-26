@@ -479,6 +479,42 @@ describe('source freshness schema', () => {
     expect(source.url).toBe('https://modelcontextprotocol.io/specification/2026-07-28')
     expect(source.watch_url).toBe('https://modelcontextprotocol.io/specification/')
   })
+
+  it('tracks the manually verified Pydantic AI repository baseline', () => {
+    const data = parse(readFileSync('sources/source-index.yml', 'utf8')) as {
+      source_defaults: Record<string, unknown>
+      sources: Array<Record<string, unknown>>
+    }
+    const raw = data.sources.find((source) => source.id === 'pydantic-ai-repository')
+    const source = { ...data.source_defaults, ...raw }
+    expect(source).toEqual(
+      expect.objectContaining({
+        version: 'rolling',
+        last_verified: '2026-09-26',
+        review_by: '2026-10-26',
+        watch_url: 'https://github.com/pydantic/pydantic-ai/releases/latest',
+        note: '人工核验至 Pydantic AI v2.51.0，未改变现有稳定结论；学习类型约束、结构化结果和依赖注入，不把类型安全等同于事实正确。',
+      }),
+    )
+  })
+
+  it('tracks the manually verified Google ADK repository baseline', () => {
+    const data = parse(readFileSync('sources/source-index.yml', 'utf8')) as {
+      source_defaults: Record<string, unknown>
+      sources: Array<Record<string, unknown>>
+    }
+    const raw = data.sources.find((source) => source.id === 'google-adk-repository')
+    const source = { ...data.source_defaults, ...raw }
+    expect(source).toEqual(
+      expect.objectContaining({
+        version: 'rolling',
+        last_verified: '2026-09-26',
+        review_by: '2026-10-26',
+        watch_url: 'https://github.com/google/adk-python/releases/latest',
+        note: '人工核验至 Google ADK v2.10.0，未改变现有稳定结论；学习代码优先的 agent 组合、评测与部署接口；效率指标列入下一期 Radar 候选，当前不改正文。',
+      }),
+    )
+  })
 })
 
 describe('living handbook frontier', () => {

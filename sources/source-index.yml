@@ -181,16 +181,24 @@ sources:
     url: https://github.com/pydantic/pydantic-ai
     grade: A
     accessed: '2026-09-25'
+    version: rolling
+    last_verified: '2026-09-26'
+    review_by: '2026-10-26'
+    watch_url: https://github.com/pydantic/pydantic-ai/releases/latest
     impact_chapters: ['04', '09']
-    note: 学习类型约束、结构化结果和依赖注入，不把类型安全等同于事实正确。
+    note: 人工核验至 Pydantic AI v2.51.0，未改变现有稳定结论；学习类型约束、结构化结果和依赖注入，不把类型安全等同于事实正确。
   - id: google-adk-repository
     title: Agent Development Kit for Python
     publisher: Google
     url: https://github.com/google/adk-python
     grade: A
     accessed: '2026-09-25'
+    version: rolling
+    last_verified: '2026-09-26'
+    review_by: '2026-10-26'
+    watch_url: https://github.com/google/adk-python/releases/latest
     impact_chapters: ['07', '08']
-    note: 学习代码优先的 agent 组合、评测与部署接口。
+    note: 人工核验至 Google ADK v2.10.0，未改变现有稳定结论；学习代码优先的 agent 组合、评测与部署接口；效率指标列入下一期 Radar 候选，当前不改正文。
   - id: semantic-kernel-repository
     title: Semantic Kernel
     publisher: Microsoft
