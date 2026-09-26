@@ -503,6 +503,13 @@ describe('project presentation primitives', () => {
     expect(style).not.toMatch(/project-[^{]+\{[^}]*#[0-9a-f]{6}/isu)
   })
 
+  it('constrains source-link rows to the mobile content width', () => {
+    const style = readFileSync('docs/.vitepress/theme/style.css', 'utf8')
+    expect(style).toMatch(
+      /\.project-source-links\s*>\s*li\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/su,
+    )
+  })
+
   it('enforces the scoped Vue and TypeScript check during production builds', () => {
     const pkg = JSON.parse(readFileSync('package.json', 'utf8'))
     const tsconfig = JSON.parse(readFileSync('tsconfig.projects.json', 'utf8'))

@@ -2095,6 +2095,10 @@ summary {
   border-top: 1px solid var(--reading-rule);
 }
 
+.project-source-links > li {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .project-architecture {
   margin: 1rem 0;
 }
