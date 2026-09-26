@@ -350,7 +350,7 @@ page 级 `catalog_tier: core` 表示该页面属于主项目目录，不等于�
 ### 10.3 OpenHands
 
 - **核心问题：** 用户界面、Agent Server、SDK agent 与 workspace 如何跨仓库协作并隔离执行权限。
-- **唯一链路：** 已有 Canvas conversation 的 `handleSendMessage` → `useSendMessage().send` → WebSocket `sendMessage` → Agent Server `events_socket`（通过 `EventService.subscribe_to_events` 注册订阅）→ `EventService.send_message` → `LocalConversation.send_message` 持久化用户 `MessageEvent` → `EventService.run` → `LocalConversation.arun` → `Agent.astep` → `_ahandle_tool_calls` 生成 `ActionEvent` → `Agent._aexecute_actions` → `ToolDefinition.__call__` 返回 `Observation` → `LocalConversation.__init__` 组装 persistence-first callback → `AsyncCallbackWrapper.__call__` → `EventService._pub_sub` → `_WebSocketSubscriber.__call__` → `_send_event` → Canvas `handleMainMessage`。
+- **唯一链路：** 已有 Canvas conversation 的 `handleSendMessage` → `useSendMessage().send` → WebSocket `sendMessage` → Agent Server `events_socket`（通过 `EventService.subscribe_to_events` 注册订阅）→ `EventService.send_message` → `LocalConversation.send_message` 持久化用户 `MessageEvent` → `EventService.run` → `LocalConversation.arun` → `Agent.astep` → `_ahandle_tool_calls` 生成 `ActionEvent` → `Agent._aexecute_actions` → `ToolDefinition.__call__` 返回 `Observation` → `LocalConversation.__init__` 组装 persistence-first callback → `EventService.start` 装配 async PubSub bridge → `_WebSocketSubscriber.__call__` 调用 `_send_event` → Canvas `handleMainMessage`。结构化链固定为 16 个节点，三个 track 分别为 6 / 6 / 4。
 - **关键入口：**
   - Canvas：`src/components/features/chat/chat-interface.tsx`
   - Canvas：`src/hooks/use-send-message.ts`
@@ -361,7 +361,7 @@ page 级 `catalog_tier: core` 表示该页面属于主项目目录，不等于�
   - SDK：`openhands-sdk/openhands/sdk/agent/agent.py`
   - SDK：`openhands-sdk/openhands/sdk/agent/response_dispatch.py`
   - SDK：`openhands-sdk/openhands/sdk/tool/tool.py`
-- **必须讲清：** `OpenHands/OpenHands` 当前不是旧版单体 Python Agent 仓库；本页只追踪已有会话的 message/action/durable-event 链，不追踪 conversation 创建链。`Workspace` 是工具构造与执行所消费的环境边界和配置来源，不是 tools 的 owner，也不是 `ToolDefinition.__call__` 之后的主链节点；streaming delta 是非持久旁路。durable append 的保证来自 `LocalConversation.__init__` 组装的 default callback 先执行、caller callback 后执行，再经 PubSub/WebSocket 回流；`EventService.run` 不拥有订阅。
+- **必须讲清：** `OpenHands/OpenHands` 当前不是旧版单体 Python Agent 仓库；本页只追踪已有会话的 message/action/durable-event 链，不追踪 conversation 创建链。`Workspace` 是工具构造与执行所消费的环境边界和配置来源，不是 tools 的 owner，也不是 `ToolDefinition.__call__` 之后的主链节点；streaming delta 是非持久旁路。durable append 的保证来自 `LocalConversation.__init__` 组装的 default callback 先执行、caller callback 后执行；`EventService.start` 构造并注册 `AsyncCallbackWrapper(self._pub_sub, ...)`，subscriber 的 `_WebSocketSubscriber.__call__` 再调用 `_send_event`。`EventService.run` 不拥有订阅。
 - **面试题：** `iq-09-b`、`iq-10-a`、`iq-13-c`。
 
 ### 10.4 SWE-bench 与 τ²-bench
@@ -383,7 +383,7 @@ page 级 `catalog_tier: core` 表示该页面属于主项目目录，不等于�
   - `src/tau2/orchestrator/orchestrator.py`
   - `src/tau2/environment/environment.py`
   - `src/tau2/evaluator/evaluator.py`
-- **必须讲清：** 本书只拆 harness，不公布自称官方的成绩；后续 10 条本地 fixture 是第三阶段自建微型回归集，不是 SWE-bench 或 τ²-bench 子集。`tau2.run.run_task` 与 `tau2.run.run_tasks` 只是旧 flat 参数 API 的 deprecated 兼容 shim，不能作为当前 CLI 主链入口。只有默认 `EvaluationType.ALL` 按 `task.reward_basis` 选择分量后相乘，ACTION 只有被选中时才是硬门禁；单项类型和 `*_IGNORE_BASIS` 各走自己的分支，early termination 返回 `0.0`，没有 criteria 时返回 `1.0`。
+- **必须讲清：** 本书只拆 harness，不公布自称官方的成绩；后续 10 条本地 fixture 是第三阶段自建微型回归集，不是 SWE-bench 或 τ²-bench 子集。`tau2.run.run_task` 与 `tau2.run.run_tasks` 只是旧 flat 参数 API 的 deprecated 兼容 shim，不能作为当前 CLI 主链入口。默认 `EvaluationType.ALL` 与 `EvaluationType.ALL_WITH_NL_ASSERTIONS` 都按 `task.evaluation_criteria.reward_basis` 选择分量后相乘，后者只强制 NL assertions；ACTION 只有被选中时才是硬门禁。单项类型和 `*_IGNORE_BASIS` 各走自己的分支，early termination 返回 `0.0`，没有 criteria 时返回 `1.0`。
 - **面试题：** `iq-08-a`、`iq-08-b`、`iq-08-c`。
 
 ### 10.5 Dify

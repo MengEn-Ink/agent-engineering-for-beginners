@@ -703,7 +703,7 @@ const expectedCoreEntrypointSymbols = {
   },
   'openhands-sdk': {
     'openhands-agent-server/openhands/agent_server/sockets.py': ['events_socket', '_WebSocketSubscriber.__call__', '_send_event'],
-    'openhands-agent-server/openhands/agent_server/event_service.py': ['EventService.send_message', 'EventService.run', 'EventService.subscribe_to_events', 'AsyncCallbackWrapper.__call__', 'EventService._pub_sub'],
+    'openhands-agent-server/openhands/agent_server/event_service.py': ['EventService.send_message', 'EventService.run', 'EventService.subscribe_to_events', 'EventService.start'],
     'openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py': ['LocalConversation.__init__', 'LocalConversation.send_message', 'LocalConversation.arun'],
     'openhands-sdk/openhands/sdk/agent/agent.py': ['Agent.astep', 'Agent._get_action_event', 'Agent._aexecute_actions'],
     'openhands-sdk/openhands/sdk/agent/response_dispatch.py': ['_ahandle_tool_calls'],
@@ -723,7 +723,7 @@ const expectedCoreEntrypointSymbols = {
 const expectedChains = {
   'mcp-tool-call': ['schema:mcp-spec:schema/2026-07-28/schema.json:CallToolRequest', 'host-run:mcp-python-sdk:src/mcp/server/mcpserver/server.py:MCPServer.run', 'transport:mcp-python-sdk:src/mcp/server/stdio.py:stdio_server', 'server-run:mcp-python-sdk:src/mcp/server/lowlevel/server.py:Server.run', 'runner-loop:mcp-python-sdk:src/mcp/server/runner.py:serve_dual_era_loop', 'dispatcher-loop:mcp-python-sdk:src/mcp/shared/jsonrpc_dispatcher.py:JSONRPCDispatcher.run', 'dispatcher-request:mcp-python-sdk:src/mcp/shared/jsonrpc_dispatcher.py:JSONRPCDispatcher._dispatch_request', 'request:mcp-python-sdk:src/mcp/server/runner.py:ServerRunner._on_request', 'dispatch:mcp-python-sdk:src/mcp/server/lowlevel/server.py:get_request_handler', 'mcp-handler:mcp-python-sdk:src/mcp/server/mcpserver/server.py:MCPServer._handle_call_tool', 'mcp-call:mcp-python-sdk:src/mcp/server/mcpserver/server.py:MCPServer.call_tool', 'tool-lookup:mcp-python-sdk:src/mcp/server/mcpserver/tools/tool_manager.py:ToolManager.call_tool', 'tool-run:mcp-python-sdk:src/mcp/server/mcpserver/tools/base.py:Tool.run', 'tool-function:mcp-python-sdk:examples/snippets/servers/basic_tool.py:sum', 'serialize:mcp-python-sdk:src/mcp/server/runner.py:ServerRunner._serialize', 'dispatcher-response:mcp-python-sdk:src/mcp/shared/jsonrpc_dispatcher.py:JSONRPCDispatcher._write_result', 'stdout:mcp-python-sdk:src/mcp/server/stdio.py:stdio_server'],
   'aider-repo-to-verified-edit': ['cli:aider:aider/main.py:main', 'run:aider:aider/coders/base_coder.py:Coder.run', 'turn:aider:aider/coders/base_coder.py:Coder.run_one', 'context:aider:aider/coders/base_coder.py:Coder.send_message', 'repo-map:aider:aider/repomap.py:RepoMap.get_repo_map', 'send:aider:aider/coders/base_coder.py:Coder.send', 'completion:aider:aider/models.py:Model.send_completion', 'parse:aider:aider/coders/editblock_coder.py:EditBlockCoder.get_edits', 'apply-updates:aider:aider/coders/base_coder.py:Coder.apply_updates', 'dry-run:aider:aider/coders/editblock_coder.py:EditBlockCoder.apply_edits_dry_run', 'prepare:aider:aider/coders/base_coder.py:Coder.prepare_to_edit', 'apply:aider:aider/coders/editblock_coder.py:EditBlockCoder.apply_edits', 'write:aider:aider/io.py:InputOutput.write_text', 'auto-commit:aider:aider/coders/base_coder.py:Coder.auto_commit', 'commit:aider:aider/repo.py:GitRepo.commit', 'auto-lint:aider:aider/coders/base_coder.py:Coder.lint_edited', 'lint-commit:aider:aider/coders/base_coder.py:Coder.auto_commit', 'shell-confirm:aider:aider/io.py:InputOutput.confirm_ask', 'shell-run:aider:aider/coders/base_coder.py:Coder.handle_shell_commands', 'auto-test:aider:aider/commands.py:Commands.cmd_test', 'reflection:aider:aider/coders/base_coder.py:Coder.run_one'],
-  'openhands-canvas-to-workspace-event': ['chat-submit:openhands-canvas:src/components/features/chat/chat-interface.tsx:handleSendMessage', 'hook-send:openhands-canvas:src/hooks/use-send-message.ts:useSendMessage().send', 'canvas-send:openhands-canvas:src/contexts/conversation-websocket-context.tsx:ConversationWebSocketProvider.sendMessage', 'socket-receive:openhands-sdk:openhands-agent-server/openhands/agent_server/sockets.py:events_socket', 'service-message:openhands-sdk:openhands-agent-server/openhands/agent_server/event_service.py:EventService.send_message', 'conversation-message:openhands-sdk:openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py:LocalConversation.send_message', 'service-run:openhands-sdk:openhands-agent-server/openhands/agent_server/event_service.py:EventService.run', 'conversation-run:openhands-sdk:openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py:LocalConversation.arun', 'agent-step:openhands-sdk:openhands-sdk/openhands/sdk/agent/agent.py:Agent.astep', 'dispatch-tool-calls:openhands-sdk:openhands-sdk/openhands/sdk/agent/response_dispatch.py:_ahandle_tool_calls', 'execute-actions:openhands-sdk:openhands-sdk/openhands/sdk/agent/agent.py:Agent._aexecute_actions', 'tool-call:openhands-sdk:openhands-sdk/openhands/sdk/tool/tool.py:ToolDefinition.__call__', 'persist-event:openhands-sdk:openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py:LocalConversation.__init__', 'async-callback:openhands-sdk:openhands-agent-server/openhands/agent_server/event_service.py:AsyncCallbackWrapper.__call__', 'publish-event:openhands-sdk:openhands-agent-server/openhands/agent_server/event_service.py:EventService._pub_sub', 'subscriber-event:openhands-sdk:openhands-agent-server/openhands/agent_server/sockets.py:_WebSocketSubscriber.__call__', 'socket-send:openhands-sdk:openhands-agent-server/openhands/agent_server/sockets.py:_send_event', 'canvas-receive:openhands-canvas:src/contexts/conversation-websocket-context.tsx:ConversationWebSocketProvider.handleMainMessage'],
+  'openhands-canvas-to-workspace-event': ['chat-submit:openhands-canvas:src/components/features/chat/chat-interface.tsx:handleSendMessage', 'hook-send:openhands-canvas:src/hooks/use-send-message.ts:useSendMessage().send', 'canvas-send:openhands-canvas:src/contexts/conversation-websocket-context.tsx:ConversationWebSocketProvider.sendMessage', 'socket-receive:openhands-sdk:openhands-agent-server/openhands/agent_server/sockets.py:events_socket', 'service-message:openhands-sdk:openhands-agent-server/openhands/agent_server/event_service.py:EventService.send_message', 'conversation-message:openhands-sdk:openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py:LocalConversation.send_message', 'service-run:openhands-sdk:openhands-agent-server/openhands/agent_server/event_service.py:EventService.run', 'conversation-run:openhands-sdk:openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py:LocalConversation.arun', 'agent-step:openhands-sdk:openhands-sdk/openhands/sdk/agent/agent.py:Agent.astep', 'dispatch-tool-calls:openhands-sdk:openhands-sdk/openhands/sdk/agent/response_dispatch.py:_ahandle_tool_calls', 'execute-actions:openhands-sdk:openhands-sdk/openhands/sdk/agent/agent.py:Agent._aexecute_actions', 'tool-call:openhands-sdk:openhands-sdk/openhands/sdk/tool/tool.py:ToolDefinition.__call__', 'persist-event:openhands-sdk:openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py:LocalConversation.__init__', 'publish-event:openhands-sdk:openhands-agent-server/openhands/agent_server/event_service.py:EventService.start', 'socket-send:openhands-sdk:openhands-agent-server/openhands/agent_server/sockets.py:_WebSocketSubscriber.__call__', 'canvas-receive:openhands-canvas:src/contexts/conversation-websocket-context.tsx:ConversationWebSocketProvider.handleMainMessage'],
   'benchmark-task-to-score': ['swe-input:swe-bench:swebench/harness/run_evaluation.py:main', 'swe-env:swe-bench:swebench/harness/docker_utils.py:exec_run_with_timeout', 'swe-grade:swe-bench:swebench/harness/grading.py:get_eval_report', 'swe-report:swe-bench:swebench/harness/reporting.py:make_run_report', 'tau-cli:tau2-bench:src/tau2/cli.py:main', 'tau-domain:tau2-bench:src/tau2/runner/batch.py:run_domain', 'tau-load:tau2-bench:src/tau2/runner/helpers.py:get_tasks', 'tau-batch:tau2-bench:src/tau2/runner/batch.py:run_tasks', 'tau-task:tau2-bench:src/tau2/runner/batch.py:run_single_task', 'tau-build:tau2-bench:src/tau2/runner/build.py:build_orchestrator', 'tau-sim:tau2-bench:src/tau2/runner/simulation.py:run_simulation', 'tau-orchestrator:tau2-bench:src/tau2/orchestrator/orchestrator.py:BaseOrchestrator.run', 'tau-environment:tau2-bench:src/tau2/environment/environment.py:Environment.make_tool_call', 'tau-trajectory:tau2-bench:src/tau2/runner/simulation.py:run_simulation', 'tau-evaluate:tau2-bench:src/tau2/evaluator/evaluator.py:evaluate_simulation', 'tau-reward:tau2-bench:src/tau2/evaluator/evaluator.py:evaluate_simulation'],
   'dify-request-to-graph-events': ['controller:dify:api/controllers/service_api/app/workflow.py:WorkflowRunApi.post', 'generator:dify:api/core/app/apps/workflow/app_generator.py:WorkflowAppGenerator', 'runner:dify:api/core/app/apps/workflow/app_runner.py:WorkflowAppRunner', 'entry:dify:api/core/workflow/workflow_entry.py:WorkflowEntry', 'factory:dify:api/core/workflow/node_factory.py:DifyNodeFactory', 'agent-node:dify:api/core/workflow/nodes/agent_v2/agent_node.py:DifyAgentNode', 'response:dify:api/core/app/apps/common/workflow_response_converter.py:WorkflowResponseConverter'],
   'crewai-kickoff-to-task-output': ['kickoff:crewai:lib/crewai/src/crewai/crew.py:Crew.kickoff', 'process:crewai:lib/crewai/src/crewai/process.py:Process', 'execution:crewai:lib/crewai/src/crewai/execution.py:begin_execution', 'task:crewai:lib/crewai/src/crewai/task.py:Task.execute_sync', 'agent:crewai:lib/crewai/src/crewai/agent/core.py:Agent.execute_task', 'executor:crewai:lib/crewai/src/crewai/agents/crew_agent_executor.py:CrewAgentExecutor.invoke', 'step:crewai:lib/crewai/src/crewai/agents/step_executor.py:StepExecutor.execute', 'tool:crewai:lib/crewai/src/crewai/tools/tool_usage.py:ToolUsage.use', 'output:crewai:lib/crewai/src/crewai/task.py:Task._export_output'],
@@ -772,7 +772,7 @@ const expectedSubjectDigests = {
   'mcp-python-sdk': '21a74ad2294a17ef639fb92539bee85e299dd9cc71fea3e6db72d615da7db867',
   aider: '5e52014bcd913a55fbbaed8dcdf44cff28bcf19d6d6af5b33264c0bb1caec388',
   'openhands-canvas': '05fb380eafe106924eb9bb17f712d73b75c8b0c7e8d0cd10696cb830798c5ed4',
-  'openhands-sdk': '49b57ad1cb32ce8084c8c0fa75ae6976543e76ca70893e858403699410bea8f8',
+  'openhands-sdk': 'a4ea3a15cab7a116af2beaf8715d8586d6fd5b472b1054adad949dc8aa222133',
   'swe-bench': 'e356c00937817246deae70028e1d8068a2e9426e33f5d77e5b44e485adb3efaa',
   'tau2-bench': '9ce153cca427f514e1d8b1b727931efa4ab2f8767fac1019117219ef17bb99d9',
   dify: '6881c250b6f94d1ff50aa54d77a493cacb672796350e9c8281b2cc639563d683',
@@ -785,8 +785,8 @@ const expectedSubjectDigests = {
 const expectedChainDigests = {
   'mcp-tool-call': '54b46cce64ce2559ae2656a61335d2b92df9df99fdf87e1b7215efe76d4a1ab4',
   'aider-repo-to-verified-edit': '222bc344a8184b8ff7cac95a1e36f620a50a58cacb0f61b459132238164486ce',
-  'openhands-canvas-to-workspace-event': 'e28817b291e43fa1371c2e2174421af65921b4a8e5c7089216b69d475fbb702e',
-  'benchmark-task-to-score': 'fc1b273a3f59963d7e35c73718ca408b468dc92ad999dc179faf736cffc1df89',
+  'openhands-canvas-to-workspace-event': '168bff273714e7a5f797f51d6bff179ede412397be22f5c5742bbef8669a5a06',
+  'benchmark-task-to-score': '4bc18b2acf77c5290f31cf416e89b1f34a3001b1f85a69c365425fcbf8ae5da2',
   'dify-request-to-graph-events': '060d82f9c004cfb20a95ccf3a951383bb7715b47ba25abb1232dcfc9034b6a50',
   'crewai-kickoff-to-task-output': '4a3711ad6debf20e72f0732a6719b0bf9a7e2ae9153cc141a8bb800eb9d9c058',
   'autogpt-flowise-evolution': '2d20650faa158737e729becfdc9559ed3d1f419bbcffccf2977f4eb946d722df',
@@ -807,7 +807,7 @@ describe('real project catalog', () => {
     expect(Object.keys(catalog)).toEqual(['schema_version', 'defaults', 'pages', 'subjects', 'chains'])
     expect(catalog.schema_version).toBe(1)
     expect(catalog.defaults).toEqual({ verified_at: '2026-09-26', review_by: '2026-10-26' })
-    expect(digest(catalog)).toBe('0f46cd636fafd2e62a593558aa0efc8ed700cfe2326197104333f4d9e7b549c5')
+    expect(digest(catalog)).toBe('6be8be4c75bca1b0098b3527dc5173e2a89c4dc4d93360454c08d8e1fd1199ad')
     expect(catalog.pages.map((page: { page_item_id: string }) => page.page_item_id)).toEqual(pageIds)
     expect(catalog.subjects.map((subject: { id: string }) => subject.id)).toEqual(subjectIds)
     expect(Object.fromEntries(catalog.subjects.map((subject: any) => [subject.id, [
@@ -858,12 +858,13 @@ describe('real project catalog', () => {
     expect(subjectsById['tau2-bench'].entrypoints.find((entry: { path: string }) => entry.path === 'src/tau2/cli.py').symbols)
       .not.toContain('run')
     const openHandsChain = catalog.chains.find((chain: { id: string }) => chain.id === 'openhands-canvas-to-workspace-event')
+    expect(openHandsChain.steps).toHaveLength(16)
     expect(openHandsChain.misconception).toContain('environment and configuration source')
     expect(JSON.stringify(openHandsChain)).not.toMatch(/owns tool resources|owner boundary/iu)
     expect(openHandsChain.steps.map((step: { track?: string }) => step.track)).toEqual([
       ...Array(6).fill('message 入站'),
       ...Array(6).fill('action / observation 执行'),
-      ...Array(6).fill('durable event 回流'),
+      ...Array(4).fill('durable event 回流'),
     ])
     const benchmarkChain = catalog.chains.find((chain: { id: string }) => chain.id === 'benchmark-task-to-score')
     const trackSizes = Object.values(Object.groupBy(
@@ -871,6 +872,10 @@ describe('real project catalog', () => {
       (step: { track?: string }) => step.track ?? 'main',
     )).map((steps) => steps?.length ?? 0)
     expect(Math.max(...trackSizes)).toBeLessThanOrEqual(12)
+    const tauEvaluate = benchmarkChain.steps.find((step: { id: string }) => step.id === 'tau-evaluate')
+    const tauReward = benchmarkChain.steps.find((step: { id: string }) => step.id === 'tau-reward')
+    expect(tauEvaluate.responsibility).toContain('EvaluationType.ALL_WITH_NL_ASSERTIONS')
+    expect(tauReward.responsibility).toContain('task.evaluation_criteria.reward_basis')
     const aiderChain = catalog.chains.find((chain: { id: string }) => chain.id === 'aider-repo-to-verified-edit')
     expect(aiderChain.steps.map((step: { id: string; track?: string; label: string }) =>
       [step.id, step.track, step.label],
@@ -1149,7 +1154,7 @@ Append the next four subjects:
     watch_url: https://github.com/OpenHands/software-agent-sdk/releases/latest
     entrypoints:
       - { path: openhands-agent-server/openhands/agent_server/sockets.py, symbols: [events_socket, _WebSocketSubscriber.__call__, _send_event], responsibility: Subscribe the WebSocket to an existing conversation and send published events back to Canvas. }
-      - { path: openhands-agent-server/openhands/agent_server/event_service.py, symbols: [EventService.send_message, EventService.run, EventService.subscribe_to_events, AsyncCallbackWrapper.__call__, EventService._pub_sub], responsibility: Forward messages to LocalConversation and bridge its durable callback through PubSub. }
+      - { path: openhands-agent-server/openhands/agent_server/event_service.py, symbols: [EventService.send_message, EventService.run, EventService.subscribe_to_events, EventService.start], responsibility: Forward messages to LocalConversation and configure its persistence-first callback bridge to PubSub. }
       - { path: openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py, symbols: [LocalConversation.__init__, LocalConversation.send_message, LocalConversation.arun], responsibility: Compose persistence-first callbacks and drive the local conversation event loop. }
       - { path: openhands-sdk/openhands/sdk/agent/agent.py, symbols: [Agent.astep, Agent._get_action_event, Agent._aexecute_actions], responsibility: Derive action events and coordinate their execution. }
       - { path: openhands-sdk/openhands/sdk/agent/response_dispatch.py, symbols: [_ahandle_tool_calls], responsibility: Translate model tool calls into ActionEvent values. }
@@ -1432,10 +1437,8 @@ chains:
       - { id: execute-actions, track: action / observation 执行, label: Action execution, subject_id: openhands-sdk, source_path: openhands-sdk/openhands/sdk/agent/agent.py, symbol: Agent._aexecute_actions, responsibility: Execute the emitted actions and collect their results. }
       - { id: tool-call, track: action / observation 执行, label: Tool observation, subject_id: openhands-sdk, source_path: openhands-sdk/openhands/sdk/tool/tool.py, symbol: ToolDefinition.__call__, responsibility: Invoke the tool and return an Observation using the Workspace-backed environment configuration. }
       - { id: persist-event, track: durable event 回流, label: Persistence-first callback, subject_id: openhands-sdk, source_path: openhands-sdk/openhands/sdk/conversation/impl/local_conversation.py, symbol: LocalConversation.__init__, responsibility: Compose the default callback so durable append happens before caller-supplied callbacks. }
-      - { id: async-callback, track: durable event 回流, label: Async callback bridge, subject_id: openhands-sdk, source_path: openhands-agent-server/openhands/agent_server/event_service.py, symbol: AsyncCallbackWrapper.__call__, responsibility: Schedule the EventService PubSub callback on its event loop after persistence. }
-      - { id: publish-event, track: durable event 回流, label: EventService PubSub, subject_id: openhands-sdk, source_path: openhands-agent-server/openhands/agent_server/event_service.py, symbol: EventService._pub_sub, responsibility: Publish through PubSub to the subscribers registered by EventService.subscribe_to_events. }
-      - { id: subscriber-event, track: durable event 回流, label: WebSocket subscriber, subject_id: openhands-sdk, source_path: openhands-agent-server/openhands/agent_server/sockets.py, symbol: _WebSocketSubscriber.__call__, responsibility: Receive the published event and delegate WebSocket serialization. }
-      - { id: socket-send, track: durable event 回流, label: WebSocket event send, subject_id: openhands-sdk, source_path: openhands-agent-server/openhands/agent_server/sockets.py, symbol: _send_event, responsibility: Serialize and send the subscribed event to Canvas. }
+      - { id: publish-event, track: durable event 回流, label: Async PubSub bridge, subject_id: openhands-sdk, source_path: openhands-agent-server/openhands/agent_server/event_service.py, symbol: EventService.start, responsibility: Construct AsyncCallbackWrapper(self._pub_sub, ...) and register it as a LocalConversation callback so invocation schedules PubSub after persistence. }
+      - { id: socket-send, track: durable event 回流, label: WebSocket subscriber send, subject_id: openhands-sdk, source_path: openhands-agent-server/openhands/agent_server/sockets.py, symbol: _WebSocketSubscriber.__call__, responsibility: Receive the published event as a subscriber and call _send_event to serialize it to Canvas. }
       - { id: canvas-receive, track: durable event 回流, label: Canvas event store, subject_id: openhands-canvas, source_path: src/contexts/conversation-websocket-context.tsx, symbol: ConversationWebSocketProvider.handleMainMessage, responsibility: Fold the returned event into the Canvas event store. }
 
 ```
@@ -1466,8 +1469,8 @@ Append:
       - { id: tau-orchestrator, track: tau2-bench, label: Orchestrator loop, subject_id: tau2-bench, source_path: src/tau2/orchestrator/orchestrator.py, symbol: BaseOrchestrator.run, responsibility: Drive agent and user turns while routing tool requests. }
       - { id: tau-environment, track: tau2-bench, label: Environment calls, subject_id: tau2-bench, source_path: src/tau2/environment/environment.py, symbol: Environment.make_tool_call, responsibility: Apply requested tools to authoritative domain state. }
       - { id: tau-trajectory, track: tau2-bench, label: Trajectory, subject_id: tau2-bench, source_path: src/tau2/runner/simulation.py, symbol: run_simulation, responsibility: Return the complete controlled interaction trajectory. }
-      - { id: tau-evaluate, track: tau2-bench, label: Evaluation branch, subject_id: tau2-bench, source_path: src/tau2/evaluator/evaluator.py, symbol: evaluate_simulation, responsibility: Separate single evaluation types and *_IGNORE_BASIS modes from the default EvaluationType.ALL basis-aware branch. }
-      - { id: tau-reward, track: tau2-bench, label: Reward info, subject_id: tau2-bench, source_path: src/tau2/evaluator/evaluator.py, symbol: evaluate_simulation, responsibility: For default ALL multiply only task.reward_basis components so ACTION gates only when selected; premature termination returns 0.0 and missing criteria returns 1.0. }
+      - { id: tau-evaluate, track: tau2-bench, label: Evaluation branch, subject_id: tau2-bench, source_path: src/tau2/evaluator/evaluator.py, symbol: evaluate_simulation, responsibility: Separate single types and *_IGNORE_BASIS modes from basis-aware EvaluationType.ALL and EvaluationType.ALL_WITH_NL_ASSERTIONS; the latter only forces NL assertions. }
+      - { id: tau-reward, track: tau2-bench, label: Reward info, subject_id: tau2-bench, source_path: src/tau2/evaluator/evaluator.py, symbol: evaluate_simulation, responsibility: Multiply only task.evaluation_criteria.reward_basis components so ACTION gates only when selected; premature termination returns 0.0 and missing criteria returns 1.0. }
 
   - id: dify-request-to-graph-events
     page_item_id: project-dify
@@ -2651,8 +2654,11 @@ describe('OpenHands and benchmark dissections', () => {
     expect(text).toContain('持久化 append 先发生')
     expect(text).toContain('`LocalConversation.__init__`')
     expect(text).toContain('`AsyncCallbackWrapper.__call__`')
+    expect(text).toContain('`EventService.start`')
+    expect(text).toContain('`AsyncCallbackWrapper(self._pub_sub, ...)`')
     expect(text).toContain('`EventService.subscribe_to_events`')
     expect(text).toContain('`_WebSocketSubscriber.__call__`')
+    expect(text).toContain('subscriber 调用 `_send_event`')
     expect(text).toContain('三条 track 不是一条跨异步边界的同步调用栈')
     expect(text).not.toMatch(/conversation router|conversation service|adapter/iu)
   })
@@ -2670,7 +2676,9 @@ describe('OpenHands and benchmark dissections', () => {
     expect(text).toContain('把 `tau2 run` 分派到 `run_domain`')
     expect(text).not.toContain('CLI 的 `run`')
     expect(text).toContain('默认 `EvaluationType.ALL`')
-    expect(text).toContain('按 `task.reward_basis` 选择分量后相乘')
+    expect(text).toContain('`EvaluationType.ALL_WITH_NL_ASSERTIONS`')
+    expect(text).toContain('只强制 NL assertions')
+    expect(text).toContain('按 `task.evaluation_criteria.reward_basis` 选择分量后相乘')
     expect(text).toContain('ACTION 只有被选中时才是硬门禁')
     expect(text).toContain('单项类型与 `*_IGNORE_BASIS` 各走自己的分支')
     expect(text).toContain('early termination 返回 `0.0`')
@@ -2720,7 +2728,7 @@ Canvas v1.24.0 依赖 `@openhands/typescript-client@1.49.6`，与本页固定的
 
 ## 唯一纵向调用链
 
-从 `handleSendMessage` 与 `useSendMessage().send` 进入 WebSocket 后，`events_socket` 通过 `EventService.subscribe_to_events` 注册订阅，并把消息交给 `EventService.send_message`，后者直接调用 `LocalConversation.send_message` 写入用户 `MessageEvent`。`EventService.run` 只启动已有 conversation 的执行，不拥有订阅；执行侧再由 `LocalConversation.arun` 和 `Agent.astep` 推进，tool call 被转成 `ActionEvent`，工具结果形成 `Observation`。事件回流由 `LocalConversation.__init__` 组装的 callback 保证持久化 append 先发生，再依次经过 `AsyncCallbackWrapper.__call__`、EventService `_pub_sub`/PubSub、`_WebSocketSubscriber.__call__` 与 `_send_event` 回到 Canvas event store。图中的三条 track 不是一条跨异步边界的同步调用栈。
+从 `handleSendMessage` 与 `useSendMessage().send` 进入 WebSocket 后，`events_socket` 通过 `EventService.subscribe_to_events` 注册订阅，并把消息交给 `EventService.send_message`，后者直接调用 `LocalConversation.send_message` 写入用户 `MessageEvent`。`EventService.run` 只启动已有 conversation 的执行，不拥有订阅；执行侧再由 `LocalConversation.arun` 和 `Agent.astep` 推进，tool call 被转成 `ActionEvent`，工具结果形成 `Observation`。装配阶段，`EventService.start` 构造并注册 `AsyncCallbackWrapper(self._pub_sub, ...)`；事件实际回流时，`LocalConversation.__init__` 组装的 callback 保证持久化 append 先发生，随后 `AsyncCallbackWrapper.__call__` 调度 EventService `_pub_sub`/PubSub，`_WebSocketSubscriber.__call__` 作为 subscriber 调用 `_send_event`，最后回到 Canvas event store。图中的三条 track 不是一条跨异步边界的同步调用栈。
 
 ## 关键源码入口
 
@@ -2801,7 +2809,7 @@ SWE-bench 的 v5.0.1 是 tag，不冒充 GitHub Release。页面只拆评测执�
 
 ## 一次请求的数据流
 
-SWE-bench 将实例和预测 patch 放入隔离环境，运行目标测试并由 grading 生成解决状态。τ²-bench 由当前 CLI 调用 batch runner，构建 agent、user、environment 与 orchestrator；simulation 保留 trajectory。只有默认 `EvaluationType.ALL` 按 `task.reward_basis` 选择分量后相乘，ACTION 只有被选中时才是硬门禁；单项类型与 `*_IGNORE_BASIS` 各走自己的分支。early termination 返回 `0.0`，没有 criteria 时返回 `1.0`，这些短路结果不能冒充默认 ALL 分支的乘积。
+SWE-bench 将实例和预测 patch 放入隔离环境，运行目标测试并由 grading 生成解决状态。τ²-bench 由当前 CLI 调用 batch runner，构建 agent、user、environment 与 orchestrator；simulation 保留 trajectory。默认 `EvaluationType.ALL` 与 `EvaluationType.ALL_WITH_NL_ASSERTIONS` 都按 `task.evaluation_criteria.reward_basis` 选择分量后相乘，后者只强制 NL assertions；ACTION 只有被选中时才是硬门禁。单项类型与 `*_IGNORE_BASIS` 各走自己的分支。early termination 返回 `0.0`，没有 criteria 时返回 `1.0`，这些短路结果不能冒充 basis-aware 分支的乘积。
 
 ## 阅读练习
 
