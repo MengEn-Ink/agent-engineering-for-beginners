@@ -31,7 +31,7 @@ export const readingPathDefinitions: ReadingPathDefinition[] = [
     id: 'engineering',
     title: '工程实战',
     summary: '围绕工具、状态、Graph、验证和应用边界，形成可以落地的系统设计。',
-    pace: '10 站 · 建议边读边做',
+    pace: '17 站 · 建议边读边画调用链',
     steps: [
       { itemId: 'chapter-02-workflow-agent', why: '避免一开始就过度 Agent 化' },
       { itemId: 'chapter-03-react', why: '明确观察、停止与恢复' },
@@ -43,6 +43,13 @@ export const readingPathDefinitions: ReadingPathDefinition[] = [
       { itemId: 'chapter-10-production', why: '用灰度、SLO 和回滚保护上线' },
       { itemId: 'chapter-13-coding-agent', why: '把工程原则放进真实仓库任务' },
       { itemId: 'chapter-14-computer-use', why: '验证高不确定环境里的证据链' },
+      { itemId: 'project-mcp-python-sdk', why: '从协议读到官方 Python 实现' },
+      { itemId: 'project-aider', why: '把仓库上下文变成可审查补丁' },
+      { itemId: 'project-openhands', why: '理解大型 Coding Agent 的服务和执行边界' },
+      { itemId: 'project-agent-benchmarks', why: '把结果、环境、轨迹和评分连成证据链' },
+      { itemId: 'project-dify', why: '观察平台请求如何进入工作流图' },
+      { itemId: 'project-crewai', why: '用源码评估多 Agent 的收益与协调成本' },
+      { itemId: 'case-delivery-agent', why: '用质量门收束评测、安全与上线判断' },
     ],
   },
   {

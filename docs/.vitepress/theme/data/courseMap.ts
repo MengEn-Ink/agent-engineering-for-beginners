@@ -51,7 +51,11 @@ export const courseStages = freezeCourseStages([
   { id: 'mechanisms', order: 2, title: '核心机制', purpose: '组装工具、上下文、状态与协作', availability: 'published', itemIds: ['chapter-04-tools-mcp', 'frontier-context-engineering', 'chapter-05-state-memory', 'chapter-06-loop-graph', 'chapter-07-multi-agent', 'frontier-interoperability-identity'] },
   { id: 'engineering', order: 3, title: '生产工程', purpose: '建立评测、安全、恢复与上线能力', availability: 'published', itemIds: ['chapter-08-evaluation', 'chapter-09-safety-recovery', 'chapter-10-production', 'frontier-durable-execution', 'frontier-agent-security-evaluation'] },
   { id: 'applications', order: 4, title: '应用模式', purpose: '理解四类 Agent 的适用与失败边界', availability: 'published', itemIds: ['chapter-11-research-agent', 'chapter-12-service-operations-agent', 'chapter-13-coding-agent', 'chapter-14-computer-use'] },
-  { id: 'projects', order: 5, title: '项目拆解', purpose: '从已发布案例观察工程质量门', availability: 'published', itemIds: ['case-delivery-agent'] },
+  { id: 'projects', order: 5, title: '项目拆解', purpose: '沿真实源码验证协议、执行与证据链', availability: 'published', itemIds: [
+    'project-mcp-python-sdk', 'project-aider', 'project-openhands',
+    'project-agent-benchmarks', 'project-dify', 'project-crewai',
+    'case-delivery-agent',
+  ] },
   { id: 'capstone', order: 6, title: '综合实战', purpose: '在后续独立阶段组合 Python Lab 与交付型后端 Agent', availability: 'relationship-only', itemIds: [] },
 ])
 
@@ -75,6 +79,12 @@ export const courseItems = freezeCourseItems([
   { itemId: 'chapter-12-service-operations-agent', stageId: 'applications', prerequisites: ['chapter-04-tools-mcp', 'chapter-09-safety-recovery'], outcome: '设计客服运营中的政策、动作与升级边界', evidence: '一张人工升级与业务回执流程' },
   { itemId: 'chapter-13-coding-agent', stageId: 'applications', prerequisites: ['chapter-04-tools-mcp', 'chapter-08-evaluation', 'chapter-09-safety-recovery'], outcome: '约束仓库理解、修改、测试和交付证据', evidence: '一份 Coding Agent 任务与验证契约' },
   { itemId: 'chapter-14-computer-use', stageId: 'applications', prerequisites: ['chapter-04-tools-mcp', 'chapter-09-safety-recovery'], outcome: '为界面操作设计观察、权限和最终证据', evidence: '一张 Computer Use 风险与证据闭环' },
+  { itemId: 'project-mcp-python-sdk', stageId: 'projects', prerequisites: ['chapter-04-tools-mcp', 'frontier-interoperability-identity'], outcome: '区分协议、SDK 与业务授权，并追踪一次 tools/call', evidence: '一张规范层、SDK 层与业务授权层边界图' },
+  { itemId: 'project-aider', stageId: 'projects', prerequisites: ['chapter-08-evaluation', 'chapter-09-safety-recovery', 'chapter-13-coding-agent'], outcome: '追踪仓库上下文如何变成可审查补丁', evidence: '一份从仓库上下文到补丁验证的调用链笔记' },
+  { itemId: 'project-openhands', stageId: 'projects', prerequisites: ['chapter-09-safety-recovery', 'chapter-10-production', 'chapter-13-coding-agent', 'project-aider'], outcome: '拆开 Canvas、Agent Server、SDK 与工作区权限', evidence: '一张 Canvas、Server、SDK、Workspace 的信任边界图' },
+  { itemId: 'project-agent-benchmarks', stageId: 'projects', prerequisites: ['chapter-08-evaluation', 'project-aider', 'project-openhands'], outcome: '从任务、环境与轨迹追到可复核评分', evidence: '一份任务、环境、轨迹、评分与不可比较项清单' },
+  { itemId: 'project-dify', stageId: 'projects', prerequisites: ['chapter-06-loop-graph', 'chapter-09-safety-recovery', 'chapter-10-production'], outcome: '追踪平台请求如何进入工作流图和节点事件', evidence: '一张 API 请求到 Graph 节点事件的执行图' },
+  { itemId: 'project-crewai', stageId: 'projects', prerequisites: ['chapter-07-multi-agent', 'chapter-08-evaluation', 'chapter-09-safety-recovery'], outcome: '解释 Crew、Task、Agent 与工具循环的协调成本', evidence: '一份角色消融与协调成本评审表' },
   { itemId: 'case-delivery-agent', stageId: 'projects', prerequisites: ['chapter-08-evaluation', 'chapter-09-safety-recovery', 'chapter-10-production'], outcome: '把评测、安全和生产门禁组合到一个交付型案例', evidence: '一份可复核的质量门评审记录' },
 ])
 

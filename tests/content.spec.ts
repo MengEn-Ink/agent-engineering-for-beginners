@@ -575,7 +575,7 @@ describe('local reading paths and progress', () => {
       expect(path.summary).toEqual(expect.any(String))
       expect(path.steps.length).toBeGreaterThanOrEqual(8)
       for (const step of path.steps) {
-        expect(step.path).toMatch(/^\/(chapters|appendix)\//u)
+        expect(step.path).toMatch(/^\/(chapters|appendix|projects|case-study)\//u)
         expect(existsSync(`docs${step.path}.md`), step.path).toBe(true)
         expect(step.title).toEqual(expect.any(String))
       }
@@ -605,7 +605,7 @@ describe('local reading paths and progress', () => {
       pathToFileURL(join(process.cwd(), dataPath)).href
     )
     const path = readingPathById.engineering
-    const current = '/chapters/14-computer-use'
+    const current = path.steps.at(-1)!.path
     expect(findNextReadingStep(path, current, [])?.path).not.toBe(current)
     expect(findNextReadingStep(path, current, path.steps.slice(0, -1).map((step: { path: string }) => step.path)))
       .toBeUndefined()
@@ -919,16 +919,17 @@ describe('publish boundary', () => {
       mkdirSync(join(fixtureDir, 'course'), { recursive: true })
       writeFileSync(
         join(fixtureDir, 'course/index.html'),
-        '<nav class="course-map"><a href="/preface">重复课程</a><a href="/preface">重复课程</a>/projects/ /labs/ 标记已读 加入书签</nav>',
+        '<nav class="course-map"><a href="/preface">重复课程</a><a href="/preface">重复课程</a>/projects/ /labs/ /capstone/ 标记已读 加入书签</nav>',
       )
 
       const errors = validateDist(fixtureDir)
-      expect(errors).toContain('课程页必须包含 20 个唯一的公开课程链接')
+      expect(errors).toContain('课程页必须包含 26 个唯一的公开课程链接')
       expect(errors).toContain('课程页缺少 SSR 中性进度文案')
       for (const stage of ['基础认知', '核心机制', '生产工程', '应用模式', '项目拆解', '综合实战']) {
         expect(errors).toContain(`课程页缺少阶段：${stage}`)
       }
-      for (const forbidden of ['/projects/', '/labs/', '标记已读', '加入书签']) {
+      expect(errors).not.toContain('课程页包含未发布入口或写操作：/projects/')
+      for (const forbidden of ['/labs/', '/capstone/', '标记已读', '加入书签']) {
         expect(errors).toContain(`课程页包含未发布入口或写操作：${forbidden}`)
       }
 
@@ -941,7 +942,7 @@ describe('publish boundary', () => {
         join(fixtureDir, 'course/index.html'),
         `<nav class="course-map">${stages.join('')}本地进度将在页面加载后显示${hostileLinks.join('')}</nav>`,
       )
-      expect(validateDist(fixtureDir)).toContain('课程页必须包含 20 个唯一的公开课程链接')
+      expect(validateDist(fixtureDir)).toContain('课程页必须包含 26 个唯一的公开课程链接')
     } finally {
       rmSync(fixtureDir, { recursive: true, force: true })
     }

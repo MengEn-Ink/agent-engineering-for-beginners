@@ -21,6 +21,11 @@ const sidebar = [
     'chapter-11-research-agent', 'chapter-12-service-operations-agent',
     'chapter-13-coding-agent', 'chapter-14-computer-use',
   ]) },
+  { text: '开源项目拆解', items: navItems([
+    'projects-index', 'project-mcp-python-sdk', 'project-aider', 'project-openhands',
+    'project-agent-benchmarks', 'project-dify', 'project-crewai',
+    'project-history-autogpt-flowise',
+  ]) },
   { text: '案例研究', items: navItems(['case-delivery-agent']) },
   { text: '活教材 · 前沿层', items: navItems([
     'radar', 'radar-2026-09', 'frontier-context-engineering',
@@ -54,7 +59,7 @@ export default defineConfig({
     siteTitle: 'Agent 工程入门',
     nav: [
       { text: '课程', items: [navigationItem('course', 'nav'), navigationItem('preface', 'nav'), navigationItem('paths', 'nav')] },
-      { text: '实战', items: [navigationItem('case-delivery-agent', 'nav')] },
+      { text: '实战', items: [navigationItem('projects-index', 'nav'), navigationItem('case-delivery-agent', 'nav')] },
       { text: '前沿', items: [navigationItem('radar'), navigationItem('frontier-context-engineering'), navigationItem('frontier-interoperability-identity'), navigationItem('frontier-durable-execution'), navigationItem('frontier-agent-security-evaluation')] },
       { text: '复习', items: [navigationItem('appendix-interview-training'), navigationItem('appendix-interview'), navigationItem('appendix-glossary')] },
     ],

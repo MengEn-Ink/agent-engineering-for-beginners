@@ -19,7 +19,10 @@ import {
   normalizeCourseRoute,
   readCourseProgress,
 } from '../docs/.vitepress/theme/data/learningState'
-import { readingPaths } from '../docs/.vitepress/theme/data/readingPaths'
+import {
+  readingPathDefinitions,
+  readingPaths,
+} from '../docs/.vitepress/theme/data/readingPaths'
 
 const expectedIds = [
   'course', 'paths', 'preface',
@@ -94,11 +97,43 @@ const expectedCourseItems = [
   { itemId: 'chapter-12-service-operations-agent', stageId: 'applications', prerequisites: ['chapter-04-tools-mcp', 'chapter-09-safety-recovery'], outcome: '设计客服运营中的政策、动作与升级边界', evidence: '一张人工升级与业务回执流程' },
   { itemId: 'chapter-13-coding-agent', stageId: 'applications', prerequisites: ['chapter-04-tools-mcp', 'chapter-08-evaluation', 'chapter-09-safety-recovery'], outcome: '约束仓库理解、修改、测试和交付证据', evidence: '一份 Coding Agent 任务与验证契约' },
   { itemId: 'chapter-14-computer-use', stageId: 'applications', prerequisites: ['chapter-04-tools-mcp', 'chapter-09-safety-recovery'], outcome: '为界面操作设计观察、权限和最终证据', evidence: '一张 Computer Use 风险与证据闭环' },
+  { itemId: 'project-mcp-python-sdk', stageId: 'projects', prerequisites: ['chapter-04-tools-mcp', 'frontier-interoperability-identity'], outcome: '区分协议、SDK 与业务授权，并追踪一次 tools/call', evidence: '一张规范层、SDK 层与业务授权层边界图' },
+  { itemId: 'project-aider', stageId: 'projects', prerequisites: ['chapter-08-evaluation', 'chapter-09-safety-recovery', 'chapter-13-coding-agent'], outcome: '追踪仓库上下文如何变成可审查补丁', evidence: '一份从仓库上下文到补丁验证的调用链笔记' },
+  { itemId: 'project-openhands', stageId: 'projects', prerequisites: ['chapter-09-safety-recovery', 'chapter-10-production', 'chapter-13-coding-agent', 'project-aider'], outcome: '拆开 Canvas、Agent Server、SDK 与工作区权限', evidence: '一张 Canvas、Server、SDK、Workspace 的信任边界图' },
+  { itemId: 'project-agent-benchmarks', stageId: 'projects', prerequisites: ['chapter-08-evaluation', 'project-aider', 'project-openhands'], outcome: '从任务、环境与轨迹追到可复核评分', evidence: '一份任务、环境、轨迹、评分与不可比较项清单' },
+  { itemId: 'project-dify', stageId: 'projects', prerequisites: ['chapter-06-loop-graph', 'chapter-09-safety-recovery', 'chapter-10-production'], outcome: '追踪平台请求如何进入工作流图和节点事件', evidence: '一张 API 请求到 Graph 节点事件的执行图' },
+  { itemId: 'project-crewai', stageId: 'projects', prerequisites: ['chapter-07-multi-agent', 'chapter-08-evaluation', 'chapter-09-safety-recovery'], outcome: '解释 Crew、Task、Agent 与工具循环的协调成本', evidence: '一份角色消融与协调成本评审表' },
   { itemId: 'case-delivery-agent', stageId: 'projects', prerequisites: ['chapter-08-evaluation', 'chapter-09-safety-recovery', 'chapter-10-production'], outcome: '把评测、安全和生产门禁组合到一个交付型案例', evidence: '一份可复核的质量门评审记录' },
 ]
 
+const projectCourseIds = [
+  'project-mcp-python-sdk', 'project-aider', 'project-openhands',
+  'project-agent-benchmarks', 'project-dify', 'project-crewai',
+  'case-delivery-agent',
+]
+
+const expectedEngineeringSteps = [
+  { itemId: 'chapter-02-workflow-agent', why: '避免一开始就过度 Agent 化' },
+  { itemId: 'chapter-03-react', why: '明确观察、停止与恢复' },
+  { itemId: 'chapter-04-tools-mcp', why: '缩小能力与权限边界' },
+  { itemId: 'chapter-05-state-memory', why: '让任务可恢复、信息可治理' },
+  { itemId: 'chapter-06-loop-graph', why: '把分支、汇合和错误边画出来' },
+  { itemId: 'chapter-08-evaluation', why: '同时看结果、轨迹、证据和成本' },
+  { itemId: 'chapter-09-safety-recovery', why: '处理幂等、补偿与接管' },
+  { itemId: 'chapter-10-production', why: '用灰度、SLO 和回滚保护上线' },
+  { itemId: 'chapter-13-coding-agent', why: '把工程原则放进真实仓库任务' },
+  { itemId: 'chapter-14-computer-use', why: '验证高不确定环境里的证据链' },
+  { itemId: 'project-mcp-python-sdk', why: '从协议读到官方 Python 实现' },
+  { itemId: 'project-aider', why: '把仓库上下文变成可审查补丁' },
+  { itemId: 'project-openhands', why: '理解大型 Coding Agent 的服务和执行边界' },
+  { itemId: 'project-agent-benchmarks', why: '把结果、环境、轨迹和评分连成证据链' },
+  { itemId: 'project-dify', why: '观察平台请求如何进入工作流图' },
+  { itemId: 'project-crewai', why: '用源码评估多 Agent 的收益与协调成本' },
+  { itemId: 'case-delivery-agent', why: '用质量门收束评测、安全与上线判断' },
+]
+
 describe('course graph', () => {
-  it('contains the approved twenty items and excludes the relationship-only stage', () => {
+  it('contains the approved twenty-six items and excludes the relationship-only stage', () => {
     expect(courseItems).toEqual(expectedCourseItems)
     expect(courseStages.map((stage) => stage.id)).toEqual([
       'foundation', 'mechanisms', 'engineering', 'applications', 'projects', 'capstone',
@@ -106,7 +141,7 @@ describe('course graph', () => {
     expect(courseStages.find((stage) => stage.id === 'capstone')).toMatchObject({
       availability: 'relationship-only', itemIds: [],
     })
-    expect(projectCourseProgress([]).total).toBe(20)
+    expect(projectCourseProgress([]).total).toBe(26)
   })
 
   it('has only known prerequisite IDs and no cycles', () => {
@@ -149,11 +184,75 @@ describe('course graph', () => {
     expect(projectCourseProgress([])).toEqual(initialProgress)
   })
 
-  it('selects the first incomplete published stage and handles 20/20', () => {
+  it('selects the first incomplete published stage and handles 26/26', () => {
     expect(currentCourseStage([])?.id).toBe('foundation')
     const allRoutes = expectedCourseItems.map(({ itemId }) => getContentItem(itemId).route)
-    expect(projectCourseProgress(allRoutes)).toMatchObject({ completed: 20, total: 20 })
+    expect(projectCourseProgress(allRoutes)).toMatchObject({ completed: 26, total: 26 })
     expect(currentCourseStage(allRoutes)).toBeNull()
+  })
+})
+
+describe('project curriculum integration', () => {
+  it('adds six core pages and keeps a 26-item denominator', () => {
+    expect(courseStages.find((stage) => stage.id === 'projects')?.itemIds).toEqual(projectCourseIds)
+    expect(publishedCourseItems).toHaveLength(26)
+    expect(projectCourseProgress([])).toMatchObject({ completed: 0, total: 26 })
+    expect(courseItems.filter((item) => item.stageId === 'projects')).toHaveLength(7)
+    expect(courseItems.some((item) => item.itemId === 'projects-index')).toBe(false)
+    expect(courseItems.some((item) => item.itemId === 'project-history-autogpt-flowise')).toBe(false)
+    expect(validateCourseMap(courseItems, courseStages)).toEqual([])
+  })
+
+  it('extends only the engineering path to 17 stable steps', () => {
+    const engineering = readingPathDefinitions.find((path) => path.id === 'engineering')!
+    expect(engineering.pace).toBe('17 站 · 建议边读边画调用链')
+    expect(engineering.steps).toEqual(expectedEngineeringSteps)
+    expect(readingPathDefinitions.find((path) => path.id === 'beginner')?.steps).toHaveLength(8)
+    expect(readingPathDefinitions.find((path) => path.id === 'interview')?.steps).toHaveLength(11)
+    const tracked = new Set([
+      ...publishedCourseItems.map(({ itemId }) => getContentItem(itemId).route),
+      ...readingPaths.flatMap((path) => path.steps.map((step) => step.path)),
+    ])
+    expect(tracked.size).toBe(29)
+  })
+
+  it('uses the exact project navigation without exposing labs', () => {
+    const themeConfig = siteConfig.themeConfig as {
+      nav: Array<{ text: string; items: Array<{ text: string; link: string }> }>
+      sidebar: Array<{ text: string; items: Array<{ text: string; link: string }> }>
+    }
+    const idByRoute = new Map(contentItems.map((item) => [item.route, item.id]))
+    const practice = themeConfig.nav.find((group) => group.text === '实战')!
+    expect(practice.items.map((item) => idByRoute.get(item.link))).toEqual(['projects-index', 'case-delivery-agent'])
+    const projects = themeConfig.sidebar.find((group) => group.text === '开源项目拆解')!
+    expect(projects.items.map((item) => idByRoute.get(item.link))).toEqual([
+      'projects-index', 'project-mcp-python-sdk', 'project-aider', 'project-openhands',
+      'project-agent-benchmarks', 'project-dify', 'project-crewai',
+      'project-history-autogpt-flowise',
+    ])
+    expect(JSON.stringify(themeConfig)).not.toContain('/labs/')
+    expect(themeConfig.nav.map((group) =>
+      group.items.map((item) => idByRoute.get(item.link)),
+    )).toEqual([
+      ['course', 'preface', 'paths'],
+      ['projects-index', 'case-delivery-agent'],
+      ['radar', 'frontier-context-engineering', 'frontier-interoperability-identity', 'frontier-durable-execution', 'frontier-agent-security-evaluation'],
+      ['appendix-interview-training', 'appendix-interview', 'appendix-glossary'],
+    ])
+    expect(themeConfig.sidebar.map((group) => [
+      group.text,
+      group.items.map((item) => idByRoute.get(item.link)),
+    ])).toEqual([
+      ['课程入口', ['course', 'paths']],
+      ['第一篇 · 认识 Agent', ['preface', 'chapter-01-ai-native', 'chapter-02-workflow-agent', 'chapter-03-react']],
+      ['第二篇 · 组装 Agent', ['chapter-04-tools-mcp', 'chapter-05-state-memory', 'chapter-06-loop-graph', 'chapter-07-multi-agent']],
+      ['第三篇 · 敢于上线', ['chapter-08-evaluation', 'chapter-09-safety-recovery', 'chapter-10-production']],
+      ['第四篇 · 应用方向', ['chapter-11-research-agent', 'chapter-12-service-operations-agent', 'chapter-13-coding-agent', 'chapter-14-computer-use']],
+      ['开源项目拆解', ['projects-index', 'project-mcp-python-sdk', 'project-aider', 'project-openhands', 'project-agent-benchmarks', 'project-dify', 'project-crewai', 'project-history-autogpt-flowise']],
+      ['案例研究', ['case-delivery-agent']],
+      ['活教材 · 前沿层', ['radar', 'radar-2026-09', 'frontier-context-engineering', 'frontier-interoperability-identity', 'frontier-durable-execution', 'frontier-agent-security-evaluation']],
+      ['随手查', ['appendix-glossary', 'appendix-review-checklist', 'appendix-reading', 'appendix-application-matrix', 'appendix-chapter-template', 'appendix-interview', 'appendix-interview-training']],
+    ])
   })
 })
 
@@ -247,7 +346,7 @@ describe('course navigation integration', () => {
 
     expect(progress).toContain('readingPaths.flatMap')
     expect(progress).toContain('const trackedRoutes = new Set')
-    expect(expectedTrackedRoutes.size).toBe(23)
+    expect(expectedTrackedRoutes.size).toBe(29)
     expect(expectedTrackedRoutes.size).toBeLessThan(publishedRoutes.length + pathRoutes.length)
     for (const id of ['appendix-glossary', 'appendix-interview', 'appendix-interview-training']) {
       const route = getContentItem(id).route
@@ -272,13 +371,13 @@ describe('course navigation integration', () => {
       group.items.map((item) => idByRoute.get(item.link)),
     )).toEqual([
       ['course', 'preface', 'paths'],
-      ['case-delivery-agent'],
+      ['projects-index', 'case-delivery-agent'],
       ['radar', 'frontier-context-engineering', 'frontier-interoperability-identity', 'frontier-durable-execution', 'frontier-agent-security-evaluation'],
       ['appendix-interview-training', 'appendix-interview', 'appendix-glossary'],
     ])
     expect(themeConfig.sidebar.map((group) => group.text)).toEqual([
       '课程入口', '第一篇 · 认识 Agent', '第二篇 · 组装 Agent', '第三篇 · 敢于上线',
-      '第四篇 · 应用方向', '案例研究', '活教材 · 前沿层', '随手查',
+      '第四篇 · 应用方向', '开源项目拆解', '案例研究', '活教材 · 前沿层', '随手查',
     ])
     expect(themeConfig.sidebar.map((group) =>
       group.items.map((item) => idByRoute.get(item.link)),
@@ -288,6 +387,7 @@ describe('course navigation integration', () => {
       ['chapter-04-tools-mcp', 'chapter-05-state-memory', 'chapter-06-loop-graph', 'chapter-07-multi-agent'],
       ['chapter-08-evaluation', 'chapter-09-safety-recovery', 'chapter-10-production'],
       ['chapter-11-research-agent', 'chapter-12-service-operations-agent', 'chapter-13-coding-agent', 'chapter-14-computer-use'],
+      ['projects-index', 'project-mcp-python-sdk', 'project-aider', 'project-openhands', 'project-agent-benchmarks', 'project-dify', 'project-crewai', 'project-history-autogpt-flowise'],
       ['case-delivery-agent'],
       ['radar', 'radar-2026-09', 'frontier-context-engineering', 'frontier-interoperability-identity', 'frontier-durable-execution', 'frontier-agent-security-evaluation'],
       ['appendix-glossary', 'appendix-review-checklist', 'appendix-reading', 'appendix-application-matrix', 'appendix-chapter-template', 'appendix-interview', 'appendix-interview-training'],
@@ -368,6 +468,9 @@ describe('course page', () => {
       'chapter-07-multi-agent',
       'frontier-interoperability-identity',
       'frontier-agent-security-evaluation',
+      'project-dify',
+      'project-crewai',
+      'case-delivery-agent',
     ])
     expect(fallback).toBeDefined()
     expect(fallback).toContain('stage.itemIds.slice(4)')

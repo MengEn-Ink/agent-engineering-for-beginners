@@ -31,10 +31,16 @@ const publishedCourseRoutes = [
   '/chapters/12-service-operations-agent',
   '/chapters/13-coding-agent',
   '/chapters/14-computer-use',
+  '/projects/mcp-python-sdk',
+  '/projects/aider',
+  '/projects/openhands',
+  '/projects/agent-benchmarks',
+  '/projects/dify',
+  '/projects/crewai',
   '/case-study/delivery-agent',
 ]
 
-const forbiddenCourseMarkers = ['/projects/', '/labs/', '标记已读', '加入书签']
+const forbiddenCourseMarkers = ['/labs/', '/capstone/', '标记已读', '加入书签']
 const siteOrigin = 'https://mengen-ink.github.io'
 const siteBase = '/agent-engineering-for-beginners'
 
@@ -106,12 +112,12 @@ export function validateCourseDist(html) {
   )
 
   if (
-    normalizedHrefs.length !== 20
+    normalizedHrefs.length !== 26
     || normalizedHrefs.includes(null)
-    || new Set(normalizedHrefs).size !== 20
+    || new Set(normalizedHrefs).size !== 26
     || !hasEveryRouteOnce
   ) {
-    errors.push('课程页必须包含 20 个唯一的公开课程链接')
+    errors.push('课程页必须包含 26 个唯一的公开课程链接')
   }
   if (!courseMarkup.includes('本地进度将在页面加载后显示')) {
     errors.push('课程页缺少 SSR 中性进度文案')

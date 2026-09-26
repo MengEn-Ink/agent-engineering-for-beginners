@@ -76,6 +76,9 @@ describe('project routes and catalog overview', () => {
     const component = readFileSync('docs/.vitepress/theme/components/ProjectOverview.vue', 'utf8')
     expect(component).toContain("catalog_tier === 'watch-only'")
     expect(component).not.toContain('getContentItem(subject.id)')
+    expect(component).toContain('courseItemById')
+    expect(component).toContain('courseItemFor(page.page_item_id)?.outcome')
+    expect(component).toContain('先修：')
   })
 
   it('publishes the complete historical page with distinct factual boundaries', () => {
