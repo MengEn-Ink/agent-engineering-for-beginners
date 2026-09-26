@@ -13,6 +13,7 @@ import {
   validateProjectCatalogIntegration,
 } from '../scripts/project-catalog.mjs'
 import {
+  extractCssResourceCandidates,
   extractProjectMarkdownContract,
   isRemoteImageCandidate,
 } from '../scripts/publication-contracts.mjs'
@@ -292,6 +293,7 @@ pip&nbsp;install package
     const escapedValue = String.raw`background:url(https\3a //evil.example/escaped-value.png)`
     const escapedImageSet = String.raw`background:image\2d set('/local.png' 1x, 'https://evil.example/escaped-image-set.png' 2x)`
     const escapedImport = String.raw`@im\70ort "https://evil.example/escaped-import.css";`
+    const escapedImportTarget = String.raw`@import "https\3A \2F \2F evil.example/escaped-target.css" layer(project) supports(display: grid) screen;`
     const parsed = extractProjectMarkdownContract(`
 [ordinary external documentation](https://docs.example.com/guide)
 <svg><use href="https://evil.example/icons.svg#one"></use></svg>
@@ -307,6 +309,8 @@ pip&nbsp;install package
 @import "https://evil.example/theme.css";
 @import url(https://evil.example/theme-url.css);
 ${escapedImport}
+${escapedImportTarget}
+@import "data:text/css,.safe{}" layer(data);
 .remote { background: url(//evil.example/block.png) }
 .image-set { background: image-set("/local.png" 1x, "https://evil.example/image-set.png" 2x) }
 .webkit { background: -webkit-image-set(url(/local.png) 1x, url(//evil.example/webkit.png) 2x) }
@@ -338,6 +342,8 @@ ${escapedImport}
       'https://evil.example/theme.css',
       'https://evil.example/theme-url.css',
       'https://evil.example/escaped-import.css',
+      'https://evil.example/escaped-target.css',
+      'data:text/css,.safe{}',
       '//evil.example/block.png',
       'https://evil.example/image-set.png',
       '//evil.example/webkit.png',
@@ -362,11 +368,42 @@ ${escapedImport}
       'https://evil.example/theme.css',
       'https://evil.example/theme-url.css',
       'https://evil.example/escaped-import.css',
+      'https://evil.example/escaped-target.css',
       '//evil.example/block.png',
       'https://evil.example/image-set.png',
       '//evil.example/webkit.png',
       'https://evil.example/nojs.png',
     ]))
+  })
+
+  it('decodes every parsed import target before applying the URL policy', () => {
+    const remoteImports = [
+      [
+        String.raw`@import "https\3A //evil.example/scheme.css" layer(project);`,
+        'https://evil.example/scheme.css',
+      ],
+      [
+        String.raw`@import "\68\74\74\70\73\3A \2F \2F evil.example/characters.css" supports(display: grid) screen;`,
+        'https://evil.example/characters.css',
+      ],
+      [
+        String.raw`@import "HTTPS\3a //EVIL.EXAMPLE/case.css" layer(theme) supports(display: grid) print;`,
+        'HTTPS://EVIL.EXAMPLE/case.css',
+      ],
+    ] as const
+
+    for (const [css, expected] of remoteImports) {
+      const resources = extractCssResourceCandidates(css)
+      expect(resources, css).toEqual([expected])
+      expect(resources.some(isRemoteImageCandidate), css).toBe(true)
+    }
+
+    for (const css of [
+      '@import "./local.css" layer(project) supports(display: grid) screen;',
+      '@import "data:text/css,.safe{}" layer(data);',
+    ]) {
+      expect(extractCssResourceCandidates(css).some(isRemoteImageCandidate), css).toBe(false)
+    }
   })
 
   it('keeps project pages free of remote images for project asset provenance', () => {

@@ -316,7 +316,9 @@ export function extractCssResourceCandidates(css) {
       }
       const target = parsed.nodes.find((node) =>
         node.type !== 'space' && node.type !== 'comment' && node.type !== 'div')
-      resources.push(target && ['string', 'word'].includes(target.type) ? target.value : null)
+      resources.push(target && ['string', 'word'].includes(target.type)
+        ? decodeCssEscapes(target.value)
+        : null)
     })
     return resources
   } catch {

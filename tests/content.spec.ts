@@ -1540,7 +1540,7 @@ describe('project publication boundary', () => {
       mkdirSync(dirname(cssPath), { recursive: true })
       writeFileSync(
         cssPath,
-        '@import "/local.css";.local{background:url(./asset.png);mask:url(data:image/svg+xml,AAAA);cursor:url(blob:https://example.com/id),auto}',
+        '@import "./local.css" layer(project) supports(display:grid) screen;@import "data:text/css,.safe{}" layer(data);.local{background:url(./asset.png);mask:url(data:image/svg+xml,AAAA);cursor:url(blob:https://example.com/id),auto}',
       )
       expect(validateDist(dist)).toEqual([])
 
@@ -1555,6 +1555,9 @@ describe('project publication boundary', () => {
         '.remote{background:image-set("/local.png" 1x,"https://evil.example/image-set.png" 2x)}',
         '.remote{background:-webkit-image-set(url(/local.png) 1x,url(//evil.example/webkit.png) 2x)}',
         String.raw`@im\70ort "https://evil.example/escaped-import.css";`,
+        String.raw`@import "https\3A //evil.example/escaped-scheme.css" layer(project);`,
+        String.raw`@import "\68\74\74\70\73\3A \2F \2F evil.example/escaped-characters.css" supports(display:grid) screen;`,
+        String.raw`@import "HTTPS\3a //EVIL.EXAMPLE/escaped-case.css" layer(theme) supports(display:grid) print;`,
       ]) {
         writeFileSync(cssPath, css)
         expect(validateDist(dist), css)
