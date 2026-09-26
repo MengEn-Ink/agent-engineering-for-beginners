@@ -20,9 +20,13 @@ import { publishedCourseItems } from '../docs/.vitepress/theme/data/courseMap'
 import { interviewQuestions } from '../docs/.vitepress/theme/data/interviewQuestions'
 import {
   validateCourseDist,
-  validateDist,
+  validateDist as validateProductionDist,
   validatePublishedRouteBoundary,
 } from '../scripts/check-dist.mjs'
+
+function validateDist(distPath: string) {
+  return validateProductionDist(distPath, { requireVitePressIconContract: false })
+}
 
 const expandedChapterFiles = [
   'docs/chapters/01-ai-native.md',
@@ -1249,6 +1253,17 @@ describe('progressive project publication boundary', () => {
 })
 
 describe('project publication boundary', () => {
+  it('requires the locked VitePress vendor contract unless a fixture explicitly opts out', () => {
+    const dist = createCompleteDistFixture()
+    try {
+      expect(validateProductionDist(dist))
+        .toContain('构建产物 VitePress 图标契约不匹配')
+      expect(validateDist(dist)).toEqual([])
+    } finally {
+      rmSync(dist, { recursive: true, force: true })
+    }
+  })
+
   it('returns a structured error for dangling dist symlinks', () => {
     const dist = createCompleteDistFixture()
     try {
@@ -1456,6 +1471,38 @@ describe('project publication boundary', () => {
     }
   })
 
+  it('rejects dangling local stylesheet links in complete project documents', () => {
+    const dist = createCompleteDistFixture()
+    try {
+      const file = join(dist, 'projects/aider.html')
+      const original = readFileSync(file, 'utf8')
+      mkdirSync(join(dist, 'assets'), { recursive: true })
+      writeFileSync(join(dist, 'assets/style.css'), '.safe{}')
+      for (const href of [
+        '/agent-engineering-for-beginners/assets/missing.css',
+        '../assets/style.css',
+        '/agent-engineering-for-beginners/assets/%73tyle.css',
+        '/agent-engineering-for-beginners/assets/style.css?theme=1',
+        '/agent-engineering-for-beginners/assets/style.css#theme',
+        '/agent-engineering-for-beginners/assets/',
+      ]) {
+        writeFileSync(file, original.replace(
+          '<div class="vp-doc">',
+          `<link rel="stylesheet" href="${href}"><div class="vp-doc">`,
+        ))
+        expect(validateDist(dist), href)
+          .toContain('项目页包含外链资源：projects/aider.html')
+      }
+      writeFileSync(file, original.replace(
+        '<div class="vp-doc">',
+        '<link rel="stylesheet" href="/agent-engineering-for-beginners/assets/style.css"><div class="vp-doc">',
+      ))
+      expect(validateDist(dist)).toEqual([])
+    } finally {
+      rmSync(dist, { recursive: true, force: true })
+    }
+  })
+
   it('rejects remote SVG and CSS resources in real project content', () => {
     const remoteMarkup = [
       '<svg><use href="https://evil.example/icons.svg#one"></use></svg>',
@@ -1529,8 +1576,9 @@ describe('project publication boundary', () => {
   it('allows explicit local, data, and blob image candidates in project HTML', () => {
     const dist = createCompleteDistFixture()
     try {
+      writeFileSync(join(dist, 'theme.css'), '.safe{}')
       const file = join(dist, 'projects/aider.html')
-      const localMarkup = `<picture><source src="relative.png" srcset="/local.png 1x, data:image/png;base64,AAAA 2x, blob:https://example.com/id 3x"><img src="/fallback.png"></picture><svg><use href="/icons.svg#local"></use><feImage href="data:image/png;base64,AAAA"></feImage></svg><script src="/runtime.js"></script><link rel="stylesheet" href="/theme.css"><link rel="canonical" href="https://docs.example.com/canonical"><video src="/video.mp4" poster="data:image/png;base64,AAAA"></video><audio src="blob:https://example.com/audio"></audio><track src="/subtitles.vtt"><input src="/input.png"><div style="background:url(data:image/png;base64,AAAA);mask:url(blob:https://example.com/id);content-image:image-set('/one.png' 1x, 'data:image/png;base64,BBBB' 2x);color:var(--brand);width:env(safe-area-inset-top);font-size:attr(data-size px)"></div><style>@import "/local.css";.local{background:url(./asset.png);content:image-set("blob:https://example.com/id" 1x);background-image:image-set(cross-fade(url(/nested.png),url(data:image/png;base64,CCCC),50%) 1x)}.dynamic{color:var(--brand);width:env(safe-area-inset-top);font-size:attr(data-size px)}</style>`
+      const localMarkup = `<picture><source src="relative.png" srcset="/local.png 1x, data:image/png;base64,AAAA 2x, blob:https://example.com/id 3x"><img src="/fallback.png"></picture><svg><use href="/icons.svg#local"></use><feImage href="data:image/png;base64,AAAA"></feImage></svg><script src="/runtime.js"></script><link rel="stylesheet" href="/agent-engineering-for-beginners/theme.css"><link rel="canonical" href="https://docs.example.com/canonical"><video src="/video.mp4" poster="data:image/png;base64,AAAA"></video><audio src="blob:https://example.com/audio"></audio><track src="/subtitles.vtt"><input src="/input.png"><div style="background:url(data:image/png;base64,AAAA);mask:url(blob:https://example.com/id);content-image:image-set('/one.png' 1x, 'data:image/png;base64,BBBB' 2x);color:var(--brand);width:env(safe-area-inset-top);font-size:attr(data-size px)"></div><style>@import "/local.css";.local{background:url(./asset.png);content:image-set("blob:https://example.com/id" 1x);background-image:image-set(cross-fade(url(/nested.png),url(data:image/png;base64,CCCC),50%) 1x)}.dynamic{color:var(--brand);width:env(safe-area-inset-top);font-size:attr(data-size px)}</style>`
       writeFileSync(
         file,
         readFileSync(file, 'utf8').replace(

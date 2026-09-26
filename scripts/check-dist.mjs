@@ -197,7 +197,7 @@ function exactHrefs(actual, expected) {
     && actual.every((href) => expected.includes(href))
 }
 
-export function validateDist(distPath) {
+export function validateDist(distPath, options = {}) {
   if (!existsSync(distPath)) return [`构建产物不存在：${distPath}`]
 
   const errors = []
@@ -258,8 +258,8 @@ export function validateDist(distPath) {
   const distFileContents = new Map([...indexed.files]
     .filter(([file]) => file.toLowerCase().endsWith('.svg'))
     .map(([file, path]) => [file, readFileSync(path, 'utf8')]))
-  const requireVitePressIconContract = cssAssets.some(({ file }) =>
-    file === 'vp-icons.css' || /^assets\/style\.[a-z0-9_-]+\.css$/iu.test(file))
+  const requireVitePressIconContract = options.requireVitePressIconContract
+    ?? lockedVitePressVersion === '1.6.4'
   const cssOptions = {
     dynamicResources: 'project',
     projectClassTokens,
@@ -268,9 +268,16 @@ export function validateDist(distPath) {
     allCssSources,
     vitePressIconDefinitionHash,
     requireVitePressIconContract,
+    siteBase,
     distFiles: new Set(relativeFiles),
     distFileContents,
     analysisCache: {},
+  }
+  if (
+    requireVitePressIconContract
+    && extractCssResourceCandidates('', cssOptions).some(isRemoteImageCandidate)
+  ) {
+    errors.push('构建产物 VitePress 图标契约不匹配')
   }
   for (const [file, html] of projectHtml) {
     const contract = extractProjectHtmlContract(html, {

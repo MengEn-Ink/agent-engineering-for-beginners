@@ -417,6 +417,74 @@ pip&nbsp;install package
       '.project-card{background-image:url(./relay.svg)}',
       nestedOptions,
     ).some(isRemoteImageCandidate)).toBe(true)
+
+    const styleRelay = (target: string) => `<svg xmlns="http://www.w3.org/2000/svg"><style>:root{--next:url(${target})}.x{fill:var(--next)}</style><rect class="x"/></svg>`
+    const shortChain = {
+      sourcePath: 'assets/site.css',
+      distFiles: new Set(['assets/short-a.svg', 'assets/short-b.svg']),
+      distFileContents: new Map([
+        ['assets/short-a.svg', styleRelay('short-b.svg')],
+        ['assets/short-b.svg', '<svg xmlns="http://www.w3.org/2000/svg"><use href="#local"/></svg>'],
+      ]),
+    }
+    expect(extractCssResourceCandidates(
+      '.project-card{background-image:url(./short-a.svg)}',
+      shortChain,
+    ).some(isRemoteImageCandidate)).toBe(false)
+
+    const deepChain = {
+      sourcePath: 'assets/site.css',
+      distFiles: new Set(['assets/a.svg', 'assets/b.svg', 'assets/c.svg', 'assets/d.svg']),
+      distFileContents: new Map([
+        ['assets/a.svg', styleRelay('b.svg')],
+        ['assets/b.svg', styleRelay('c.svg')],
+        ['assets/c.svg', styleRelay('d.svg')],
+        ['assets/d.svg', '<svg xmlns="http://www.w3.org/2000/svg"><use href="#local"/></svg>'],
+      ]),
+    }
+    const startedAt = performance.now()
+    expect(extractCssResourceCandidates(
+      '.project-card{background-image:url(./a.svg)}',
+      deepChain,
+    ).some(isRemoteImageCandidate)).toBe(true)
+    expect(performance.now() - startedAt).toBeLessThan(1_000)
+
+    const leafNames = Array.from({ length: 65 }, (_, index) => `assets/leaf-${index}.svg`)
+    const siblingBudget = {
+      sourcePath: 'assets/site.css',
+      distFiles: new Set(['assets/fanout.svg', ...leafNames]),
+      distFileContents: new Map([
+        [
+          'assets/fanout.svg',
+          `<svg xmlns="http://www.w3.org/2000/svg">${leafNames
+            .map((name) => `<image href="${name.slice('assets/'.length)}"/>`)
+            .join('')}</svg>`,
+        ],
+        ...leafNames.map((name) => [
+          name,
+          '<svg xmlns="http://www.w3.org/2000/svg"><use href="#local"/></svg>',
+        ] as const),
+      ]),
+    }
+    expect(extractCssResourceCandidates(
+      '.project-card{background-image:url(./fanout.svg)}',
+      siblingBudget,
+    ).some(isRemoteImageCandidate)).toBe(true)
+
+    const largeSvg = `<svg xmlns="http://www.w3.org/2000/svg"><!--${'x'.repeat(600_000)}--></svg>`
+    const byteBudget = {
+      sourcePath: 'assets/site.css',
+      distFiles: new Set(['assets/fanout.svg', 'assets/large-a.svg', 'assets/large-b.svg']),
+      distFileContents: new Map([
+        ['assets/fanout.svg', '<svg xmlns="http://www.w3.org/2000/svg"><image href="large-a.svg"/><image href="large-b.svg"/></svg>'],
+        ['assets/large-a.svg', largeSvg],
+        ['assets/large-b.svg', largeSvg],
+      ]),
+    }
+    expect(extractCssResourceCandidates(
+      '.project-card{background-image:url(./fanout.svg)}',
+      byteBudget,
+    ).some(isRemoteImageCandidate)).toBe(true)
   })
 
   it('collects real SVG and CSS resources without classifying ordinary anchors as resources', () => {
@@ -883,7 +951,7 @@ ${escapedImportTarget}
 <html><head><style>.Layout{background:url(https://evil.example/head.png)}</style></head>
 <body><div class="Layout" style="background-image:url(https://evil.example/inline.png)">
   <img src="https://evil.example/outer.png">
-  <link rel="preload" as="image" imagesrcset="/local.png 1x, https://evil.example/preload.png 2x" imagesizes="100vw">
+  <link rel="PREFETCH PRELOAD" as="IMAGE" href="/local-fallback.png" imagesrcset="/local.png 1x, https://evil.example/preload.png 2x" imagesizes="100vw">
   <iframe srcdoc="&lt;img src='https://evil.example/srcdoc.png'&gt;"></iframe>
   <style>.Layout{border-image:url(https://evil.example/body.png) 1}</style>
   <main class="vp-doc"></main>
@@ -925,6 +993,10 @@ ${escapedImportTarget}
       '<embed src="/local-embed.pdf">',
       '<link rel="preload" as="image" imagesrcset="">',
       '<link rel="preload" as="image" imagesrcset=",">',
+      '<link rel="stylesheet" imagesrcset="/local.png 1x">',
+      '<link rel="prefetch" imagesrcset="/local.png 1x">',
+      '<link rel="stylesheet preload" as="image" imagesrcset="/local.png 1x">',
+      '<link rel="prefetch preload" as="image" imagesrcset="/local.png 1x">',
     ]) {
       expect(extractProjectHtmlContract(
         `${forbidden}<main class="vp-doc"></main>`,

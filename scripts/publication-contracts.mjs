@@ -832,10 +832,6 @@ function extractSvgXmlResourceCandidates(svg, options = {}) {
     })
     parser.write(svg).close()
     if (roots !== 1 || !rootIsSvg || depth !== 0) return null
-    const inheritedSources = (options.allCssSources ?? options.allCss ?? []).map((source) =>
-      typeof source === 'string'
-        ? { css: source, sourcePath: null }
-        : { css: source.css, sourcePath: source.sourcePath ?? null })
     const nestedSources = embeddedSources.map((css) => ({
       css,
       sourcePath: options.sourcePath ?? null,
@@ -843,7 +839,7 @@ function extractSvgXmlResourceCandidates(svg, options = {}) {
     const nestedOptions = {
       ...options,
       allCss: undefined,
-      allCssSources: [...inheritedSources, ...nestedSources],
+      allCssSources: nestedSources,
       analysisCache: {},
     }
     resources.push(...nestedSources.flatMap((source) => embeddedCssResourceCandidates(
@@ -929,14 +925,21 @@ function normalizeSafeResourceCandidate(
   visitedPaths = new Set(),
 ) {
   if (depth > 2 || typeof candidate !== 'string') return null
+  const resourceBudget = options.resourceBudget ?? { steps: 0, decodedBytes: 0 }
+  resourceBudget.steps += 1
+  if (resourceBudget.steps > 64) return null
+  const traversalOptions = { ...options, resourceBudget }
   const value = candidate.trim()
   if (/^blob:/iu.test(value)) return null
   if (/^data:/iu.test(value)) {
     if (isSvgDataResource(value)) {
       const svg = decodeSvgDataResource(value)
       if (svg === null) return null
+      resourceBudget.decodedBytes += Buffer.byteLength(svg, 'utf8')
+      if (resourceBudget.decodedBytes > 1_000_000) return null
+      const nestedTraversalOptions = traversalOptions
       const resources = extractSvgXmlResourceCandidates(svg, {
-        ...options,
+        ...nestedTraversalOptions,
         sourcePath,
         resourceDepth: depth + 1,
         resourceVisitedPaths: visitedPaths,
@@ -945,7 +948,7 @@ function normalizeSafeResourceCandidate(
       if (resources === null || !resources.every((nested) =>
         normalizeSafeResourceCandidate(
           nested,
-          options,
+          nestedTraversalOptions,
           depth + 1,
           sourcePath,
           visitedPaths,
@@ -955,13 +958,15 @@ function normalizeSafeResourceCandidate(
     if (isCssDataResource(value)) {
       const css = decodeUtf8DataResource(value, 'text/css')
       if (css === null) return null
+      resourceBudget.decodedBytes += Buffer.byteLength(css, 'utf8')
+      if (resourceBudget.decodedBytes > 1_000_000) return null
       const inheritedSources = (options.allCssSources ?? options.allCss ?? []).map((source) =>
         typeof source === 'string'
           ? { css: source, sourcePath: null }
           : { css: source.css, sourcePath: source.sourcePath ?? null })
       const cssSource = { css, sourcePath: value }
       const nestedOptions = {
-        ...options,
+        ...traversalOptions,
         sourcePath: value,
         allCss: undefined,
         allCssSources: [...inheritedSources, cssSource],
@@ -986,14 +991,16 @@ function normalizeSafeResourceCandidate(
   if (value.startsWith('#')) return value
   const relativePath = localResourcePath(value, sourcePath)
   if (relativePath === null) return null
-  if (options.distFiles && !options.distFiles.has(relativePath)) return null
-  const svg = options.distFileContents?.get(relativePath)
+  if (traversalOptions.distFiles && !traversalOptions.distFiles.has(relativePath)) return null
+  const svg = traversalOptions.distFileContents?.get(relativePath)
   if (svg === undefined) return `/${relativePath}`
-  if (visitedPaths.has(relativePath) || Buffer.byteLength(svg, 'utf8') > 1_000_000) return null
+  resourceBudget.decodedBytes += Buffer.byteLength(svg, 'utf8')
+  if (visitedPaths.has(relativePath) || resourceBudget.decodedBytes > 1_000_000) return null
+  const nestedTraversalOptions = traversalOptions
   const nextVisited = new Set(visitedPaths)
   nextVisited.add(relativePath)
   const resources = extractSvgXmlResourceCandidates(svg, {
-    ...options,
+    ...nestedTraversalOptions,
     sourcePath: relativePath,
     resourceDepth: depth + 1,
     resourceVisitedPaths: nextVisited,
@@ -1002,7 +1009,7 @@ function normalizeSafeResourceCandidate(
   if (resources === null || !resources.every((nested) =>
     normalizeSafeResourceCandidate(
       nested,
-      options,
+      nestedTraversalOptions,
       depth + 1,
       relativePath,
       nextVisited,
@@ -1057,7 +1064,13 @@ function createCustomPropertyResolver(css, options, sources = cssSourceRecords(c
   const resolvedDefinitions = cache?.resolvedDefinitions ?? new Map()
   if (cache) cache.resolvedDefinitions = resolvedDefinitions
   const validate = (resources, candidateSourcePath) => resources.map((candidate) =>
-    normalizeSafeResourceCandidate(candidate, options, 0, candidateSourcePath))
+    normalizeSafeResourceCandidate(
+      candidate,
+      options,
+      options.resourceDepth ?? 0,
+      candidateSourcePath,
+      options.resourceVisitedPaths ?? new Set(),
+    ))
   const resolveDefinitions = (name, resolvingVariables, stringsAreResources) => {
     const cacheKey = `${stringsAreResources ? 'resource-string' : 'plain-string'}\0${name}`
     if (resolvedDefinitions.has(cacheKey)) return resolvedDefinitions.get(cacheKey)
@@ -1309,7 +1322,26 @@ export function extractCssResourceCandidates(css, options = {}) {
   }
 }
 
-function browserResourceAttributesWithin(roots) {
+function localStylesheetHrefIsValid(href, options) {
+  if (!options.distFiles || !options.sourcePath) return true
+  try {
+    const basePath = `${options.siteBase ?? ''}/${options.sourcePath}`.replace(/\/+/gu, '/')
+    const url = new URL(href, new URL(basePath, localImageBase))
+    if (url.protocol === 'data:') return true
+    if (url.origin !== localImageBase.origin) return true
+    const sitePrefix = `${options.siteBase ?? ''}/`.replace(/\/+/gu, '/')
+    if (url.search !== '' || url.hash !== '' || !url.pathname.startsWith(sitePrefix)) return false
+    const relativePath = decodeURIComponent(url.pathname.slice(sitePrefix.length))
+    const canonicalHref = `${sitePrefix}${relativePath}`
+    return href === canonicalHref
+      && relativePath.toLowerCase().endsWith('.css')
+      && options.distFiles.has(relativePath)
+  } catch {
+    return false
+  }
+}
+
+function browserResourceAttributesWithin(roots, options = {}) {
   return elementsWithin(roots, () => true, hiddenResourceHtmlElements).flatMap((node) => {
     const tagName = node.tagName.toLowerCase()
     if (node.namespaceURI === svgNamespace && svgResourceHrefElements.has(tagName)) {
@@ -1323,12 +1355,23 @@ function browserResourceAttributesWithin(roots) {
       const rels = (attribute(node, 'rel') ?? '').toLowerCase().split(/\s+/u)
       const imageSrcset = attribute(node, 'imagesrcset')
       const href = attribute(node, 'href')
-      const resources = rels.some((rel) => fetchingLinkRels.has(rel))
+      const responsiveImagePreload = rels.includes('preload')
+        && (attribute(node, 'as') ?? '').toLowerCase() === 'image'
+        && imageSrcset !== undefined
+      const fetchingRels = rels.filter((rel) => fetchingLinkRels.has(rel))
+      const srcsetCanReplaceHref = responsiveImagePreload
+        && fetchingRels.every((rel) => rel === 'preload')
+      const resources = fetchingRels.length > 0
         ? href === undefined
-          ? imageSrcset === undefined ? [null] : []
+          ? srcsetCanReplaceHref ? [] : [null]
           : [href]
         : []
-      if (imageSrcset !== undefined) resources.push(...parseSrcsetCandidates(imageSrcset))
+      if (
+        rels.includes('stylesheet')
+        && href !== undefined
+        && !localStylesheetHrefIsValid(href, options)
+      ) resources.push(null)
+      if (responsiveImagePreload) resources.push(...parseSrcsetCandidates(imageSrcset))
       return resources
     }
     return (htmlResourceAttributes.get(tagName) ?? [])
@@ -1398,7 +1441,7 @@ function documentCssResourceCandidatesWithin(roots, documentFacts, cssOptions = 
 
 function resourceCandidatesWithin(roots, cssOptions = {}, includeCss = true) {
   const images = imageCandidatesWithin(roots)
-  const attributes = browserResourceAttributesWithin(roots)
+  const attributes = browserResourceAttributesWithin(roots, cssOptions)
   const svgElements = elementsWithin(
     roots,
     (node) => node.namespaceURI === svgNamespace,
@@ -1602,7 +1645,10 @@ export function extractProjectHtmlContract(html, options = {}) {
   const publishedResources = [...resources.resources, ...cssResources]
     .map((candidate) => validateDiscoveredResource(
       candidate,
-      options.cssOptions ?? {},
+      {
+        ...(options.cssOptions ?? {}),
+        resourceBudget: { steps: 0, decodedBytes: 0 },
+      },
       options.cssOptions?.sourcePath ?? null,
     ))
   return {
