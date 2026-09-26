@@ -1,8 +1,16 @@
 import { describe, expect, it } from 'vitest'
+import { createHash } from 'node:crypto'
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { stringify } from 'yaml'
+import { parse, stringify } from 'yaml'
+import {
+  buildProjectFreshnessReport,
+  checkProjectSubject,
+  isProjectReportBlocking,
+  requestProjectJson,
+  runProjectCheck,
+} from '../scripts/check-projects.mjs'
 import { buildFreshnessReport, checkSource, runSourceCheck } from '../scripts/check-sources.mjs'
 import { validateSourceRegistry } from '../scripts/validate-content.mjs'
 
@@ -507,5 +515,290 @@ describe('source freshness automation', () => {
   it('exposes the local source-check command', () => {
     const packageJson = JSON.parse(readFileSync('package.json', 'utf8'))
     expect(packageJson.scripts['sources:check']).toBe('node scripts/check-sources.mjs')
+  })
+})
+
+const licenseText = 'MIT fixture license\n'
+const licenseDigest = createHash('sha256').update(licenseText).digest('hex')
+
+const projectSubject = {
+  id: 'aider',
+  canonical_repo: 'Aider-AI/aider',
+  canonical_url: 'https://github.com/Aider-AI/aider',
+  pin_kind: 'release',
+  pinned_ref: 'v0.86.0',
+  pinned_commit: 'a'.repeat(40),
+  repository_status: 'active',
+  archived: false,
+  catalog_tier: 'core',
+  watch_url: 'https://github.com/Aider-AI/aider/releases/latest',
+  verified_at: '2026-09-26',
+  review_by: '2026-10-26',
+  license_sources: [{ path: 'LICENSE.txt', sha256: licenseDigest }],
+  entrypoints: [{ path: 'aider/main.py', symbols: ['main'], responsibility: 'Validate repository arguments.' }],
+}
+
+describe('project freshness checker', () => {
+  it('accepts matching canonical metadata, ref, commit, and entrypoints', async () => {
+    const result = await checkProjectSubject(projectSubject, {
+      retryAttempts: 1,
+      now: new Date('2026-09-26T00:00:00Z'),
+      fetchImpl: async (url: string) => {
+        if (url.endsWith('/commits/v0.86.0')) return { status: 200, url, json: async () => ({ sha: 'a'.repeat(40) }) }
+        if (url.endsWith('/commits/main')) return { status: 200, url, json: async () => ({ sha: 'a'.repeat(40), commit: { committer: { date: '2026-09-26T00:00:00Z' } } }) }
+        if (url.includes('/contents/aider/main.py')) return { status: 200, url, json: async () => ({ path: 'aider/main.py' }) }
+        if (url.includes('/contents/LICENSE.txt')) return { status: 200, url, json: async () => ({ path: 'LICENSE.txt', encoding: 'base64', content: Buffer.from(licenseText).toString('base64') }) }
+        if (url.endsWith('/releases/latest')) return { status: 200, url, json: async () => ({ tag_name: 'v0.86.0' }) }
+        return { status: 200, url, json: async () => ({ full_name: 'Aider-AI/aider', archived: false, default_branch: 'main' }) }
+      },
+    })
+    expect(result.findings).toEqual([])
+    expect(result.license_source_paths).toEqual(['LICENSE.txt'])
+  })
+
+  it('reports deterministic pin, path, canonical, archive, and release changes', async () => {
+    const result = await checkProjectSubject(projectSubject, {
+      retryAttempts: 1,
+      now: new Date('2026-09-26T00:00:00Z'),
+      fetchImpl: async (url: string) => {
+        if (url.endsWith('/commits/v0.86.0')) return { status: 200, url, json: async () => ({ sha: 'b'.repeat(40) }) }
+        if (url.endsWith('/commits/main')) return { status: 200, url, json: async () => ({ sha: 'c'.repeat(40), commit: { committer: { date: '2026-09-27T00:00:00Z' } } }) }
+        if (url.includes('/contents/')) return { status: 404, url, json: async () => ({}) }
+        if (url.endsWith('/releases/latest')) return { status: 200, url, json: async () => ({ tag_name: 'v0.87.0' }) }
+        return { status: 200, url, json: async () => ({ full_name: 'NewOwner/aider', archived: true, default_branch: 'main' }) }
+      },
+    })
+    expect(result.findings).toEqual(expect.arrayContaining([
+      'canonical_repo_changed', 'repository_status_changed', 'pin_ref_mismatch',
+      'entrypoint_missing', 'license_source_missing', 'project_update_available', 'project_review_required',
+    ]))
+  })
+
+  it('uses the default-branch HEAD commit rather than repository pushed_at', async () => {
+    const result = await checkProjectSubject(projectSubject, {
+      retryAttempts: 1,
+      now: new Date('2026-09-26T00:00:00Z'),
+      fetchImpl: async (url: string) => {
+        if (url.endsWith('/commits/v0.86.0')) return { status: 200, url, json: async () => ({ sha: 'a'.repeat(40) }) }
+        if (url.endsWith('/commits/main')) return { status: 200, url, json: async () => ({ sha: 'c'.repeat(40), commit: { committer: { date: '2026-09-27T00:00:00Z' } } }) }
+        if (url.includes('/contents/LICENSE.txt')) return { status: 200, url, json: async () => ({ encoding: 'base64', content: Buffer.from(licenseText).toString('base64') }) }
+        if (url.includes('/contents/')) return { status: 200, url, json: async () => ({ path: 'aider/main.py' }) }
+        if (url.endsWith('/releases/latest')) return { status: 200, url, json: async () => ({ tag_name: 'v0.86.0' }) }
+        return { status: 200, url, json: async () => ({ full_name: 'Aider-AI/aider', archived: false, default_branch: 'main', pushed_at: '2020-01-01T00:00:00Z' }) }
+      },
+    })
+    expect(result.findings).toEqual(['project_update_available'])
+  })
+
+  it('uses the shared Shanghai date boundary and escalates an expired review', async () => {
+    const result = await checkProjectSubject(projectSubject, {
+      retryAttempts: 1,
+      now: new Date('2026-10-26T16:30:00Z'),
+      fetchImpl: async (url: string) => {
+        if (url.endsWith('/commits/v0.86.0')) return { status: 200, url, json: async () => ({ sha: 'a'.repeat(40) }) }
+        if (url.endsWith('/commits/main')) return { status: 200, url, json: async () => ({ sha: 'a'.repeat(40), commit: { committer: { date: '2026-09-26T00:00:00Z' } } }) }
+        if (url.includes('/contents/LICENSE.txt')) return { status: 200, url, json: async () => ({ encoding: 'base64', content: Buffer.from(licenseText).toString('base64') }) }
+        if (url.includes('/contents/')) return { status: 200, url, json: async () => ({ path: 'aider/main.py' }) }
+        if (url.endsWith('/releases/latest')) return { status: 200, url, json: async () => ({ tag_name: 'v0.86.0' }) }
+        return { status: 200, url, json: async () => ({ full_name: 'Aider-AI/aider', archived: false, default_branch: 'main' }) }
+      },
+    })
+    expect(result.findings).toEqual(['project_review_due', 'project_review_required'])
+  })
+
+  it('keeps HTTP, parse, and request failures explicit and non-healthy', async () => {
+    const transient = await checkProjectSubject(projectSubject, {
+      retryAttempts: 2,
+      retryDelayMs: 0,
+      now: new Date('2026-09-26T00:00:00Z'),
+      fetchImpl: async () => ({ status: 503, url: '', json: async () => ({}) }),
+    })
+    expect(transient.findings).toContain('project_transient_error')
+    const network = await checkProjectSubject(projectSubject, {
+      retryAttempts: 1,
+      now: new Date('2026-09-26T00:00:00Z'),
+      fetchImpl: async () => { throw new Error('ECONNRESET') },
+    })
+    expect(network.findings).toContain('project_network_error')
+    const http = await checkProjectSubject(projectSubject, {
+      retryAttempts: 1,
+      now: new Date('2026-09-26T00:00:00Z'),
+      fetchImpl: async () => ({ status: 418, url: '', json: async () => ({}) }),
+    })
+    expect(http.findings).toContain('project_http_error')
+    const parseFailure = await checkProjectSubject(projectSubject, {
+      retryAttempts: 1,
+      now: new Date('2026-09-26T00:00:00Z'),
+      fetchImpl: async () => ({ status: 200, url: '', json: async () => { throw new Error('truncated json') } }),
+    })
+    expect(parseFailure.findings).toContain('project_parse_error')
+  })
+
+  it('retries JSON parsing before reporting an exhausted parse failure', async () => {
+    let attempts = 0
+    const recovered = await requestProjectJson('https://api.github.com/repos/example/repo', {
+      retryAttempts: 2,
+      retryDelayMs: 0,
+      fetchImpl: async (url: string) => ({
+        status: 200,
+        url,
+        json: async () => {
+          attempts += 1
+          if (attempts === 1) throw new Error('truncated json')
+          return { full_name: 'example/repo' }
+        },
+      }),
+    })
+    expect(attempts).toBe(2)
+    expect(recovered).toMatchObject({ failure: null, data: { full_name: 'example/repo' } })
+  })
+
+  it('escalates a changed license digest to manual review', async () => {
+    const result = await checkProjectSubject(projectSubject, {
+      retryAttempts: 1,
+      now: new Date('2026-09-26T00:00:00Z'),
+      fetchImpl: async (url: string) => {
+        if (url.endsWith('/commits/v0.86.0')) return { status: 200, url, json: async () => ({ sha: 'a'.repeat(40) }) }
+        if (url.endsWith('/commits/main')) return { status: 200, url, json: async () => ({ sha: 'a'.repeat(40), commit: { committer: { date: '2026-09-26T00:00:00Z' } } }) }
+        if (url.includes('/contents/LICENSE.txt')) return { status: 200, url, json: async () => ({ encoding: 'base64', content: Buffer.from('changed license').toString('base64') }) }
+        if (url.includes('/contents/')) return { status: 200, url, json: async () => ({ path: 'aider/main.py' }) }
+        if (url.endsWith('/releases/latest')) return { status: 200, url, json: async () => ({ tag_name: 'v0.86.0' }) }
+        return { status: 200, url, json: async () => ({ full_name: 'Aider-AI/aider', archived: false, default_branch: 'main' }) }
+      },
+    })
+    expect(result.findings).toEqual(expect.arrayContaining(['license_changed', 'project_review_required']))
+  })
+
+  it('sends the token only to api.github.com and fails closed on invalid schema', async () => {
+    const seen = new Map<string, string | undefined>()
+    await checkProjectSubject(projectSubject, {
+      githubToken: 'read-token',
+      retryAttempts: 1,
+      now: new Date('2026-09-26T00:00:00Z'),
+      fetchImpl: async (url: string, init?: { headers?: Record<string, string> }) => {
+        seen.set(url, init?.headers?.authorization)
+        return { status: 200, url, json: async () => url.endsWith('/commits/v0.86.0')
+          ? ({ sha: 'a'.repeat(40) })
+          : url.endsWith('/commits/main') ? ({ sha: 'a'.repeat(40), commit: { committer: { date: '2026-09-26T00:00:00Z' } } })
+          : url.includes('/contents/LICENSE.txt') ? ({ path: 'LICENSE.txt', encoding: 'base64', content: Buffer.from(licenseText).toString('base64') })
+            : url.includes('/contents/') ? ({ path: 'aider/main.py' })
+            : url.endsWith('/releases/latest') ? ({ tag_name: 'v0.86.0' })
+              : ({ full_name: 'Aider-AI/aider', archived: false, default_branch: 'main' }) }
+      },
+    })
+    expect([...seen.entries()].every(([url, auth]) => url.startsWith('https://api.github.com/') && auth === 'Bearer read-token')).toBe(true)
+
+    let externalAuthorization: string | undefined
+    await requestProjectJson('https://github.com/example/repo', {
+      githubToken: 'read-token',
+      retryAttempts: 1,
+      retryDelayMs: 0,
+      fetchImpl: async (_url: string, init?: { headers?: Record<string, string> }) => {
+        externalAuthorization = init?.headers?.authorization
+        return { status: 200, json: async () => ({}) }
+      },
+    })
+    expect(externalAuthorization).toBeUndefined()
+
+    const outputRoot = mkdtempSync(join(tmpdir(), 'project-freshness-'))
+    try {
+      const report = await runProjectCheck({
+        projectPath: join(outputRoot, 'missing-project-index.yml'),
+        outputJson: join(outputRoot, 'project-freshness.json'),
+        outputMarkdown: join(outputRoot, 'project-freshness.md'),
+        now: new Date('2026-09-26T00:00:00Z'),
+        fetchImpl: async () => { throw new Error('must not fetch') },
+      })
+      expect(report.needs_review).toBe(true)
+      expect(report.results[0].findings).toContain('project_schema_invalid')
+    } finally {
+      rmSync(outputRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('checks every catalog entrypoint and both pinned and default-branch license copies', async () => {
+    const catalog = parse(readFileSync('sources/project-index.yml', 'utf8')) as any
+    const subjects = catalog.subjects.map((subject: any) => ({ ...catalog.defaults, ...subject }))
+    expect(subjects).toHaveLength(13)
+    expect(subjects.flatMap((subject: any) => subject.entrypoints)).toHaveLength(66)
+    expect(subjects.flatMap((subject: any) => subject.license_sources)).toHaveLength(14)
+
+    const seen = new Set<string>()
+    const outputRoot = mkdtempSync(join(tmpdir(), 'project-freshness-catalog-'))
+    try {
+      const report = await runProjectCheck({
+        outputJson: join(outputRoot, 'project-freshness.json'),
+        outputMarkdown: join(outputRoot, 'project-freshness.md'),
+        now: new Date('2026-09-26T00:00:00Z'),
+        fetchImpl: async (url: string) => {
+          seen.add(url)
+          const subject = subjects.find((item: any) => url.startsWith(`https://api.github.com/repos/${item.canonical_repo}`))
+          if (!subject) return { status: 404, url, json: async () => ({}) }
+          const api = `https://api.github.com/repos/${subject.canonical_repo}`
+          if (url === api) return { status: 200, url, json: async () => ({ full_name: subject.canonical_repo, archived: subject.archived, default_branch: 'main' }) }
+          if (url.includes('/commits/')) return { status: 200, url, json: async () => ({ sha: subject.pinned_commit, commit: { committer: { date: `${subject.verified_at}T00:00:00Z` } } }) }
+          if (url.includes('/contents/')) {
+            const path = decodeURIComponent(url.split('/contents/')[1].split('?')[0])
+            return { status: 200, url, json: async () => ({ path, encoding: 'base64', content: Buffer.from('license fixture').toString('base64') }) }
+          }
+          if (url.endsWith('/tags?per_page=1')) return { status: 200, url, json: async () => ([{ name: subject.pinned_ref }]) }
+          return { status: 200, url, json: async () => ({ tag_name: subject.pinned_ref }) }
+        },
+      })
+
+      expect(report.results).toHaveLength(13)
+      for (const subject of subjects) {
+        for (const entrypoint of subject.entrypoints) {
+          const path = entrypoint.path.split('/').map(encodeURIComponent).join('/')
+          expect(seen).toContain(`https://api.github.com/repos/${subject.canonical_repo}/contents/${path}?ref=${subject.pinned_commit}`)
+        }
+        for (const license of subject.license_sources) {
+          const path = license.path.split('/').map(encodeURIComponent).join('/')
+          expect(seen).toContain(`https://api.github.com/repos/${subject.canonical_repo}/contents/${path}?ref=${subject.pinned_commit}`)
+          expect(seen).toContain(`https://api.github.com/repos/${subject.canonical_repo}/contents/${path}?ref=main`)
+        }
+      }
+    } finally {
+      rmSync(outputRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('builds a stable issue summary', () => {
+    expect(buildProjectFreshnessReport([
+      { id: 'ok', license_source_paths: ['LICENSE'], findings: [] },
+      { id: 'changed', license_source_paths: ['LICENSE'], findings: ['project_update_available'] },
+    ], '2026-09-26T00:00:00.000Z').summary).toEqual({ total: 2, healthy: 1, needs_review: 1 })
+    expect(isProjectReportBlocking(buildProjectFreshnessReport([
+      { id: 'update', license_source_paths: ['LICENSE'], findings: ['project_update_available'] },
+    ]))).toBe(false)
+    expect(isProjectReportBlocking(buildProjectFreshnessReport([
+      { id: 'license', license_source_paths: ['LICENSE'], findings: ['project_review_required'] },
+    ]))).toBe(true)
+    expect(isProjectReportBlocking(buildProjectFreshnessReport([
+      { id: 'network', license_source_paths: ['LICENSE'], findings: ['project_network_error'] },
+    ]))).toBe(true)
+  })
+
+  it('exposes the local project-check command', () => {
+    const packageJson = JSON.parse(readFileSync('package.json', 'utf8'))
+    expect(packageJson.scripts['projects:check']).toBe('node scripts/check-projects.mjs')
+  })
+
+  it('keeps write permission and repository execution in separate workflow jobs', () => {
+    const workflow = parse(readFileSync('.github/workflows/source-freshness.yml', 'utf8')) as any
+    expect(workflow.jobs.scan.permissions).toEqual({ contents: 'read' })
+    expect(workflow.jobs.scan.steps.find((step: any) => step.uses === 'actions/checkout@v4').with['persist-credentials']).toBe(false)
+    expect(workflow.jobs.scan.steps.some((step: any) => step.run === 'pnpm projects:check')).toBe(true)
+    expect(workflow.jobs.scan.steps.find((step: any) => step.uses === 'actions/upload-artifact@v4').with.path).toBe('reports/*freshness.*')
+    expect(workflow.jobs.report.permissions).toEqual({ contents: 'read', issues: 'write' })
+    expect(workflow.jobs.report.if).toContain('default_branch')
+    expect(workflow.jobs.report.steps.map((step: any) => step.uses)).toEqual([
+      'actions/download-artifact@v4',
+      'actions/github-script@v7',
+    ])
+    expect(workflow.jobs.report.steps.every((step: any) => !Object.hasOwn(step, 'run'))).toBe(true)
+    const reportScript = workflow.jobs.report.steps.find((step: any) => step.uses === 'actions/github-script@v7').with.script
+    expect(reportScript).toContain('[Freshness] Source review required')
+    expect(reportScript).toContain('[Freshness] Project review required')
   })
 })

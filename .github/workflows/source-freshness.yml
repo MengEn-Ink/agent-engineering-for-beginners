@@ -42,11 +42,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
+      - name: Check project pins
+        run: pnpm projects:check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
       - name: Upload freshness report
         uses: actions/upload-artifact@v4
         with:
           name: source-freshness-report
-          path: reports/source-freshness.*
+          path: reports/*freshness.*
           if-no-files-found: error
           retention-days: 7
 
@@ -69,9 +74,10 @@ jobs:
         with:
           script: |
             const fs = require('node:fs')
-            const report = JSON.parse(fs.readFileSync('reports/source-freshness.json', 'utf8'))
-            const body = fs.readFileSync('reports/source-freshness.md', 'utf8')
-            const title = '[Freshness] Source review required'
+            const reports = [
+              { file: 'source-freshness', title: '[Freshness] Source review required' },
+              { file: 'project-freshness', title: '[Freshness] Project review required' },
+            ]
             const { owner, repo } = context.repo
             const issues = await github.paginate(github.rest.issues.listForRepo, {
               owner,
@@ -79,18 +85,15 @@ jobs:
               state: 'open',
               per_page: 100,
             })
-            const existing = issues.find((issue) => !issue.pull_request && issue.title === title)
-
-            if (report.needs_review && existing) {
-              await github.rest.issues.update({ owner, repo, issue_number: existing.number, body })
-            } else if (report.needs_review) {
-              await github.rest.issues.create({ owner, repo, title, body })
-            } else if (existing) {
-              await github.rest.issues.update({
-                owner,
-                repo,
-                issue_number: existing.number,
-                state: 'closed',
-                body: `${body}\n\nAll automated findings are cleared.`,
-              })
+            for (const item of reports) {
+              const report = JSON.parse(fs.readFileSync(`reports/${item.file}.json`, 'utf8'))
+              const body = fs.readFileSync(`reports/${item.file}.md`, 'utf8')
+              const existing = issues.find((issue) => !issue.pull_request && issue.title === item.title)
+              if (report.needs_review && existing) {
+                await github.rest.issues.update({ owner, repo, issue_number: existing.number, body })
+              } else if (report.needs_review) {
+                await github.rest.issues.create({ owner, repo, title: item.title, body })
+              } else if (existing) {
+                await github.rest.issues.update({ owner, repo, issue_number: existing.number, state: 'closed', body: `${body}\n\nAll automated findings are cleared.` })
+              }
             }

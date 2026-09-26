@@ -7,6 +7,7 @@
     "dev": "vitepress dev docs",
     "build": "pnpm validate && pnpm typecheck:projects && vitepress build docs && node scripts/check-dist.mjs",
     "preview": "node scripts/serve-preview.mjs",
+    "projects:check": "node scripts/check-projects.mjs",
     "sources:check": "node scripts/check-sources.mjs",
     "test": "vitest run",
     "typecheck:projects": "vue-tsc --noEmit -p tsconfig.projects.json",
