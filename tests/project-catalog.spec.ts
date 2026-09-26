@@ -1,5 +1,13 @@
 import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -296,6 +304,28 @@ describe('project asset provenance', () => {
     }
   })
 
+  it('rejects symbolic-link files and directories without following them', () => {
+    const root = mkdtempSync(join(tmpdir(), 'project-assets-symlink-'))
+    try {
+      mkdirSync(join(root, 'docs/public/project-assets'), { recursive: true })
+      mkdirSync(join(root, 'assets'), { recursive: true })
+      mkdirSync(join(root, 'outside-dir'), { recursive: true })
+      writeFileSync(join(root, 'outside.svg'), '<svg/>')
+      writeFileSync(join(root, 'outside-dir/nested.svg'), '<svg/>')
+      writeFileSync(join(root, 'assets/provenance.yml'), 'schema_version: 1\nassets: []\n')
+      symlinkSync(join(root, 'outside.svg'), join(root, 'docs/public/project-assets/linked.svg'))
+      symlinkSync(join(root, 'outside-dir'), join(root, 'docs/public/project-assets/linked-dir'))
+
+      expect(validateProvenanceFile(join(root, 'assets/provenance.yml'), root, provenanceCatalog))
+        .toEqual(expect.arrayContaining([
+          'Project asset path must not be a symbolic link: docs/public/project-assets/linked-dir',
+          'Project asset path must not be a symbolic link: docs/public/project-assets/linked.svg',
+        ]))
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('rejects forged host, repository, ref, source path, and license claims', () => {
     const root = mkdtempSync(join(tmpdir(), 'project-assets-'))
     try {
@@ -327,6 +357,37 @@ assets:
         'Third-party asset URL does not match repo/ref/path: docs/public/project-assets/copied.svg',
         'Third-party asset license does not match the most specific path scope: docs/public/project-assets/copied.svg',
       ]))
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects an explicitly declared default port on the GitHub source URL', () => {
+    const root = mkdtempSync(join(tmpdir(), 'project-assets-'))
+    try {
+      writeProvenanceFixture(root, `
+schema_version: 1
+assets:
+  - local_file: docs/public/project-assets/copied.svg
+    origin: third-party
+    subject_id: aider
+    source_url: https://github.com:443/Aider-AI/aider/blob/${sha}/image.svg
+    source_repo: Aider-AI/aider
+    source_ref: ${sha}
+    source_path: image.svg
+    license: Apache-2.0
+    license_basis: path
+    manual_license_review: false
+    manual_reviewed_by: null
+    manual_review_note: null
+    copyright_holder: Aider contributors
+    modified: false
+    used_by: [project-aider]
+    alt: Architecture
+    verified_at: '2026-09-26'
+`)
+      expect(validateProvenanceFile(join(root, 'assets/provenance.yml'), root, provenanceCatalog))
+        .toContain('Third-party asset URL must use https://github.com: docs/public/project-assets/copied.svg')
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -368,6 +429,169 @@ assets:
         'Third-party asset subject is not owned by page project-other: docs/public/project-assets/copied.svg',
         'Third-party asset license does not match the most specific path scope: docs/public/project-assets/copied.svg',
       ]))
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects encoded separators before resolving the most specific AutoGPT license scope', () => {
+    const root = mkdtempSync(join(tmpdir(), 'project-assets-'))
+    const autogptCatalog = {
+      pages: [{ page_item_id: 'project-history-autogpt-flowise', subjects: ['autogpt'] }],
+      subjects: [{
+        id: 'autogpt',
+        canonical_repo: 'Significant-Gravitas/AutoGPT',
+        pinned_commit: 'd'.repeat(40),
+        license_scopes: [
+          { basis: 'path', expression: 'PolyForm-Shield-1.0.0', path_or_glob: 'autogpt_platform/**' },
+          { basis: 'path', expression: 'MIT', path_or_glob: '**' },
+        ],
+      }],
+    }
+    try {
+      writeProvenanceFixture(root, `
+schema_version: 1
+assets:
+  - local_file: docs/public/project-assets/copied.svg
+    origin: third-party
+    subject_id: autogpt
+    source_url: https://github.com/Significant-Gravitas/AutoGPT/blob/${'d'.repeat(40)}/autogpt_platform%2FREADME.md
+    source_repo: Significant-Gravitas/AutoGPT
+    source_ref: ${'d'.repeat(40)}
+    source_path: autogpt_platform%2FREADME.md
+    license: MIT
+    license_basis: path
+    manual_license_review: false
+    manual_reviewed_by: null
+    manual_review_note: null
+    copyright_holder: AutoGPT contributors
+    modified: false
+    used_by: [project-history-autogpt-flowise]
+    alt: AutoGPT architecture
+    verified_at: '2026-09-26'
+`)
+      expect(validateProvenanceFile(join(root, 'assets/provenance.yml'), root, autogptCatalog))
+        .toContain('Third-party asset has invalid source_path: docs/public/project-assets/copied.svg')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects double encoding, absolute paths, drive paths, NUL, and parent segments', () => {
+    const root = mkdtempSync(join(tmpdir(), 'project-assets-'))
+    try {
+      for (const sourcePath of [
+        'autogpt_platform%252FREADME.md',
+        '/README.md',
+        'C:/README.md',
+        'docs/\0README.md',
+        'docs/../README.md',
+      ]) {
+        writeProvenanceFixture(root, `
+schema_version: 1
+assets:
+  - local_file: docs/public/project-assets/copied.svg
+    origin: third-party
+    subject_id: aider
+    source_url: https://github.com/Aider-AI/aider/blob/${sha}/README.md
+    source_repo: Aider-AI/aider
+    source_ref: ${sha}
+    source_path: ${JSON.stringify(sourcePath)}
+    license: Apache-2.0
+    license_basis: path
+    manual_license_review: false
+    manual_reviewed_by: null
+    manual_review_note: null
+    copyright_holder: Aider contributors
+    modified: false
+    used_by: [project-aider]
+    alt: Architecture diagram
+    verified_at: '2026-09-26'
+`)
+        expect(validateProvenanceFile(join(root, 'assets/provenance.yml'), root, provenanceCatalog))
+          .toContain('Third-party asset has invalid source_path: docs/public/project-assets/copied.svg')
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('encodes every segment of a valid raw repository path for the exact GitHub URL', () => {
+    const root = mkdtempSync(join(tmpdir(), 'project-assets-'))
+    try {
+      writeProvenanceFixture(root, `
+schema_version: 1
+assets:
+  - local_file: docs/public/project-assets/copied.svg
+    origin: third-party
+    subject_id: aider
+    source_url: https://github.com/Aider-AI/aider/blob/${sha}/docs/architecture%20diagram.svg
+    source_repo: Aider-AI/aider
+    source_ref: ${sha}
+    source_path: docs/architecture diagram.svg
+    license: Apache-2.0
+    license_basis: path
+    manual_license_review: false
+    manual_reviewed_by: null
+    manual_review_note: null
+    copyright_holder: Aider contributors
+    modified: false
+    used_by: [project-aider]
+    alt: Architecture diagram
+    verified_at: '2026-09-26'
+`)
+      expect(validateProvenanceFile(join(root, 'assets/provenance.yml'), root, provenanceCatalog)).toEqual([])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('reports malformed source paths without throwing and lets validateBook aggregate them', () => {
+    const root = mkdtempSync(join(tmpdir(), 'project-assets-'))
+    const autogptCatalog = {
+      pages: [{ page_item_id: 'project-history-autogpt-flowise', subjects: ['autogpt'] }],
+      subjects: [{
+        id: 'autogpt',
+        canonical_repo: 'Significant-Gravitas/AutoGPT',
+        pinned_commit: 'd'.repeat(40),
+        license_scopes: [
+          { basis: 'path', expression: 'PolyForm-Shield-1.0.0', path_or_glob: 'autogpt_platform/**' },
+          { basis: 'path', expression: 'MIT', path_or_glob: '**' },
+        ],
+      }],
+    }
+    const provenancePath = join(root, 'assets/provenance.yml')
+    try {
+      for (const sourcePath of ['null', '42']) {
+        writeProvenanceFixture(root, `
+schema_version: 1
+assets:
+  - local_file: docs/public/project-assets/copied.svg
+    origin: third-party
+    subject_id: autogpt
+    source_url: https://github.com/Significant-Gravitas/AutoGPT/blob/${'d'.repeat(40)}/${sourcePath}
+    source_repo: Significant-Gravitas/AutoGPT
+    source_ref: ${'d'.repeat(40)}
+    source_path: ${sourcePath}
+    license: MIT
+    license_basis: path
+    manual_license_review: false
+    manual_reviewed_by: null
+    manual_review_note: null
+    copyright_holder: AutoGPT contributors
+    modified: false
+    used_by: [project-history-autogpt-flowise]
+    alt: AutoGPT architecture
+    verified_at: '2026-09-26'
+`)
+        expect(() => validateProvenanceFile(provenancePath, root, autogptCatalog)).not.toThrow()
+        expect(validateProvenanceFile(provenancePath, root, autogptCatalog))
+          .toContain('Third-party asset docs/public/project-assets/copied.svg requires source_path')
+      }
+
+      expect(() => validateBook(process.cwd(), { provenancePath })).not.toThrow()
+      expect(validateBook(process.cwd(), { provenancePath }))
+        .toContain('Third-party asset docs/public/project-assets/copied.svg requires source_path')
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
@@ -424,16 +648,8 @@ schema_version: 1
 assets:
   - local_file: docs/public/project-assets/original.svg
     origin: original
-    subject_id: null
-    source_url: null
-    source_repo: null
-    source_ref: null
-    source_path: null
-    license: null
-    license_basis: null
+    license: MIT
     manual_license_review: false
-    manual_reviewed_by: null
-    manual_review_note: null
     copyright_holder: Agent Engineering for Beginners contributors
     modified: false
     used_by: [project-aider]
@@ -447,6 +663,70 @@ assets:
       writeFileSync(join(root, 'assets/provenance.yml'), original.replace('origin: original', 'origin: copied'))
       expect(validateProvenanceFile(join(root, 'assets/provenance.yml'), root, provenanceCatalog))
         .toContain('Asset docs/public/project-assets/original.svg has invalid origin')
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects invalid shared metadata and stale third-party fields on original assets', () => {
+    const root = mkdtempSync(join(tmpdir(), 'project-assets-'))
+    try {
+      writeProvenanceFixture(root, `
+schema_version: 1
+assets:
+  - local_file: docs/public/project-assets/original.svg
+    origin: original
+    subject_id: aider
+    source_url: https://github.com/Aider-AI/aider/blob/${sha}/docs/diagram.svg
+    source_repo: Aider-AI/aider
+    source_ref: ${sha}
+    source_path: docs/diagram.svg
+    license: ''
+    license_basis: path
+    license_selector: stale-selector
+    manual_license_review: true
+    manual_reviewed_by: Reviewer
+    manual_review_note: Stale review
+    copyright_holder: ''
+    modified: false
+    used_by: [project-aider, project-aider, project-missing, 42]
+    alt: ''
+    verified_at: '2026-09-26'
+`, 'original.svg')
+      expect(validateProvenanceFile(join(root, 'assets/provenance.yml'), root, provenanceCatalog))
+        .toEqual(expect.arrayContaining([
+          'Asset docs/public/project-assets/original.svg requires non-empty license',
+          'Asset docs/public/project-assets/original.svg requires non-empty copyright_holder',
+          'Asset docs/public/project-assets/original.svg requires non-empty alt',
+          'Asset docs/public/project-assets/original.svg used_by must contain only non-empty string project page IDs',
+          'Asset docs/public/project-assets/original.svg has duplicate used_by page ID: project-aider',
+          'Asset docs/public/project-assets/original.svg references unknown project page: project-missing',
+          'Original asset must not declare third-party provenance fields: docs/public/project-assets/original.svg',
+          'Original asset manual_license_review must be false: docs/public/project-assets/original.svg',
+        ]))
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('rejects a verified_at value that is not a real ISO calendar date', () => {
+    const root = mkdtempSync(join(tmpdir(), 'project-assets-'))
+    try {
+      writeProvenanceFixture(root, `
+schema_version: 1
+assets:
+  - local_file: docs/public/project-assets/original.svg
+    origin: original
+    license: MIT
+    manual_license_review: false
+    copyright_holder: Agent Engineering for Beginners contributors
+    modified: false
+    used_by: [project-aider]
+    alt: Original architecture diagram
+    verified_at: '2026-99-99'
+`, 'original.svg')
+      expect(validateProvenanceFile(join(root, 'assets/provenance.yml'), root, provenanceCatalog))
+        .toContain('Asset docs/public/project-assets/original.svg has invalid verified_at')
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
