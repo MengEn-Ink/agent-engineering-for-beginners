@@ -341,6 +341,60 @@ pip&nbsp;install package
     expect(isRemoteImageCandidate(nested)).toBe(true)
   })
 
+  it('aggregates traversal budgets within each CSS source but isolates separate roots', () => {
+    const largeSvg = `data:image/svg+xml;base64,${Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg"><!--${'x'.repeat(340_000)}--></svg>`,
+    ).toString('base64')}`
+    const projectOptions = {
+      dynamicResources: 'project',
+      projectClassTokenSets: [new Set(['project-card'])],
+    }
+    const variableConsumers = `
+:root{--asset:url("${largeSvg}")}
+.project-card{background:var(--asset);mask:var(--asset);border-image:var(--asset) 1}
+`
+    expect(extractCssResourceCandidates(variableConsumers, {
+      ...projectOptions,
+      allCss: [variableConsumers],
+    }).some(isRemoteImageCandidate)).toBe(true)
+
+    const directSiblings = `.project-card{
+background-image:url("${largeSvg}");
+mask-image:url("${largeSvg}");
+border-image-source:url("${largeSvg}")
+}`
+    expect(extractCssResourceCandidates(directSiblings, projectOptions)
+      .some(isRemoteImageCandidate)).toBe(true)
+
+    for (const property of ['background-image', 'mask-image', 'border-image-source']) {
+      expect(extractCssResourceCandidates(
+        `.project-card{${property}:url("${largeSvg}")}`,
+        projectOptions,
+      ).some(isRemoteImageCandidate), property).toBe(false)
+    }
+
+    const scanBudget = {
+      steps: 0,
+      decodedBytes: 0,
+      variableEdges: 0,
+      aborted: false,
+      maxSteps: 256,
+      maxDecodedBytes: 1_000_000,
+      maxVariableEdges: 1_024,
+    }
+    const mediumSvg = `data:image/svg+xml;base64,${Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg"><!--${'x'.repeat(600_000)}--></svg>`,
+    ).toString('base64')}`
+    expect(extractCssResourceCandidates(
+      `.project-card{background-image:url("${mediumSvg}")}`,
+      { ...projectOptions, scanBudget },
+    ).some(isRemoteImageCandidate)).toBe(false)
+    expect(extractCssResourceCandidates(
+      `.project-card{background-image:url("${mediumSvg}")}`,
+      { ...projectOptions, scanBudget },
+    ).some(isRemoteImageCandidate)).toBe(true)
+  })
+
   it('recursively validates CSS data resources from CSS and HTML', () => {
     const cssData = (css: string, base64 = false) => base64
       ? `data:text/css;charset=UTF-8;base64,${Buffer.from(css).toString('base64')}`
@@ -1077,6 +1131,23 @@ ${escapedImportTarget}
       expect(extractProjectHtmlContract(
         `${forbidden}<main class="vp-doc"></main>`,
       ).resources.some(isRemoteImageCandidate), forbidden).toBe(true)
+    }
+
+    const largeSvg = `data:image/svg+xml;base64,${Buffer.from(
+      `<svg xmlns="http://www.w3.org/2000/svg"><!--${'x'.repeat(600_000)}--></svg>`,
+    ).toString('base64')}`
+    const safeDataCss = `data:text/css,${encodeURIComponent(
+      `.Layout{background:url("${`data:image/svg+xml;base64,${Buffer.from(
+        `<svg xmlns="http://www.w3.org/2000/svg"><!--${'x'.repeat(340_000)}--></svg>`,
+      ).toString('base64')}`}")}`,
+    )}`
+    for (const style of [
+      `<style>.Layout{background:url("${largeSvg}")}</style>`,
+      `<style>@import url("${safeDataCss}");</style>`,
+    ]) {
+      expect(extractProjectHtmlContract(
+        `${style}<div class="Layout"><main class="vp-doc"></main></div>`,
+      ).resources.some(isRemoteImageCandidate), style.slice(0, 80)).toBe(false)
     }
   })
 

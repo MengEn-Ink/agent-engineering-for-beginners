@@ -7,10 +7,10 @@ import {
   extractCssResourceCandidates,
   extractProjectHtmlContract,
   indexDistFiles,
-  isRemoteImageCandidate,
   normalizeCleanCourseHref,
   normalizePublishedOutputPath,
   readLockedVitePressVersion,
+  resourceCandidatesAreUnsafe,
   validatePinnedGithubSourceHref,
 } from './publication-contracts.mjs'
 
@@ -272,10 +272,19 @@ export function validateDist(distPath, options = {}) {
     distFiles: new Set(relativeFiles),
     distFileContents,
     analysisCache: {},
+    scanBudget: {
+      steps: 0,
+      decodedBytes: 0,
+      variableEdges: 0,
+      aborted: false,
+      maxSteps: 4_096,
+      maxDecodedBytes: 16_000_000,
+      maxVariableEdges: 16_384,
+    },
   }
   if (
     requireVitePressIconContract
-    && extractCssResourceCandidates('', cssOptions).some(isRemoteImageCandidate)
+    && resourceCandidatesAreUnsafe(extractCssResourceCandidates('', cssOptions))
   ) {
     errors.push('构建产物 VitePress 图标契约不匹配')
   }
@@ -287,10 +296,10 @@ export function validateDist(distPath, options = {}) {
     if (!exactHrefs(contract.hrefs, expectedProjectDocumentHrefs(file))) {
       errors.push(`项目页链接不符合公开契约：${file}`)
     }
-    if (contract.images.some(isRemoteImageCandidate)) {
+    if (resourceCandidatesAreUnsafe(contract.images)) {
       errors.push(`项目页包含外链图片：${file}`)
     }
-    if (contract.resources.some(isRemoteImageCandidate)) {
+    if (resourceCandidatesAreUnsafe(contract.resources)) {
       errors.push(`项目页包含外链资源：${file}`)
     }
   }
@@ -299,7 +308,7 @@ export function validateDist(distPath, options = {}) {
       ...cssOptions,
       sourcePath: file,
     })
-    if (resources.some(isRemoteImageCandidate)) {
+    if (resourceCandidatesAreUnsafe(resources)) {
       errors.push(`构建产物 CSS 包含外链资源：${file}`)
     }
   }

@@ -1528,6 +1528,8 @@ describe('project publication boundary', () => {
       '<link rel="preload" as="image" imagesrcset="d&#x09;a&#x0A;t&#x0D;a:image/svg+xml,%3Csvg%20xmlns=%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cimage%20href=%22https%3A%2F%2Fevil.example%2Fsrcset.png%22%2F%3E%3C%2Fsvg%3E 1x">',
       '<link rel="stylesheet" href="data:text/css,.vp-doc%7Bbackground%3Aurl(HtTpS%3Aindex.html)%7D">',
       '<img src="data:image/svg+xml,%3Csvg%20xmlns=%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%3Cimage%20href=%22https%3Aindex.html%22%2F%3E%3C%2Fsvg%3E">',
+      '<style>.vp-doc{background:url("data:text/css,%3Aroot%7B--asset%3Aurl(https%3Aindex.html)%7D.x%7Bbackground%3Avar(--asset)%7D")}</style>',
+      '<style>.vp-doc{background:url("data:text/css,.x%7Bbackground%3Avar(--missing%2Curl(https%3Aindex.html))%7D")}</style>',
       '<link rel="preload icon" href="//evil.example/preload.woff2">',
       '<video poster="https://evil.example/poster.png"></video>',
       '<object data="https://evil.example/object.svg"></object>',

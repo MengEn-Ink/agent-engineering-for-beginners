@@ -164,8 +164,38 @@ const vitePressIconConsumers = new Map([
 ])
 const vitePressIconConsumerHash = 'e6249fce861a48ee63402a01e2218f5f6f9dbde35a5def5a4dee6a1ac57af965'
 const validatedResourceCandidates = new WeakSet()
+const resourceCandidateListSafety = new WeakMap()
 const resourceTraversalAbort = Symbol('resourceTraversalAbort')
 let resourceOccurrenceId = 0
+
+function createTraversalBudget(limits = {}) {
+  return {
+    steps: 0,
+    decodedBytes: 0,
+    variableEdges: 0,
+    aborted: false,
+    maxSteps: limits.maxSteps ?? 64,
+    maxDecodedBytes: limits.maxDecodedBytes ?? 1_000_000,
+    maxVariableEdges: limits.maxVariableEdges ?? 256,
+  }
+}
+
+function chargeTraversalBudgets(rootBudget, scanBudget, field, amount) {
+  for (const budget of [rootBudget, scanBudget].filter(Boolean)) {
+    if (budget.aborted) return false
+    budget[field] += amount
+    const limit = field === 'steps'
+      ? budget.maxSteps
+      : field === 'decodedBytes'
+        ? budget.maxDecodedBytes
+        : budget.maxVariableEdges
+    if (budget[field] > limit) {
+      budget.aborted = true
+      return false
+    }
+  }
+  return true
+}
 
 function validatedCandidateRecord(value, options, sourcePath) {
   const record = {
@@ -888,6 +918,7 @@ function extractSvgXmlResourceCandidates(svg, options = {}) {
       allCss: undefined,
       allCssSources: nestedSources,
       analysisCache: {},
+      preserveValidatedRecords: false,
       validateAllDiscoveredResources: true,
     }
     const embeddedResources = nestedSources.flatMap((source) => embeddedCssResourceCandidates(
@@ -1006,9 +1037,8 @@ function normalizeSafeResourceCandidate(
   }
   const parsedCandidate = parseResourceCandidate(candidate, base)
   if (parsedCandidate === null) return null
-  const resourceBudget = options.resourceBudget ?? { steps: 0, decodedBytes: 0 }
-  resourceBudget.steps += 1
-  if (resourceBudget.steps > 64) return null
+  const resourceBudget = options.resourceBudget ?? createTraversalBudget()
+  if (!chargeTraversalBudgets(resourceBudget, options.scanBudget, 'steps', 1)) return null
   const traversalOptions = { ...options, resourceBudget }
   const { url } = parsedCandidate
   const value = url.protocol === 'data:' ? parsedCandidate.canonical : parsedCandidate.value
@@ -1020,14 +1050,20 @@ function normalizeSafeResourceCandidate(
     if (isSvgDataResource(value)) {
       const svg = decodeSvgDataResource(value)
       if (svg === null) return null
-      resourceBudget.decodedBytes += Buffer.byteLength(svg, 'utf8')
-      if (resourceBudget.decodedBytes > 1_000_000) return null
+      if (!chargeTraversalBudgets(
+        resourceBudget,
+        options.scanBudget,
+        'decodedBytes',
+        Buffer.byteLength(svg, 'utf8'),
+      )) return null
       const nestedTraversalOptions = traversalOptions
       const resources = extractSvgXmlResourceCandidates(svg, {
         ...nestedTraversalOptions,
         sourcePath,
         resourceDepth: depth + 1,
         resourceVisitedPaths: visitedPaths,
+        dynamicResources: undefined,
+        resourceDeclarations: undefined,
         skipVitePressPolicy: true,
       })
       if (resources === null || !resources.every((nested) =>
@@ -1043,8 +1079,12 @@ function normalizeSafeResourceCandidate(
     if (isCssDataResource(value)) {
       const css = decodeUtf8DataResource(value, 'text/css')
       if (css === null) return null
-      resourceBudget.decodedBytes += Buffer.byteLength(css, 'utf8')
-      if (resourceBudget.decodedBytes > 1_000_000) return null
+      if (!chargeTraversalBudgets(
+        resourceBudget,
+        options.scanBudget,
+        'decodedBytes',
+        Buffer.byteLength(css, 'utf8'),
+      )) return null
       const inheritedSources = (options.allCssSources ?? options.allCss ?? []).map((source) =>
         typeof source === 'string'
           ? { css: source, sourcePath: null }
@@ -1058,7 +1098,10 @@ function normalizeSafeResourceCandidate(
         analysisCache: {},
         resourceDepth: depth + 1,
         resourceVisitedPaths: visitedPaths,
+        dynamicResources: undefined,
+        resourceDeclarations: undefined,
         skipVitePressPolicy: true,
+        preserveValidatedRecords: false,
         validateAllDiscoveredResources: true,
       }
       const resources = extractCssResourceCandidates(css, nestedOptions)
@@ -1074,8 +1117,12 @@ function normalizeSafeResourceCandidate(
   if (traversalOptions.distFiles && !traversalOptions.distFiles.has(relativePath)) return null
   const svg = traversalOptions.distFileContents?.get(relativePath)
   if (svg === undefined) return `/${relativePath}`
-  resourceBudget.decodedBytes += Buffer.byteLength(svg, 'utf8')
-  if (visitedPaths.has(relativePath) || resourceBudget.decodedBytes > 1_000_000) return null
+  if (visitedPaths.has(relativePath) || !chargeTraversalBudgets(
+    resourceBudget,
+    options.scanBudget,
+    'decodedBytes',
+    Buffer.byteLength(svg, 'utf8'),
+  )) return null
   const nestedTraversalOptions = traversalOptions
   const nextVisited = new Set(visitedPaths)
   nextVisited.add(relativePath)
@@ -1102,47 +1149,82 @@ function isSafeResourceCandidate(candidate, options, depth = 0, sourcePath = nul
 }
 
 function validateDiscoveredResource(candidate, options, sourcePath) {
-  if (isValidatedCandidateRecord(candidate)) return candidate.value
+  if (isValidatedCandidateRecord(candidate)) {
+    return options.preserveValidatedRecords ? candidate : candidate.value
+  }
   if (typeof candidate !== 'string') return null
   const value = candidate.trim()
+  const retain = (normalized, fallback = candidate) => normalized === null
+    ? null
+    : options.preserveValidatedRecords
+      ? validatedCandidateRecord(normalized, options, sourcePath)
+      : fallback
   if (options.validateAllDiscoveredResources) {
-    return normalizeSafeResourceCandidate(
+    return retain(normalizeSafeResourceCandidate(
       value,
       options,
       options.resourceDepth ?? 0,
       sourcePath,
       options.resourceVisitedPaths ?? new Set(),
-    )
+    ), value)
   }
   if (isSvgDataResource(value)) {
-    return normalizeSafeResourceCandidate(
+    return retain(normalizeSafeResourceCandidate(
       value,
       options,
       options.resourceDepth ?? 0,
       sourcePath,
       options.resourceVisitedPaths ?? new Set(),
-    ) === null ? null : candidate
+    ))
   }
   if (isCssDataResource(value)) {
-    return normalizeSafeResourceCandidate(
+    return retain(normalizeSafeResourceCandidate(
       value,
       options,
       options.resourceDepth ?? 0,
       sourcePath,
       options.resourceVisitedPaths ?? new Set(),
-    ) === null ? null : candidate
+    ))
   }
   const relativePath = localResourcePath(value, sourcePath)
   if (relativePath !== null && options.distFileContents?.has(relativePath)) {
-    return normalizeSafeResourceCandidate(
+    return retain(normalizeSafeResourceCandidate(
       value,
       options,
       options.resourceDepth ?? 0,
       sourcePath,
       options.resourceVisitedPaths ?? new Set(),
-    ) === null ? null : candidate
+    ))
   }
   return candidate
+}
+
+function isUnsafeWithoutDeepScan(candidate) {
+  if (typeof candidate !== 'string') return true
+  const parsed = parseResourceCandidate(candidate)
+  if (parsed === null) return true
+  if (parsed.explicitScheme === 'data') return false
+  if (parsed.explicitScheme !== null) return true
+  return parsed.url.protocol !== 'http:'
+    && parsed.url.protocol !== 'https:'
+    || parsed.url.origin !== localImageBase.origin
+    || /^(?:https?:|\/\/)/iu.test(parsed.value)
+}
+
+function finalizeResourceCandidates(candidates, options, sourcePath) {
+  let unsafe = false
+  const finalized = candidates.map((candidate) => {
+    const validated = validateDiscoveredResource(candidate, options, sourcePath)
+    if (validated === null || isUnsafeWithoutDeepScan(validated)) unsafe = true
+    return validated
+  })
+  resourceCandidateListSafety.set(finalized, unsafe)
+  return finalized
+}
+
+export function resourceCandidatesAreUnsafe(candidates) {
+  return resourceCandidateListSafety.get(candidates)
+    ?? candidates.some(isRemoteImageCandidate)
 }
 
 function createCustomPropertyResolver(css, options, sources = cssSourceRecords(css, options)) {
@@ -1155,15 +1237,11 @@ function createCustomPropertyResolver(css, options, sources = cssSourceRecords(c
   const consumeVariableEdge = (resolvingVariables) => {
     const budget = options.resourceBudget
       ?? variableBudgets.get(resolvingVariables)
-      ?? { steps: 0, decodedBytes: 0, aborted: false }
+      ?? createTraversalBudget()
     variableBudgets.set(resolvingVariables, budget)
-    if (budget.aborted) return null
-    budget.variableEdges = (budget.variableEdges ?? 0) + 1
-    if (budget.variableEdges > 256) {
-      budget.aborted = true
-      return null
-    }
-    return budget
+    return chargeTraversalBudgets(budget, options.scanBudget, 'variableEdges', 1)
+      ? budget
+      : null
   }
   const validate = (resources, candidateSourcePath) => resources.map((candidate) => {
     if (candidate === resourceTraversalAbort) return resourceTraversalAbort
@@ -1347,6 +1425,10 @@ function vitePressIconMaskPolicyIsValid(options, sources, customProperties) {
 
 export function extractCssResourceCandidates(css, options = {}) {
   try {
+    options = {
+      ...options,
+      resourceBudget: options.resourceBudget ?? createTraversalBudget(),
+    }
     const root = postcss.parse(css)
     const resources = []
     const sources = cssSourceRecords(css, options)
@@ -1385,7 +1467,7 @@ export function extractCssResourceCandidates(css, options = {}) {
         resources.push(null)
         return
       }
-      if (property === '--icon') {
+      if (property === '--icon' && !vitePressIconMaskPolicy.present) {
         resources.push(...customProperties.resolveName('--icon', options.sourcePath ?? null))
       }
       if (property.startsWith('--')) return
@@ -1439,8 +1521,7 @@ export function extractCssResourceCandidates(css, options = {}) {
         ? decodeCssEscapes(target.value)
         : null)
     })
-    return resources.map((candidate) =>
-      validateDiscoveredResource(candidate, options, options.sourcePath ?? null))
+    return finalizeResourceCandidates(resources, options, options.sourcePath ?? null)
   } catch {
     return [null]
   }
@@ -1530,6 +1611,7 @@ function embeddedCssSourcesWithin(roots) {
 function documentCssResourceCandidatesWithin(roots, documentFacts, cssOptions = {}, cssSources) {
   const sharedOptions = {
     ...cssOptions,
+    preserveValidatedRecords: true,
     projectClassTokens: documentFacts.classTokens,
     projectDocuments: [documentFacts],
     ...(cssOptions.allCssSources || cssOptions.allCss
@@ -1761,26 +1843,36 @@ export function extractProjectHtmlContract(html, options = {}) {
     }
   })
   const documentFacts = { classTokens, attributeValues, selectorElements }
-  const resources = resourceCandidatesWithin(document.childNodes, options.cssOptions, false)
+  const documentCssOptions = {
+    ...(options.cssOptions ?? {}),
+    preserveValidatedRecords: true,
+    resourceBudget: createTraversalBudget(),
+  }
+  const resources = resourceCandidatesWithin(document.childNodes, documentCssOptions, false)
   const cssResources = documentCssResourceCandidatesWithin(
     document.childNodes,
     documentFacts,
-    options.cssOptions,
+    documentCssOptions,
     cssSources,
   )
-  const publishedResources = [...resources.resources, ...cssResources]
-    .map((candidate) => validateDiscoveredResource(
-      candidate,
-      {
-        ...(options.cssOptions ?? {}),
-        resourceBudget: { steps: 0, decodedBytes: 0 },
-      },
-      options.cssOptions?.sourcePath ?? null,
-    ))
+  const publicResourceOptions = {
+    ...documentCssOptions,
+    preserveValidatedRecords: false,
+  }
+  const publishedResources = finalizeResourceCandidates(
+    [...resources.resources, ...cssResources],
+    publicResourceOptions,
+    options.cssOptions?.sourcePath ?? null,
+  )
+  const publishedImages = publishedResources.slice(0, resources.images.length)
+  resourceCandidateListSafety.set(
+    publishedImages,
+    publishedImages.some(isUnsafeWithoutDeepScan),
+  )
   return {
     text: normalizedVisibleText(vpDocs),
     headings,
-    images: resources.images,
+    images: publishedImages,
     resources: publishedResources,
     cssSources,
     classTokens,
