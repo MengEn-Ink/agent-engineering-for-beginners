@@ -303,3 +303,25 @@ sources:
     accessed: '2026-09-25'
     impact_chapters: ['14']
     note: 核对浏览器/计算机操作循环、环境观察和高影响动作确认边界。
+  - id: learn-claude-code
+    title: Learn Claude Code - Harness Engineering for Real Agents
+    publisher: shareAI Lab
+    url: https://github.com/shareAI-lab/learn-claude-code/tree/ce8f9f186058939da54c9d6fead78dfb5d0fd6c3
+    grade: B
+    accessed: '2026-10-05'
+    version: ce8f9f1
+    watch_url: https://github.com/shareAI-lab/learn-claude-code/commits/main
+    status: watch
+    impact_chapters: ['03', '04', '05', '06', '07', '08', '09', '10', '13', '/appendix/harness-reading-guide']
+    note: 核对从最小 Agent Loop 到权限、上下文、持久任务、多 Agent、集成 Harness 与独立目标验收的递进实现；不把 Claude 专属 API 或教学脚本当成生产默认方案。
+  - id: agentic-ai-guide-zh-v1-1-0
+    title: Agentic AI 指南 v1.1.0
+    publisher: Chasing1020
+    url: https://github.com/Chasing1020/agentic-ai-guide-zh/releases/tag/v1.1.0
+    grade: B
+    accessed: '2026-10-05'
+    version: v1.1.0
+    watch_url: https://github.com/Chasing1020/agentic-ai-guide-zh/releases/latest
+    status: watch
+    impact_chapters: ['01', '03', '05', '06', '07', '08', '10']
+    note: 用于交叉核对模型基础、评估、RAG、Memory、编排、Loop Engineering、MCP 与多 Agent 的知识全景；初学主线不以前置训练算法为门槛。

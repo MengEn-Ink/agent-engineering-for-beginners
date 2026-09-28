@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vitepress dev docs",
-    "build": "pnpm validate && pnpm typecheck:projects && vitepress build docs && node scripts/check-dist.mjs",
+    "build": "pnpm validate && pnpm typecheck:projects && vitepress build docs && node scripts/build-offline.mjs docs/.vitepress/dist /agent-engineering-for-beginners/ && node scripts/check-dist.mjs",
     "preview": "node scripts/serve-preview.mjs",
     "projects:check": "node scripts/check-projects.mjs",
     "sources:check": "node scripts/check-sources.mjs",

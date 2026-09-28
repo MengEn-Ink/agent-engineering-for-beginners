@@ -54,6 +54,7 @@ export const contentItems: ContentItem[] = [
   { id: 'appendix-glossary', route: '/appendix/glossary', title: '术语表', kind: 'appendix' },
   { id: 'appendix-review-checklist', route: '/appendix/review-checklist', title: '方案评审清单', kind: 'appendix' },
   { id: 'appendix-reading', route: '/appendix/reading', title: '延伸阅读', kind: 'appendix' },
+  { id: 'appendix-harness-reading-guide', route: '/appendix/harness-reading-guide', title: '从最小循环到可验收 Harness', navTitle: 'Harness 源码导读', kind: 'appendix' },
   { id: 'appendix-application-matrix', route: '/appendix/application-matrix', title: '应用选型矩阵', kind: 'appendix' },
   { id: 'appendix-chapter-template', route: '/appendix/chapter-template', title: '章节与方案模板', kind: 'appendix' },
   { id: 'appendix-interview', route: '/appendix/interview', title: '42 道面试题', kind: 'appendix' },

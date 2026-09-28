@@ -25,8 +25,10 @@ import BrowserEvidence from './components/BrowserEvidence.vue'
 import ChapterFreshness from './components/ChapterFreshness.vue'
 import ReadingPaths from './components/ReadingPaths.vue'
 import ReadingProgress from './components/ReadingProgress.vue'
+import OfflineDownload from './components/OfflineDownload.vue'
 import InterviewTrainer from './components/InterviewTrainer.vue'
 import CourseMap from './components/CourseMap.vue'
+import LayeredKnowledgeGraph from './components/LayeredKnowledgeGraph.vue'
 import ProjectOverview from './components/ProjectOverview.vue'
 import ProjectMeta from './components/ProjectMeta.vue'
 import ProjectCallChain from './components/ProjectCallChain.vue'
@@ -36,7 +38,10 @@ import './style.css'
 export default {
   extends: DefaultTheme,
   Layout: () => h(DefaultTheme.Layout, null, {
-    'doc-after': () => h(ReadingProgress),
+    'doc-after': () => h('div', { class: 'reading-tools' }, [
+      h(ReadingProgress),
+      h(OfflineDownload),
+    ]),
   }),
   enhanceApp({ app }) {
     app.component('AgentLoop', AgentLoop)
@@ -63,8 +68,10 @@ export default {
     app.component('ChapterFreshness', ChapterFreshness)
     app.component('ReadingPaths', ReadingPaths)
     app.component('ReadingProgress', ReadingProgress)
+    app.component('OfflineDownload', OfflineDownload)
     app.component('InterviewTrainer', InterviewTrainer)
     app.component('CourseMap', CourseMap)
+    app.component('LayeredKnowledgeGraph', LayeredKnowledgeGraph)
     app.component('ProjectOverview', ProjectOverview)
     app.component('ProjectMeta', ProjectMeta)
     app.component('ProjectCallChain', ProjectCallChain)

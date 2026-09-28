@@ -34,7 +34,7 @@ const sidebar = [
   ]) },
   { text: '随手查', items: navItems([
     'appendix-glossary', 'appendix-review-checklist', 'appendix-reading',
-    'appendix-application-matrix', 'appendix-chapter-template',
+    'appendix-harness-reading-guide', 'appendix-application-matrix', 'appendix-chapter-template',
     'appendix-interview', 'appendix-interview-training',
   ]) },
 ]

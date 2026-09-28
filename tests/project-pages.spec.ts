@@ -1537,12 +1537,12 @@ ${escapedImportTarget}
     }
   })
 
-  it('adds exactly eight project routes without changing the existing 31', () => {
+  it('keeps exactly eight project routes as the content registry grows', () => {
     const actual = projectRouteRecords.map(([id]) => getContentItem(id))
     expect(actual.map(({ id, route, title, kind }) => [id, route, title, kind])).toEqual(
       projectRouteRecords,
     )
-    expect(contentItems).toHaveLength(39)
+    expect(contentItems).toHaveLength(40)
     expect(projectCatalog.pages.map((page) => page.page_item_id))
       .toEqual(projectRouteRecords.map(([id]) => id))
     for (const page of projectCatalog.pages) {
