@@ -137,7 +137,7 @@ Release A 只交付知识关系层：`/atlas/` 四视图、章节 location strip
 
 `目标与输入 → 上下文选择 → 模型决策 → 工具动作 → 观察与状态 → 控制下一步 → 验证与证据 → 边界/人工接管`
 
-每个运行节点映射到七个问题、主章节、前沿专题和一个代表项目。`runtime-boundary-handoff → runtime-goal-input` 是反馈 loop edge，不是第九个节点。它不是代码调用链，而是全书共用的系统模型。
+每个运行节点映射到七个问题、正文内容和一个代表项目。正文内容集合从 26 项主映射中筛选包含该 runtime 节点 primary question 的 CourseItem 派生，不维护另一份“主章节/前沿”列表。`runtime-boundary-handoff → runtime-goal-input` 是反馈 loop edge，不是第九个节点。它不是代码调用链，而是全书共用的系统模型。
 
 #### 视图二：工程生命周期图
 
@@ -235,7 +235,7 @@ Release A 只交付知识关系层：`/atlas/` 四视图、章节 location strip
 | `runtime-verify-evidence` | 验证结果、轨迹与证据 | `validation` | `project-agent-benchmarks` |
 | `runtime-boundary-handoff` | 停止、恢复与人工接管 | `boundary` | `case-delivery-agent` |
 
-运行图顺序固定，最后一项回到第一项形成反馈边。代表项目只用于说明，不改变项目页的权威事实或课程归属。
+运行图顺序固定，最后一项回到第一项形成反馈边。代表项目 ID 必须命中 `contentRegistry`，只作为该 runtime 节点的展示映射；它不改变项目页的权威事实或课程归属，也不生成 `applies` 边。
 
 ### 8.4 Lifecycle 节点
 
@@ -343,7 +343,7 @@ Review variant 的章节关系来源：interview 与 training 从 42 题 chapter
 
 - `prerequisite` 边从 `courseMap` 派生；
 - 页面标题和 URL 从 `contentRegistry` 派生；
-- project page 到章节的关系优先从课程先修和项目 catalog 映射派生；
+- 6 个 core project 与交付型案例到章节的 `applies` 关系只从对应 CourseItem 的 prerequisites 反推；historical page 只使用已列出的 3 条 `revisit`；project catalog 只提供 page、subject、question 等现有字段，不提供 chapter relation；
 - crosswalk 的完成证据列从课程项 `evidence` 派生，不生成 graph edge；
 - question 回链从 interview ID registry 派生；题目现有的 chapter 数字通过唯一的 `chapter-NN-*` content ID 映射到章节，不手写另一份题目到章节表；
 - 反向边在构建时生成，不写入源数据。
@@ -352,7 +352,7 @@ Review variant 的章节关系来源：interview 与 training 从 42 题 chapter
 
 - 所有内容引用必须命中已登记 ID；
 - 每个公开课程项至少映射一个核心问题、生命周期阶段和产物；
-- 每个核心问题至少有一个核心章节，且 runtime 节点表为其声明至少一个代表 project/case 工程落点；两处必须使用同一 project/case ID；
+- 每个核心问题至少有一个由 26 项主映射派生的正文内容；runtime 节点表中的代表 project/case ID 必须命中 `contentRegistry`，且只用于展示，不参与 `applies` 派生；
 - 先修图无环，非先修关系边允许闭环但必须有类型；
 - 边不得自指或重复；
 - 不得出现第二份标题、路由或完成证据；
@@ -373,7 +373,7 @@ Review variant 的章节关系来源：interview 与 training 从 42 题 chapter
 
 交互只包括层切换、过滤、展开、聚焦和跳转。没有自由拖拽、任意缩放、编辑节点、保存布局或多人协作。
 
-URL hash 保存当前视图和节点，例如 `#runtime-validation`，便于章节“在总图中查看”直接定位；无效 hash 回到七问题总览，不影响页面加载。
+URL hash 直接使用稳定节点 ID，语法为 `#<node-id>`，例如 `#runtime-verify-evidence` 或 `#lifecycle-evaluate`；节点 ID 本身已包含视图前缀。无效 hash 回到七问题总览，不影响页面加载。
 
 ## 10. 渐进披露与视觉规则
 
