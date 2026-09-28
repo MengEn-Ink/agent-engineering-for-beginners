@@ -135,17 +135,17 @@ Release A 只交付知识关系层：`/atlas/` 四视图、章节 location strip
 
 回答“一个 Agent 任务实际怎样运行”。稳定主链是：
 
-`目标与输入 → 上下文选择 → 模型决策 → 工具动作 → 观察与状态 → 控制下一步 → 验证与证据 → 边界/人工接管 → 反馈到下一轮`
+`目标与输入 → 上下文选择 → 模型决策 → 工具动作 → 观察与状态 → 控制下一步 → 验证与证据 → 边界/人工接管`
 
-每个运行节点映射到七个问题、主章节、前沿专题和一个代表项目。它不是代码调用链，而是全书共用的系统模型。
+每个运行节点映射到七个问题、主章节、前沿专题和一个代表项目。`runtime-boundary-handoff → runtime-goal-input` 是反馈 loop edge，不是第九个节点。它不是代码调用链，而是全书共用的系统模型。
 
 #### 视图二：工程生命周期图
 
 回答“团队怎样把一个想法做成可运营系统”。稳定阶段是：
 
-`定义目标与基线 → 选择控制方式 → 设计契约和状态 → 实现最小闭环 → 构建评测 → 加权限与恢复 → 灰度发布 → 观察与运营 → 事故进入回归 → 扩权或退役`
+`定义目标与基线 → 选择控制方式 → 设计契约、上下文和状态 → 实现最小执行闭环 → 构建评测与证据 → 加权限、恢复与接管 → 灰度发布与运营 → 复盘、扩权或退役`
 
-生命周期是有反馈边的闭环，不把发布画成终点。章节 8–10 是发布门，章节 11–14 是应用分支，交付型案例负责收束。
+生命周期固定为上述八个节点。`lifecycle-improve-retire → lifecycle-scope` 是“事故进入回归/下一轮基线”的反馈边，不是第九个节点。章节 8–10 是发布门，章节 11–14 是应用分支，交付型案例负责收束。
 
 #### 视图三：章节 × 项目 × 产物矩阵
 
@@ -170,12 +170,11 @@ Release A 只交付知识关系层：`/atlas/` 四视图、章节 location strip
 - `先修`：理解本内容前建议先掌握；
 - `展开`：同一概念的更深入说明；
 - `应用`：理论在项目或案例中的落点；
-- `证据`：内容对应的完成产物；
 - `复习`：术语或面试题回到原章节。
 
 ## 6. 章节“你在这里”
 
-`publishedCourseItems` 与三条 `readingPaths` 的路由联集是 location strip 的权威范围，当前精确为 29 页。每个页面在标题/新鲜度信息之后、正文主体之前显示一个轻量位置条带。
+`publishedCourseItems` 与三条 `readingPaths` 的路由联集是 location strip 的权威范围，当前精确为 29 页。组件通过全局 Layout 的 `doc-before` slot 注入，位置固定为文档正文容器入口；不要求位于 Markdown 内手写的 freshness 组件之后。
 
 26 个 CourseItem 使用 course variant：当前阶段与序号、1–2 个核心问题、直接先修、直接后续、相关项目或案例、现有完成证据和 atlas 定位链接。
 
@@ -291,13 +290,27 @@ Release A 只交付知识关系层：`/atlas/` 四视图、章节 location strip
 | 边类型 | From | To | 基数 | 来源与闭环规则 |
 | --- | --- | --- | --- | --- |
 | `prerequisite` | CourseItem | CourseItem | 除 `preface` 外每项 `1..n` 入边 | 完全派生自 `courseMap.prerequisites`；必须无环 |
-| `expands` | chapter/frontier | chapter/frontier | `0..n` | 人工策展；表示概念展开；不得自指或成环 |
-| `applies` | chapter/frontier | core project/case | `0..n` | 优先由 project/case CourseItem 的 prerequisite 反向派生；人工补边必须有规格依据；不得成环 |
-| `evidence` | CourseItem | 同一 CourseItem 的 `evidence` 投影 | 每个 CourseItem 恰好 1 | 完全派生；target identity 仍是现有 CourseItem ID，不创建 artifact ID |
+| `applies` | chapter/frontier | core project/case | `0..n` | 完全由 7 个 project/case CourseItem 的 prerequisite 反向派生；不得手写、不得成环 |
 | `assessed-by` | chapter | interview question | 每章恰好 3 | 由 question.chapter 与 `chapter-NN-*` content ID 派生 |
 | `revisit` | chapter/frontier/project | review appendix 或 historical page | `0..n` | 人工策展；允许形成复习闭环；不参与先修拓扑排序 |
 
-只有 `revisit` 可以形成闭环。任何人工 `applies/expands/revisit` 边都必须同时声明 source/target kind，构建时验证目标 ID 与允许基数。
+`evidence` 不是统一 relation graph 的边，而是 CourseItem 的派生展示字段和 crosswalk 列；即使视觉组件画出连接线，也不创建 target ID。只有 `revisit` 可以形成闭环。任何人工 `revisit` 边都必须同时声明 source/target kind，构建时验证目标 ID 与允许基数。
+
+Release A 的 `applies` 全部从 7 个 project/case CourseItem 的 prerequisites 反向派生，不手写。Release A 不需要 `expands`，因此不定义该边类型。
+
+完整人工边只有以下 `revisit`：
+
+| Edge ID | Type | Source ID | Target ID | 理由 |
+| --- | --- | --- | --- | --- |
+| `revisit-glossary-control` | `revisit` | `chapter-02-workflow-agent` | `appendix-glossary` | 复习 Prompt、Workflow、Agent 控制方式术语 |
+| `revisit-glossary-tools` | `revisit` | `chapter-04-tools-mcp` | `appendix-glossary` | 复习工具、契约、MCP 与权限术语 |
+| `revisit-glossary-state` | `revisit` | `chapter-05-state-memory` | `appendix-glossary` | 复习状态、记忆、知识与审计分层 |
+| `revisit-glossary-graph` | `revisit` | `chapter-06-loop-graph` | `appendix-glossary` | 复习节点、边、检查点与汇合术语 |
+| `revisit-glossary-evaluation` | `revisit` | `chapter-08-evaluation` | `appendix-glossary` | 复习结果、轨迹、证据和运行指标 |
+| `revisit-glossary-safety` | `revisit` | `chapter-09-safety-recovery` | `appendix-glossary` | 复习权限、幂等、补偿和人工接管 |
+| `revisit-history-control` | `revisit` | `chapter-02-workflow-agent` | `project-history-autogpt-flowise` | 用历史反例复盘控制方式选择 |
+| `revisit-history-coordination` | `revisit` | `chapter-07-multi-agent` | `project-history-autogpt-flowise` | 用历史反例复盘协调成本 |
+| `revisit-history-production` | `revisit` | `chapter-10-production` | `project-history-autogpt-flowise` | 用历史反例复盘维护、迁移和退役 |
 
 ### 8.7 Crosswalk 行与空值
 
@@ -321,7 +334,7 @@ Review variant 的章节关系来源：interview 与 training 从 42 题 chapter
 - 七个核心问题的稳定 ID、顺序和一句解释；
 - 运行关系图与生命周期图中不能从现有数据推导的稳定概念节点；
 - 内容 ID 到核心问题、生命周期阶段的人工策展映射；
-- 少量非先修关系边：`expands`、`applies`、`revisit`；
+- Release A 无法从既有数据派生的完整 `revisit` 边表；
 - 每个视图的显示顺序和默认折叠策略。
 
 它不得复制 route、title、navTitle、project name、commit、license、question text、course outcome 或 evidence 文案。
@@ -331,7 +344,7 @@ Review variant 的章节关系来源：interview 与 training 从 42 题 chapter
 - `prerequisite` 边从 `courseMap` 派生；
 - 页面标题和 URL 从 `contentRegistry` 派生；
 - project page 到章节的关系优先从课程先修和项目 catalog 映射派生；
-- 产物节点从课程项 `evidence` 派生；
+- crosswalk 的完成证据列从课程项 `evidence` 派生，不生成 graph edge；
 - question 回链从 interview ID registry 派生；题目现有的 chapter 数字通过唯一的 `chapter-NN-*` content ID 映射到章节，不手写另一份题目到章节表；
 - 反向边在构建时生成，不写入源数据。
 
@@ -339,12 +352,11 @@ Review variant 的章节关系来源：interview 与 training 从 42 题 chapter
 
 - 所有内容引用必须命中已登记 ID；
 - 每个公开课程项至少映射一个核心问题、生命周期阶段和产物；
-- 每个核心问题至少有一个核心章节和一个工程落点；
+- 每个核心问题至少有一个核心章节，且 runtime 节点表为其声明至少一个代表 project/case 工程落点；两处必须使用同一 project/case ID；
 - 先修图无环，非先修关系边允许闭环但必须有类型；
 - 边不得自指或重复；
 - 不得出现第二份标题、路由或完成证据；
 - 项目、面试题和前沿专题的关系必须引用现有 ID；
-- 成果状态 key 必须是现有 course item ID，不能出现独立 artifact ID 或复制后的 evidence 文案；
 - course denominator、reading paths 和既有 localStorage key 不因图谱变化而改变。
 
 ## 9. 组件与交互边界
@@ -495,5 +507,5 @@ URL hash 保存当前视图和节点，例如 `#runtime-validation`，便于章�
 
 - 是否保持“关系层”而不复制正文；
 - 是否避免自由画布和后端能力扩张；
-- 是否能以八个独立任务逐步上线；
+- 是否能以七个独立任务逐步上线；
 - 是否把第三、第四阶段内容清楚标成关系而非已交付功能。
