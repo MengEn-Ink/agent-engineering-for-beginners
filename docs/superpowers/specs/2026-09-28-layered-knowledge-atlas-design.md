@@ -21,7 +21,7 @@
 3. 章节 × 项目 × 产物矩阵；
 4. 先修依赖图。
 
-个人进度只叠加本地状态，不改变权威关系。阶段检查点与成果档案只记录完成状态，不新增账号、后端、云同步、文件上传或协作能力。
+Release A 只交付知识关系层：`/atlas/` 四视图、章节 location strip 和入口接线。图谱可以只读叠加现有“已读”状态，但不新增学习状态写操作。阶段检查点与成果档案属于独立的 `learning-artifact-portfolio` 后续规格，不阻塞关系层上线。
 
 ## 2. 当前事实与主要缺口
 
@@ -55,7 +55,7 @@
 1. **缺少唯一的全书心智模型。** 首页、课程、路径和项目各自正确，但没有统一视图解释它们的关系。
 2. **缺少章节定位与双向关系。** 读者能知道下一站，却不知道“我在哪里、为什么在这里、哪些后续内容依赖本章”。
 3. **缺少理论到源码的横向映射。** 章节与项目之间的关系散落在页面内，无法按概念或工程问题反查。
-4. **缺少阶段性反馈。** 已读是行为记录，不等于完成了本阶段应留下的图、协议、清单或评测证据。
+4. **缺少阶段性反馈。** 已读是行为记录，不等于完成了本阶段应留下的图、协议、清单或评测证据；本规格只让这些既有 evidence 在关系图中可见，交互式成果档案另立项目。
 5. **缺少关系型复习入口。** 术语、面试题、前沿专题和历史反例能单独访问，但不能从一个概念看到相关章节、项目、题目和失败边界。
 
 ## 3. 目标与成功标准
@@ -127,7 +127,7 @@
 
 模型不是第八个核心问题，而是运行关系图中的决策组件；它必须持续接受目标、上下文、控制流、验证和边界的共同约束。
 
-节点显示一句解释、对应主章节数量和当前本地完成状态。点击节点只过滤下方视图，不跳到自由画布。
+节点显示一句解释、对应课程项数量和明确标注的“已读 X / Y”。分母是映射到该问题的 CourseItem 去重集合，分子只读取现有 completed routes；不混入成果状态或面试掌握度。点击节点只过滤下方视图，不跳到自由画布。
 
 ### 5.3 四个视图
 
@@ -149,11 +149,13 @@
 
 #### 视图三：章节 × 项目 × 产物矩阵
 
-回答“理论在哪学、源码在哪看、读完留下什么、怎样复习”。每一行固定表达以下关系链：
+回答“理论在哪学、源码在哪看、读完留下什么、怎样复习”。主行以 chapter/frontier CourseItem 为 anchor，固定表达以下列顺序：
 
 `概念 → 核心章节/前沿专题 → 开源项目或交付型案例 → 完成证据 → 面试题`
 
-视觉矩阵的列顺序必须与该关系链相同。完成证据先于面试题，避免把“会回答”误当成“会交付”。
+视觉矩阵的列顺序必须与该关系链相同。完成证据先于面试题，避免把“会回答”误当成“会交付”。chapter/frontier 行必须有 concept 和现有 course evidence；project 与 interview question 均允许 `0..n`，空值明确显示“暂无直接落点”，不得为了填满矩阵制造关系。
+
+六个核心项目和交付型案例通过 `applies` 关系进入项目列。历史反例页只通过 `revisit` 关系作为注释出现，不建立虚构 evidence；项目 overview 不算证据项目，也不占主行。
 
 矩阵默认只显示当前核心问题的一组行，支持按阶段、内容类型和项目筛选。单元格只引用现有 ID，并显示由 registry 解析出的标题和路由。
 
@@ -173,44 +175,27 @@
 
 ## 6. 章节“你在这里”
 
-所有 course/reading-path 跟踪页面在正文开头的 freshness 之后显示一个轻量位置条带：
+`publishedCourseItems` 与三条 `readingPaths` 的路由联集是 location strip 的权威范围，当前精确为 29 页。每个页面在标题/新鲜度信息之后、正文主体之前显示一个轻量位置条带。
 
-- 当前阶段与序号；
-- 当前覆盖的 1–2 个核心问题；
-- 直接先修；
-- 直接后续；
-- 相关项目或案例；
-- 本页完成产物；
-- “在总图中查看”链接，定位到对应层和节点。
+26 个 CourseItem 使用 course variant：当前阶段与序号、1–2 个核心问题、直接先修、直接后续、相关项目或案例、现有完成证据和 atlas 定位链接。
 
-位置条带不复制章节摘要，不替代侧栏，也不自动改变当前阅读路径。
+3 个复习 appendix 使用 review variant：复习工具类型、可派生的关联章节、在 interview reading path 中的前后站、返回 `/paths/` 和 atlas 定位链接。它们不显示虚构的阶段、先修或 evidence。
+
+位置条带不复制章节摘要，不替代侧栏，也不自动改变当前阅读路径。它通过全局 Layout 的 route-based 注入挂载，组件按当前 route 查询统一关系索引；不得修改 29 个 Markdown 文件来手写阶段、先修、项目或产物元数据。
 
 反向关系由统一索引推导：如果 B 的 prerequisites 包含 A，A 页面自动显示 B 为后续分支。项目映射同样生成双向关系，章节不手写 backlink。
 
-## 7. 阶段检查点与成果档案
+## 7. 后续成果档案接入契约
 
-### 7.1 阶段检查点
+阶段检查点与贯穿式成果档案不属于 Release A，不创建组件、localStorage key、三态状态机或写操作，也不进入本轮成功标准、任务拆分和发布门禁。
 
-每个已发布课程阶段结束时显示一个检查点，回答：
+关系层只展示现有 `courseMap.evidence` 文案，让读者知道每页应该留下什么。未来独立的 `learning-artifact-portfolio` 规格若获批准，必须：
 
-- 能否用自己的话解释本阶段核心关系；
-- 是否完成阶段内至少一个定义产物；
-- 哪个风险或失败边界仍不清楚；
-- 下一阶段需要补哪项先修。
-
-检查点只引用阶段已有 `purpose`、课程项 `outcome` 和 `evidence`，不复制第二份内容。
-
-### 7.2 贯穿式成果档案
-
-成果档案按现有 `evidence` 字段生成条目，例如工具契约、状态图、评测样本、恢复矩阵、源码阅读笔记和质量门评审记录。
-
-本阶段只支持三态：`未开始 / 草稿 / 已验证`。状态保存在当前浏览器；不保存正文、文件或敏感数据，不提供上传、账号或云同步。
-
-成果状态与“已读”分开。读完页面不能自动把产物标为已验证；读者必须显式操作。
-
-### 7.3 本地状态兼容
-
-现有已读、书签和所选路径 key 保持不变。成果档案使用独立、带版本号的 localStorage key；损坏或未知版本时只禁用成果叠加，不影响正文和已有阅读状态。
+- 继续以现有 course item ID 作为成果身份，不创建第二套 artifact ID；
+- 把成果状态与“已读”和面试掌握度分开；
+- 使用独立、带版本号的本地存储，不改变当前 path/progress/bookmark key；
+- 不上传正文、文件或敏感数据，不引入账号、后端或云同步；
+- 通过 atlas 的稳定只读接口叠加状态，不能让 portfolio 成为关系数据的权威来源。
 
 ## 8. 数据契约
 
@@ -222,7 +207,114 @@
 - `project-index.yml`：项目页、subject、固定源码入口、调用链、许可证与面试题；
 - interview registry：42 道题的 ID 与章节归属。
 
-### 8.2 新增数据只拥有什么
+### 8.2 七问题稳定 ID
+
+七问题从首页硬编码迁移为唯一数据源，首页和 atlas 共用同一数组：
+
+| ID | 标题 | 一句解释 |
+| --- | --- | --- |
+| `goal` | 目标 | 到底交付什么？ |
+| `context` | 上下文 | 此刻知道什么？ |
+| `tools` | 工具 | 能对世界做什么？ |
+| `state` | 状态 | 现在做到哪？ |
+| `control-flow` | 控制流 | 下一步由谁决定？ |
+| `validation` | 验证 | 怎么证明做对？ |
+| `boundary` | 边界 | 何时停下、恢复或交人？ |
+
+首页不得再保留第二份七问题文案。七问题节点只显示“已读 X / Y”，其中 Y 是映射到该问题的 CourseItem 去重数，X 来自现有 completed route；不混入成果或面试掌握度。
+
+### 8.3 Runtime 节点
+
+| ID | 节点 | 主要问题 | 代表项目/案例 ID |
+| --- | --- | --- | --- |
+| `runtime-goal-input` | 目标与输入 | `goal` | `case-delivery-agent` |
+| `runtime-context` | 选择与组装上下文 | `context` | `project-aider` |
+| `runtime-model-decision` | 模型形成候选决策 | `control-flow` | `project-crewai` |
+| `runtime-tool-action` | 工具执行动作 | `tools` | `project-mcp-python-sdk` |
+| `runtime-observe-state` | 读取观察并更新状态 | `state` | `project-openhands` |
+| `runtime-control-next` | 分支、循环、汇合与暂停 | `control-flow` | `project-dify` |
+| `runtime-verify-evidence` | 验证结果、轨迹与证据 | `validation` | `project-agent-benchmarks` |
+| `runtime-boundary-handoff` | 停止、恢复与人工接管 | `boundary` | `case-delivery-agent` |
+
+运行图顺序固定，最后一项回到第一项形成反馈边。代表项目只用于说明，不改变项目页的权威事实或课程归属。
+
+### 8.4 Lifecycle 节点
+
+| ID | 阶段 | 代表内容 ID | 代表项目/案例 ID |
+| --- | --- | --- | --- |
+| `lifecycle-scope` | 定义目标与基线 | `chapter-01-ai-native` | `case-delivery-agent` |
+| `lifecycle-select-control` | 选择控制方式 | `chapter-02-workflow-agent` | `project-dify` |
+| `lifecycle-design-contracts` | 设计契约、上下文和状态 | `chapter-04-tools-mcp` | `project-mcp-python-sdk` |
+| `lifecycle-build-loop` | 实现最小执行闭环 | `chapter-03-react` | `project-aider` |
+| `lifecycle-evaluate` | 构建评测与证据 | `chapter-08-evaluation` | `project-agent-benchmarks` |
+| `lifecycle-secure-recover` | 加权限、恢复与接管 | `chapter-09-safety-recovery` | `project-openhands` |
+| `lifecycle-release-operate` | 灰度、发布与运营 | `chapter-10-production` | `case-delivery-agent` |
+| `lifecycle-improve-retire` | 复盘、扩权或退役 | `chapter-10-production` | `project-history-autogpt-flowise` |
+
+生命周期视图允许 `lifecycle-improve-retire → lifecycle-scope` 的反馈边，不允许其他未声明跳转。
+
+### 8.5 26 个 CourseItem 的完整主映射
+
+每项必须有 1–2 个 primary question、恰好 1 个 primary lifecycle stage，并允许最多 1 个 secondary lifecycle stage：
+
+| CourseItem ID | Primary question | Primary lifecycle | Secondary lifecycle |
+| --- | --- | --- | --- |
+| `preface` | `goal`, `boundary` | `lifecycle-scope` | — |
+| `chapter-01-ai-native` | `goal`, `boundary` | `lifecycle-scope` | `lifecycle-select-control` |
+| `chapter-02-workflow-agent` | `goal`, `control-flow` | `lifecycle-select-control` | `lifecycle-build-loop` |
+| `chapter-03-react` | `control-flow`, `state` | `lifecycle-build-loop` | `lifecycle-design-contracts` |
+| `chapter-04-tools-mcp` | `tools`, `boundary` | `lifecycle-design-contracts` | `lifecycle-secure-recover` |
+| `frontier-context-engineering` | `context`, `boundary` | `lifecycle-design-contracts` | `lifecycle-build-loop` |
+| `chapter-05-state-memory` | `state`, `context` | `lifecycle-design-contracts` | `lifecycle-secure-recover` |
+| `chapter-06-loop-graph` | `control-flow`, `state` | `lifecycle-build-loop` | `lifecycle-secure-recover` |
+| `chapter-07-multi-agent` | `control-flow`, `boundary` | `lifecycle-build-loop` | `lifecycle-evaluate` |
+| `frontier-interoperability-identity` | `tools`, `boundary` | `lifecycle-design-contracts` | `lifecycle-secure-recover` |
+| `chapter-08-evaluation` | `validation` | `lifecycle-evaluate` | `lifecycle-release-operate` |
+| `chapter-09-safety-recovery` | `boundary`, `validation` | `lifecycle-secure-recover` | `lifecycle-release-operate` |
+| `chapter-10-production` | `validation`, `boundary` | `lifecycle-release-operate` | `lifecycle-improve-retire` |
+| `frontier-durable-execution` | `state`, `boundary` | `lifecycle-secure-recover` | `lifecycle-release-operate` |
+| `frontier-agent-security-evaluation` | `validation`, `boundary` | `lifecycle-evaluate` | `lifecycle-secure-recover` |
+| `chapter-11-research-agent` | `context`, `validation` | `lifecycle-build-loop` | `lifecycle-evaluate` |
+| `chapter-12-service-operations-agent` | `tools`, `boundary` | `lifecycle-release-operate` | `lifecycle-secure-recover` |
+| `chapter-13-coding-agent` | `tools`, `validation` | `lifecycle-build-loop` | `lifecycle-evaluate` |
+| `chapter-14-computer-use` | `tools`, `boundary` | `lifecycle-secure-recover` | `lifecycle-release-operate` |
+| `project-mcp-python-sdk` | `tools`, `boundary` | `lifecycle-design-contracts` | `lifecycle-build-loop` |
+| `project-aider` | `context`, `validation` | `lifecycle-build-loop` | `lifecycle-evaluate` |
+| `project-openhands` | `state`, `boundary` | `lifecycle-release-operate` | `lifecycle-secure-recover` |
+| `project-agent-benchmarks` | `validation` | `lifecycle-evaluate` | `lifecycle-improve-retire` |
+| `project-dify` | `control-flow`, `state` | `lifecycle-build-loop` | `lifecycle-release-operate` |
+| `project-crewai` | `control-flow`, `boundary` | `lifecycle-build-loop` | `lifecycle-evaluate` |
+| `case-delivery-agent` | `validation`, `boundary` | `lifecycle-release-operate` | `lifecycle-improve-retire` |
+
+### 8.6 关系边契约
+
+| 边类型 | From | To | 基数 | 来源与闭环规则 |
+| --- | --- | --- | --- | --- |
+| `prerequisite` | CourseItem | CourseItem | 除 `preface` 外每项 `1..n` 入边 | 完全派生自 `courseMap.prerequisites`；必须无环 |
+| `expands` | chapter/frontier | chapter/frontier | `0..n` | 人工策展；表示概念展开；不得自指或成环 |
+| `applies` | chapter/frontier | core project/case | `0..n` | 优先由 project/case CourseItem 的 prerequisite 反向派生；人工补边必须有规格依据；不得成环 |
+| `evidence` | CourseItem | 同一 CourseItem 的 `evidence` 投影 | 每个 CourseItem 恰好 1 | 完全派生；target identity 仍是现有 CourseItem ID，不创建 artifact ID |
+| `assessed-by` | chapter | interview question | 每章恰好 3 | 由 question.chapter 与 `chapter-NN-*` content ID 派生 |
+| `revisit` | chapter/frontier/project | review appendix 或 historical page | `0..n` | 人工策展；允许形成复习闭环；不参与先修拓扑排序 |
+
+只有 `revisit` 可以形成闭环。任何人工 `applies/expands/revisit` 边都必须同时声明 source/target kind，构建时验证目标 ID 与允许基数。
+
+### 8.7 Crosswalk 行与空值
+
+Crosswalk 主行只以 `preface`、14 个 chapter 和 4 个 frontier CourseItem 为 anchor，共 19 行。每行必须有 concept、内容链接和现有 evidence；project/case 和 interview question 是 `0..n`。
+
+项目列由 `applies` 反向索引生成。没有直接项目或题目的单元格显示“暂无直接落点”，不创建占位 ID。`project-history-autogpt-flowise` 只经 `revisit` 作为历史注释出现；`projects-index` 不进入项目证据列。
+
+### 8.8 Location strip 的两种 variant
+
+29 个唯一页面分成两种显示契约：
+
+- **Course variant（26 页）：** 当前阶段/序号、primary question、直接先修、直接后续、相关项目、现有 evidence、atlas 定位链接；
+- **Review variant（3 页）：** `appendix-glossary`、`appendix-interview`、`appendix-interview-training`。只显示“复习工具”、已有关系索引能推导的关联章节、在 interview reading path 中的前后站和返回 `/paths/`；不伪造 course stage、prerequisite 或 evidence。
+
+Review variant 的章节关系来源：interview 与 training 从 42 题 chapter 字段派生；glossary 只使用人工 `revisit` 边。29 个唯一 ID 的集合必须与 published CourseItem 和 readingPaths 的去重联集精确相等。
+
+### 8.9 新增数据只拥有什么
 
 新增 `knowledgeAtlas` 数据只能拥有：
 
@@ -234,16 +326,16 @@
 
 它不得复制 route、title、navTitle、project name、commit、license、question text、course outcome 或 evidence 文案。
 
-### 8.3 派生关系
+### 8.10 派生关系
 
 - `prerequisite` 边从 `courseMap` 派生；
 - 页面标题和 URL 从 `contentRegistry` 派生；
 - project page 到章节的关系优先从课程先修和项目 catalog 映射派生；
 - 产物节点从课程项 `evidence` 派生；
-- question 回链从 interview ID registry 派生；
+- question 回链从 interview ID registry 派生；题目现有的 chapter 数字通过唯一的 `chapter-NN-*` content ID 映射到章节，不手写另一份题目到章节表；
 - 反向边在构建时生成，不写入源数据。
 
-### 8.4 校验规则
+### 8.11 校验规则
 
 - 所有内容引用必须命中已登记 ID；
 - 每个公开课程项至少映射一个核心问题、生命周期阶段和产物；
@@ -252,6 +344,7 @@
 - 边不得自指或重复；
 - 不得出现第二份标题、路由或完成证据；
 - 项目、面试题和前沿专题的关系必须引用现有 ID；
+- 成果状态 key 必须是现有 course item ID，不能出现独立 artifact ID 或复制后的 evidence 文案；
 - course denominator、reading paths 和既有 localStorage key 不因图谱变化而改变。
 
 ## 9. 组件与交互边界
@@ -264,8 +357,7 @@
 - `AtlasLifecycle`：工程生命周期；
 - `AtlasCrosswalk`：章节 × 项目 × 产物矩阵；
 - `AtlasPrerequisites`：先修 DAG；
-- `AtlasLocation`：章节“你在这里”；
-- `ArtifactPortfolio`：本地成果状态。
+- `AtlasLocation`：route-based 的“你在这里”。
 
 交互只包括层切换、过滤、展开、聚焦和跳转。没有自由拖拽、任意缩放、编辑节点、保存布局或多人协作。
 
@@ -292,7 +384,7 @@ URL hash 保存当前视图和节点，例如 `#runtime-validation`，便于章�
 - 四个视图的标题、摘要和语义列表或表格；
 - 所有当前可见节点的真实 anchor；
 - 先修与边类型的可读文本；
-- 阶段检查点和成果条目。
+- crosswalk 中从现有 CourseItem 派生的完成证据。
 
 语义列表和表格是所有环境的主内容契约，不是视觉图失败后才出现的简化替代。JavaScript 只增强筛选、当前节点高亮和本地进度，不负责提供核心关系。
 
@@ -318,7 +410,7 @@ URL hash 保存当前视图和节点，例如 `#runtime-validation`，便于章�
 ## 12. 失败与降级行为
 
 - 数据引用不存在、边重复、先修成环或映射缺失：构建失败；
-- localStorage 不可用或数据损坏：图谱内容正常显示，个人叠加显示不可用提示；
+- 现有 localStorage 不可用或数据损坏：图谱内容正常显示，“已读 X / Y”叠加显示不可用提示；本阶段不写入新状态；
 - URL hash 不合法：忽略并回到默认视图；
 - 图形增强运行失败：主语义列表和表格保持完整；
 - 当前页面不在 atlas 映射：不渲染位置条带，并在测试中报告遗漏；
@@ -341,7 +433,7 @@ URL hash 保存当前视图和节点，例如 `#runtime-validation`，便于章�
 - `/atlas/` SSR 含七问题、四视图、图例和主语义列表/表格；
 - 每个 tracked 页面 SSR 含正确位置条带；
 - hash 定位、层切换、过滤和无效输入行为确定；
-- 成果档案状态迁移、损坏和存储不可用分支可测；
+- 现有已读状态的可用、损坏和存储不可用分支可测；本阶段不得新增 localStorage key；
 - no-JavaScript 页面能阅读并访问全部核心关系。
 
 ### 13.3 浏览器验收
@@ -362,9 +454,8 @@ URL hash 保存当前视图和节点，例如 `#runtime-validation`，便于章�
 3. 运行关系图与生命周期图；
 4. crosswalk 与先修视图；
 5. 章节位置条带；
-6. 阶段检查点与本地成果档案；
-7. 导航、首页入口和既有状态迁移；
-8. 移动端、读屏、no-JavaScript、打印和 Pages 验收。
+6. 导航、首页入口和既有只读进度叠加；
+7. 移动端、读屏、no-JavaScript、打印和 Pages 验收。
 
 每个任务遵循 RED → 最小实现 → focused tests → full test/validate/build → 规格复核 → 代码质量复核 → 独立提交。
 
@@ -376,6 +467,7 @@ URL hash 保存当前视图和节点，例如 `#runtime-validation`，便于章�
 - 不引入图数据库或第二套内容管理系统；
 - 不复制 route、title、课程结果、项目事实或面试题正文；
 - 不改变 26 项完成度、三条阅读路径或现有已读/书签语义；
+- 不在 Release A 实现阶段检查点、成果三态或新的 localStorage schema；这些内容进入独立 `learning-artifact-portfolio` 后续规格；
 - 不在本阶段实现 Python Lab 或综合项目；
 - 不用外部图片、Logo 或未经登记的第三方素材。
 
