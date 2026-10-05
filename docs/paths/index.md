@@ -17,3 +17,9 @@ description: 按小白入门、工程实战或面试冲刺组织同一套正文�
 
 路线只是导航，不是等级。遇到项目里的真实问题，可以随时跳到对应章节，再回到路径页继续。
 
+## 更适合“先动手”的起点
+
+如果你看长篇原理容易失去抓手，先读 [Learn Claude Code：从循环到 Harness](/appendix/harness-reading-guide)：它用 17 个逐步可运行的示例，把同一个 Agent Loop 依次扩展到工具、权限、上下文、持久任务、多 Agent 和独立验收。看完七站主线后再回到本书对应章节，重点补“为什么这样设计、失败时怎么办、如何证明完成”。
+
+想先建立更大的知识全景，可以把 [Agentic AI 指南 v1.1.0](https://github.com/Chasing1020/agentic-ai-guide-zh/releases/tag/v1.1.0) 当地图使用；初学者不必先通读训练与强化学习章节，优先看评估、RAG、Memory、编排、Loop Engineering、MCP 与多 Agent，再回到本书做工程闭环。
+

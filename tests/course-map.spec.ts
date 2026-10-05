@@ -38,7 +38,7 @@ const expectedIds = [
   'project-agent-benchmarks', 'project-dify', 'project-crewai',
   'project-history-autogpt-flowise', 'radar',
   'radar-2026-09', 'appendix-glossary', 'appendix-review-checklist',
-  'appendix-reading', 'appendix-application-matrix', 'appendix-chapter-template',
+  'appendix-reading', 'appendix-harness-reading-guide', 'appendix-application-matrix', 'appendix-chapter-template',
   'appendix-interview', 'appendix-interview-training',
 ]
 
@@ -251,7 +251,7 @@ describe('project curriculum integration', () => {
       ['开源项目拆解', ['projects-index', 'project-mcp-python-sdk', 'project-aider', 'project-openhands', 'project-agent-benchmarks', 'project-dify', 'project-crewai', 'project-history-autogpt-flowise']],
       ['案例研究', ['case-delivery-agent']],
       ['活教材 · 前沿层', ['radar', 'radar-2026-09', 'frontier-context-engineering', 'frontier-interoperability-identity', 'frontier-durable-execution', 'frontier-agent-security-evaluation']],
-      ['随手查', ['appendix-glossary', 'appendix-review-checklist', 'appendix-reading', 'appendix-application-matrix', 'appendix-chapter-template', 'appendix-interview', 'appendix-interview-training']],
+      ['随手查', ['appendix-glossary', 'appendix-review-checklist', 'appendix-reading', 'appendix-harness-reading-guide', 'appendix-application-matrix', 'appendix-chapter-template', 'appendix-interview', 'appendix-interview-training']],
     ])
   })
 })
@@ -390,7 +390,7 @@ describe('course navigation integration', () => {
       ['projects-index', 'project-mcp-python-sdk', 'project-aider', 'project-openhands', 'project-agent-benchmarks', 'project-dify', 'project-crewai', 'project-history-autogpt-flowise'],
       ['case-delivery-agent'],
       ['radar', 'radar-2026-09', 'frontier-context-engineering', 'frontier-interoperability-identity', 'frontier-durable-execution', 'frontier-agent-security-evaluation'],
-      ['appendix-glossary', 'appendix-review-checklist', 'appendix-reading', 'appendix-application-matrix', 'appendix-chapter-template', 'appendix-interview', 'appendix-interview-training'],
+      ['appendix-glossary', 'appendix-review-checklist', 'appendix-reading', 'appendix-harness-reading-guide', 'appendix-application-matrix', 'appendix-chapter-template', 'appendix-interview', 'appendix-interview-training'],
     ])
     expect(config).toContain("navigationItem('preface', 'nav')")
     expect(themeConfig.nav[0].items[1].text).toBe('开始阅读')
@@ -426,6 +426,27 @@ describe('course page', () => {
     expect(source).not.toContain('fetch(')
     expect(source).not.toContain('setItem(')
     expect(source).not.toContain('removeItem(')
+  })
+
+  it('renders a layered knowledge graph from the course relationship source of truth', () => {
+    expect(existsSync('docs/.vitepress/theme/components/LayeredKnowledgeGraph.vue')).toBe(true)
+
+    const page = readFileSync('docs/course/index.md', 'utf8')
+    const source = readFileSync('docs/.vitepress/theme/components/LayeredKnowledgeGraph.vue', 'utf8')
+    const theme = readFileSync('docs/.vitepress/theme/index.ts', 'utf8')
+
+    expect(page).toContain('<LayeredKnowledgeGraph />')
+    expect(theme).toContain("app.component('LayeredKnowledgeGraph', LayeredKnowledgeGraph)")
+    expect(source).toContain('courseStages')
+    expect(source).toContain('courseItems')
+    expect(source).toContain('courseItemById')
+    expect(source).toContain('item.prerequisites')
+    expect(source).toContain('直接先修')
+    expect(source).toContain('直接去向')
+    expect(source).toContain('学完产出')
+    expect(source).toContain(':href="withBase(contentById[itemId].route)"')
+    expect(source).not.toContain('fetch(')
+    expect(source).not.toContain('localStorage')
   })
 
   it('registers the component without adding unfinished routes', () => {

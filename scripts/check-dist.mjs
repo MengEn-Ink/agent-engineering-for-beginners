@@ -308,6 +308,29 @@ export function validateDist(distPath, options = {}) {
   }
   if (!relativeFiles.includes('index.html')) errors.push('构建产物缺少 index.html')
 
+  const requireOfflineBundle = options.requireOfflineBundle ?? options.requireVitePressIconContract !== false
+  const offlineManifestPath = indexed.files.get('offline-manifest.json')
+  const serviceWorkerPath = indexed.files.get('sw.js')
+  if (requireOfflineBundle && offlineManifestPath === undefined) errors.push('构建产物缺少 offline-manifest.json')
+  if (requireOfflineBundle && serviceWorkerPath === undefined) errors.push('构建产物缺少 sw.js')
+  if (requireOfflineBundle && offlineManifestPath !== undefined && serviceWorkerPath !== undefined) {
+    try {
+      const manifest = JSON.parse(readFileSync(offlineManifestPath, 'utf8'))
+      const worker = readFileSync(serviceWorkerPath, 'utf8')
+      if (manifest.fileCount !== relativeFiles.length - 2) {
+        errors.push(`离线清单文件数不匹配：${manifest.fileCount}/${relativeFiles.length - 2}`)
+      }
+      if (!worker.includes(`agent-book-${manifest.version}`)) errors.push('离线缓存版本与清单不一致')
+      for (const file of relativeFiles.filter((item) => !['offline-manifest.json', 'sw.js'].includes(item))) {
+        if (!worker.includes(`/agent-engineering-for-beginners/${file}`)) {
+          errors.push(`离线缓存缺少构建文件：${file}`)
+        }
+      }
+    } catch (error) {
+      errors.push(`离线清单无法解析：${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+
   const coursePath = indexed.files.get('course/index.html')
   if (coursePath === undefined) {
     errors.push('构建产物缺少 course/index.html')

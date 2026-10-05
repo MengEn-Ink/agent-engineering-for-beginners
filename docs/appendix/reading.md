@@ -24,6 +24,8 @@ description: 本书如何选择、分级和交叉核对 Agent 工程资料。
 
 用于补充取舍、经验和解释，不覆盖 A 级来源的明确边界。
 
+- [Learn Claude Code · Harness Engineering](https://github.com/shareAI-lab/learn-claude-code/tree/ce8f9f186058939da54c9d6fead78dfb5d0fd6c3)：用 17 个递进脚本展示 Agent Loop 如何长成完整 Harness；配套拆解见 [从最小循环到可验收 Harness](/appendix/harness-reading-guide)。
+- [Agentic AI 指南 v1.1.0](https://github.com/Chasing1020/agentic-ai-guide-zh/releases/tag/v1.1.0)：从模型基础、训练与推理延伸到评估、RAG、Memory、编排、MCP 和多 Agent；适合查全景，不要求初学者按 30 章顺序通读。
 - [Chip Huyen · Agents](https://huyenchip.com/2025/01/07/agents.html)：规划、工具、效率、成本和延迟。
 - 微信公众号「Agent 工程实践」合集：用于发现 Prompt→Loop→Graph、状态、评测和安全等选题；不搬运原图和大段原文。
 - 本书的交付型案例：用于演示通用工程模式，只是案例推演，不单独证明外部事实。
